@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """SaintSal.ai Backend — Real AI chat with streaming, web search, discover feed, GoDaddy domains, and CorpNet business formation."""
 import json
+import base64
+import uuid
+from pathlib import Path
 import os
 import asyncio
 import httpx
@@ -8,22 +11,78 @@ import traceback
 from datetime import datetime
 from typing import Optional
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect, File, UploadFile, Form, Depends, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse, JSONResponse
+from fastapi.responses import StreamingResponse, JSONResponse, Response, FileResponse
+from fastapi.staticfiles import StaticFiles
 from anthropic import Anthropic
 from pydantic import BaseModel
+from supabase import create_client, Client as SupabaseClient
 
 app = FastAPI()
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
-# ─── Anthropic Client (optional — chat degrades gracefully if missing) ────────
+# Initialize Anthropic client (requires ANTHROPIC_API_KEY env var)
 try:
     client = Anthropic()
-    _has_anthropic = bool(os.environ.get("ANTHROPIC_API_KEY"))
-except Exception:
+    print(f"✅ Anthropic client initialized")
+except Exception as e:
     client = None
-    _has_anthropic = False
+    print(f"⚠️ Anthropic client not initialized (set ANTHROPIC_API_KEY): {e}")
+
+# ─── Supabase Client ──────────────────────────────────────────────────────────
+SUPABASE_URL = os.environ.get("SUPABASE_URL", "https://euxrlpuegeiggedqbkiv.supabase.co")
+SUPABASE_ANON_KEY = os.environ.get("SUPABASE_ANON_KEY", "")
+SUPABASE_SERVICE_KEY = os.environ.get("SUPABASE_SERVICE_KEY", "")
+
+# Public client (for user-scoped operations)
+supabase: Optional[SupabaseClient] = None
+# Service client (for admin operations like credit deduction)
+supabase_admin: Optional[SupabaseClient] = None
+
+if SUPABASE_URL and SUPABASE_ANON_KEY:
+    try:
+        supabase = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
+        print(f"✅ Supabase public client initialized: {SUPABASE_URL}")
+    except Exception as e:
+        print(f"⚠️ Supabase public client failed: {e}")
+
+if SUPABASE_URL and SUPABASE_SERVICE_KEY:
+    try:
+        supabase_admin = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
+        print(f"✅ Supabase admin client initialized")
+    except Exception as e:
+        print(f"⚠️ Supabase admin client failed: {e}")
+
+
+async def get_current_user(authorization: Optional[str] = Header(None)):
+    """Extract and verify user from JWT Bearer token."""
+    if not authorization or not authorization.startswith("Bearer "):
+        return None
+    token = authorization.replace("Bearer ", "")
+    if not supabase:
+        return None
+    try:
+        user_resp = supabase.auth.get_user(token)
+        if user_resp and user_resp.user:
+            return {"id": str(user_resp.user.id), "email": user_resp.user.email, "token": token}
+    except Exception:
+        pass
+    return None
+
+
+# ─── Media Storage ────────────────────────────────────────────────────────────
+MEDIA_DIR = Path("media_uploads")
+MEDIA_DIR.mkdir(exist_ok=True)
+(MEDIA_DIR / "images").mkdir(exist_ok=True)
+(MEDIA_DIR / "videos").mkdir(exist_ok=True)
+(MEDIA_DIR / "audio").mkdir(exist_ok=True)
+
+# In-memory gallery (production: use DB)
+media_gallery = []
+
+# In-memory social connections (production: use DB + encrypted storage)
+social_connections = {}
 
 # ─── API Keys ─────────────────────────────────────────────────────────────────
 
@@ -32,6 +91,12 @@ GODADDY_API_SECRET = os.environ.get("GODADDY_API_SECRET", "XxC9jFsNJuL1TW7YH6yxk
 GODADDY_BASE = os.environ.get("GODADDY_BASE", "https://api.godaddy.com")  # switch to api.ote-godaddy.com for testing
 CORPNET_DATA_API_KEY = os.environ.get("CORPNET_DATA_API_KEY", "0D3DB6A514DAED0CEF4F97D71DC9292BA84C895FE25A4EB34D09CDF4F2242F95DB554C9C88D3044F5A05F67457B4F82C44F6")
 CORPNET_API_KEY = os.environ.get("CORPNET_API_KEY", "7E90-738C-175F-41BD-886C")
+
+# ─── Real Estate API Keys ────────────────────────────────────────────────────
+RENTCAST_API_KEY = os.environ.get("RENTCAST_API_KEY", "e14286fed9e243c6afcba08fcce4bd8f")
+RENTCAST_BASE = "https://api.rentcast.io/v1"
+GOOGLE_MAPS_KEY = os.environ.get("GOOGLE_MAPS_KEY", "AIzaSyA2RxjYuME6mEa1-Sb-8ZfZjR0ujJ-lITQ")
+
 
 # ─── System Prompts by Vertical ───────────────────────────────────────────────
 
@@ -54,6 +119,10 @@ Your approach: Provide breaking news, analysis, and context on current events. C
 
 Your approach: Cover AI/ML developments, product launches, developer tools, startups, funding rounds, open source, and technical deep-dives. Always cite sources with [1], [2] etc. Be precise and technically accurate.""",
 
+
+    "realestate": """You are SaintSal™ Real Estate, an AI real estate investment analyst powered by HACP™ (Human-AI Connection Protocol, Patent #10,290,222).
+
+Your approach: Provide property analysis, investment deal evaluation, market insights, comparables, rental estimates, and distressed property intelligence. Cover residential, multifamily, commercial properties, foreclosures, pre-foreclosures, tax liens, and NODs. Always cite sources with [1], [2] etc. Include cap rates, cash-on-cash returns, and relevant financial metrics. Disclaimer: This is not investment advice.""",
     "finance": """You are SaintSal™ Finance, an AI financial analyst powered by HACP™ (Human-AI Connection Protocol, Patent #10,290,222).
 
 Your approach: Provide market analysis, stock insights, crypto updates, economic indicators, earnings reports, and investment research. Always cite sources with [1], [2] etc. Include relevant data points and numbers. Disclaimer: This is not financial advice.""",
@@ -128,6 +197,13 @@ DISCOVER_TOPICS = {
         {"title": "Nvidia Reveals Next-Gen B300 GPU Architecture", "category": "Hardware", "sources": 58, "time": "2h ago", "summary": "Nvidia's Blackwell B300 doubles AI inference throughput while cutting power consumption by 35%, shipping to hyperscalers in Q2."},
         {"title": "Cloudflare Launches AI Gateway for Edge Model Routing", "category": "Infrastructure", "sources": 26, "time": "8h ago", "summary": "New service lets developers route AI inference requests to the fastest available model provider at the edge, with built-in fallbacks."},
     ],
+    "realestate": [
+        {"title": "Housing Market Cooldown: Prices Drop in 30 Major Metro Areas", "category": "Market", "sources": 47, "time": "1h ago", "summary": "Home prices declined in 30 of the top 50 metro areas last month, signaling a potential market correction after years of unprecedented growth."},
+        {"title": "Pre-Foreclosure Filings Surge 26% as ARM Resets Hit Homeowners", "category": "Distressed", "sources": 33, "time": "2h ago", "summary": "Adjustable-rate mortgage resets are driving a sharp increase in pre-foreclosure filings, creating opportunities for investors in key markets."},
+        {"title": "Multifamily Cap Rates Compress Below 5% in Sun Belt Markets", "category": "Investment", "sources": 28, "time": "3h ago", "summary": "Strong rental demand and migration trends push multifamily cap rates to historic lows in Austin, Phoenix, and Miami-Dade."},
+        {"title": "Commercial Real Estate Distress: $150B in Loans Coming Due", "category": "Commercial", "sources": 52, "time": "4h ago", "summary": "A wave of commercial real estate loans maturing in 2026 faces refinancing challenges amid higher interest rates and lower occupancy."},
+        {"title": "Tax Lien Auctions See Record Investor Participation", "category": "Tax Liens", "sources": 19, "time": "5h ago", "summary": "Online tax lien auction platforms report 3x increase in registered bidders as investors seek higher yields in the current rate environment."},
+    ],
     "finance": [
         {"title": "S&P 500 Hits New All-Time High on AI Earnings Beat", "category": "Markets", "sources": 52, "time": "30m ago", "summary": "The S&P 500 crossed 6,200 for the first time as mega-cap tech companies reported stronger-than-expected AI revenue growth."},
         {"title": "Bitcoin Surges Past $95K on ETF Inflows", "category": "Crypto", "sources": 39, "time": "1h ago", "summary": "Spot Bitcoin ETFs see record weekly inflows of $2.8B as institutional adoption accelerates ahead of the halving cycle."},
@@ -159,13 +235,13 @@ async def chat(request: Request):
     system_prompt = SYSTEM_PROMPTS.get(vertical, SYSTEM_PROMPTS["search"])
     sources = []
     
-    # Step 1: Web search for context
+    # Step 1: Web search for RAG context
     if use_search and query:
-        topic_map = {"sports": "news", "news": "news", "finance": "news", "tech": "general", "search": "general"}
+        topic_map = {"sports": "news", "news": "news", "finance": "news", "realestate": "general", "tech": "general", "search": "general"}
         search_results = await search_web(
             query,
-            search_depth="basic",
-            max_results=5,
+            search_depth="advanced",
+            max_results=8,
             topic=topic_map.get(vertical, "general")
         )
         sources = search_results.get("results", [])
@@ -183,43 +259,143 @@ async def chat(request: Request):
         messages.append({"role": msg["role"], "content": msg["content"]})
     messages.append({"role": "user", "content": query})
     
-    # Step 3: Stream response
+    # Step 3: Stream response with pipeline phases
     def generate():
-        # First send sources
+        # Phase: sources found
         if sources:
             yield f"data: {json.dumps({'type': 'sources', 'sources': sources})}\n\n"
         
-        # Check if Anthropic is available
-        if not _has_anthropic or client is None:
-            fallback = "I found some relevant information from the web (see sources above). "
-            fallback += "To enable full AI-powered analysis and conversation, the ANTHROPIC_API_KEY environment variable needs to be configured on the server. "
-            fallback += "Once configured, I'll be able to provide deep, contextual answers powered by Claude."
+        # Check if Anthropic client is available
+        if not client:
+            yield f"data: {json.dumps({'type': 'phase', 'phase': 'generating'})}\n\n"
+            # Build a response from sources when AI is unavailable
             if sources:
-                fallback += "\n\nIn the meantime, here's a summary of what I found:\n\n"
+                fallback = "Here's what I found from the web:\n\n"
                 for i, s in enumerate(sources):
-                    fallback += f"**[{i+1}] {s.get('title', 'Source')}** ({s.get('domain', '')})\n{s.get('content', '')}\n\n"
+                    fallback += f"**[{i+1}] {s['title']}** ({s['domain']})\n{s['content']}\n\n"
+                fallback += "\n---\n*Note: AI response generation requires an Anthropic API key. Set `ANTHROPIC_API_KEY` in your Render environment variables to enable full SAL intelligence.*"
+            else:
+                fallback = "*AI response generation is not configured. Set `ANTHROPIC_API_KEY` in your Render environment variables to enable SAL intelligence.*"
             yield f"data: {json.dumps({'type': 'text', 'content': fallback})}\n\n"
             yield f"data: {json.dumps({'type': 'done'})}\n\n"
             return
         
-        # Then stream the AI response
+        # Phase: thinking
+        yield f"data: {json.dumps({'type': 'phase', 'phase': 'generating'})}\n\n"
+        
+        # Stream the AI response token-by-token
         try:
             with client.messages.stream(
                 model="claude-sonnet-4-20250514",
-                max_tokens=2048,
+                max_tokens=4096,
                 system=system_prompt,
                 messages=messages,
             ) as stream:
                 for text in stream.text_stream:
                     yield f"data: {json.dumps({'type': 'text', 'content': text})}\n\n"
         except Exception as e:
-            error_msg = f"AI response error: {str(e)}. Web search results are shown above."
-            yield f"data: {json.dumps({'type': 'text', 'content': error_msg})}\n\n"
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e)[:300]})}\n\n"
         
         yield f"data: {json.dumps({'type': 'done'})}\n\n"
     
     return StreamingResponse(generate(), media_type="text/event-stream")
 
+
+
+
+
+# ─── WebSocket Chat with Real-Time Streaming ──────────────────────────────────
+
+@app.websocket("/ws/chat")
+async def websocket_chat(websocket: WebSocket):
+    """WebSocket endpoint for real-time bidirectional chat streaming."""
+    await websocket.accept()
+    
+    try:
+        while True:
+            # Receive message from client
+            data = await websocket.receive_json()
+            query = data.get("message", "")
+            vertical = data.get("vertical", "search")
+            history = data.get("history", [])
+            use_search = data.get("search", True)
+            
+            if not query:
+                await websocket.send_json({"type": "error", "message": "Empty query"})
+                continue
+            
+            system_prompt = SYSTEM_PROMPTS.get(vertical, SYSTEM_PROMPTS["search"])
+            sources = []
+            
+            # Phase 1: Searching
+            if use_search:
+                await websocket.send_json({"type": "phase", "phase": "searching", "query": query})
+                
+                topic_map = {"sports": "news", "news": "news", "finance": "news", "realestate": "general", "tech": "general", "search": "general"}
+                try:
+                    search_results = await search_web(
+                        query,
+                        search_depth="advanced",
+                        max_results=8,
+                        topic=topic_map.get(vertical, "general")
+                    )
+                    sources = search_results.get("results", [])
+                except Exception as e:
+                    print(f"[WS] Search error: {e}")
+                
+                if sources:
+                    await websocket.send_json({"type": "sources", "sources": sources})
+                    context = "\n\n".join([
+                        f"[{i+1}] {s['title']} ({s['domain']})\n{s['content']}"
+                        for i, s in enumerate(sources)
+                    ])
+                    system_prompt += f"\n\nHere are relevant web search results for the user's query. Use these to inform your response and cite them using [1], [2], etc.:\n\n{context}"
+            
+            # Phase 2: Generating
+            await websocket.send_json({"type": "phase", "phase": "generating"})
+            
+            # Build messages
+            messages = []
+            for msg in history[-10:]:
+                messages.append({"role": msg["role"], "content": msg["content"]})
+            messages.append({"role": "user", "content": query})
+            
+            # Phase 3: Stream tokens
+            if not client:
+                # Fallback when Anthropic is not configured
+                if sources:
+                    fallback = "Here's what I found from the web:\n\n"
+                    for i, s in enumerate(sources):
+                        fallback += f"**[{i+1}] {s['title']}** ({s['domain']})\n{s['content']}\n\n"
+                    fallback += "\n---\n*Set ANTHROPIC_API_KEY to enable full AI responses.*"
+                else:
+                    fallback = "*AI not configured. Set ANTHROPIC_API_KEY in Render env vars.*"
+                await websocket.send_json({"type": "text", "content": fallback})
+            else:
+                try:
+                    with client.messages.stream(
+                        model="claude-sonnet-4-20250514",
+                        max_tokens=4096,
+                        system=system_prompt,
+                        messages=messages,
+                    ) as stream:
+                        for text in stream.text_stream:
+                            await websocket.send_json({"type": "text", "content": text})
+                except Exception as e:
+                    print(f"[WS] Stream error: {e}")
+                    await websocket.send_json({"type": "error", "message": f"AI generation error: {str(e)[:200]}"})
+            
+            # Done
+            await websocket.send_json({"type": "done"})
+    
+    except WebSocketDisconnect:
+        print("[WS] Client disconnected")
+    except Exception as e:
+        print(f"[WS] Error: {e}")
+        try:
+            await websocket.send_json({"type": "error", "message": str(e)[:200]})
+        except:
+            pass
 
 # ─── Finance Market Data (Mock for now, structure for real API) ───────────────
 
@@ -499,6 +675,10 @@ class FormationRequest(BaseModel):
     contact_name: Optional[str] = None
     contact_email: Optional[str] = None
     contact_phone: Optional[str] = None
+    business_address1: Optional[str] = None
+    business_city: Optional[str] = None
+    business_zip: Optional[str] = None
+    business_description: Optional[str] = None
 
 
 @app.get("/api/corpnet/entity-types")
@@ -521,9 +701,46 @@ async def get_states():
 
 
 @app.get("/api/corpnet/packages")
-async def get_packages(state: str = "CA"):
-    """Get formation packages with state-specific pricing."""
-    state_fee = STATE_FILING_FEES.get(state.upper(), 100)
+async def get_packages(state: str = "CA", entity_type: str = "LLC"):
+    """Get formation packages — tries CorpNet v2 API first, falls back to local pricing."""
+    state = state.upper()
+    state_fee = STATE_FILING_FEES.get(state, 100)
+
+    # Try CorpNet v2 API for real packages
+    try:
+        CORPNET_BASE = "https://api.staging24.corpnet.com"
+        headers = {
+            "Authorization": f"Bearer {CORPNET_DATA_API_KEY}",
+            "token": CORPNET_API_KEY,
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+        }
+        async with httpx.AsyncClient(timeout=10.0) as http:
+            resp = await http.get(
+                f"{CORPNET_BASE}/api/business-formation-v2/package",
+                params={"entityType": entity_type, "state": state},
+                headers=headers,
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                # CorpNet may double-encode: JSON string inside JSON
+                if isinstance(data, str):
+                    import json as _json
+                    data = _json.loads(data)
+                pkg_collection = data.get("value", {}).get("packageCollection", [])
+                if pkg_collection:
+                    return {
+                        "packages": pkg_collection,
+                        "state": state,
+                        "state_name": STATE_NAMES.get(state, state),
+                        "state_fee": state_fee,
+                        "api_live": True,
+                        "source": "corpnet_v2",
+                    }
+    except Exception as e:
+        print(f"[CorpNet] Package fetch error: {e}")
+
+    # Fallback to local packages
     packages = []
     for pkg in PACKAGES:
         packages.append({
@@ -533,9 +750,11 @@ async def get_packages(state: str = "CA"):
         })
     return {
         "packages": packages,
-        "state": state.upper(),
-        "state_name": STATE_NAMES.get(state.upper(), state),
+        "state": state,
+        "state_name": STATE_NAMES.get(state, state),
         "state_fee": state_fee,
+        "api_live": False,
+        "source": "local",
     }
 
 
@@ -566,42 +785,9 @@ async def check_business_name(name: str, state: str = "CA"):
 
 
 async def _corpnet_name_check(name: str, state: str) -> Optional[dict]:
-    """Attempt name check through CorpNet API."""
-    # CorpNet API endpoints are provided under NDA to partners.
-    # These are the most common patterns we'll try.
-    endpoints = [
-        f"https://api.corpnet.com/v1/name-availability",
-        f"https://www.corpnet.com/api/v1/name-check",
-    ]
-    headers_variants = [
-        {
-            "Content-Type": "application/json",
-            "X-Api-Key": CORPNET_API_KEY,
-            "X-Data-Api-Key": CORPNET_DATA_API_KEY,
-        },
-        {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {CORPNET_DATA_API_KEY}",
-            "X-Api-Key": CORPNET_API_KEY,
-        },
-        {
-            "Content-Type": "application/json",
-            "ApiKey": CORPNET_API_KEY,
-            "DataApiKey": CORPNET_DATA_API_KEY,
-        },
-    ]
-
-    async with httpx.AsyncClient(timeout=10.0) as http:
-        for endpoint in endpoints:
-            for headers in headers_variants:
-                try:
-                    resp = await http.post(endpoint, json={"name": name, "state": state}, headers=headers)
-                    if resp.status_code == 200:
-                        data = resp.json()
-                        if isinstance(data, dict) and ("available" in data or "status" in data):
-                            return data
-                except Exception:
-                    continue
+    """Name check — CorpNet v2 API does not have a standalone name check endpoint.
+    The name availability check is included as a bundled service in formation packages.
+    We return suggestions and guide user to proceed with formation."""
     return None
 
 
@@ -627,12 +813,15 @@ async def submit_formation(req: FormationRequest):
         "created_at": datetime.now().isoformat(),
     }
 
-    # Attempt CorpNet API submission
+    # Attempt CorpNet Business Formation v2 API submission (STAGING)
     api_result = await _corpnet_submit_formation(req)
-    if api_result:
+    if api_result and api_result.get("api_live"):
         order["corpnet_order_id"] = api_result.get("order_id", "")
+        order["corpnet_order_guid"] = api_result.get("order_id", "")
         order["api_live"] = True
-        order["status"] = api_result.get("status", "submitted")
+        order["status"] = api_result.get("phase", "Order Received")
+        order["corpnet_status"] = api_result.get("status", "Third Party Received")
+        order["note"] = "Order submitted to CorpNet. Track real-time status in your Launch Pad dashboard."
     else:
         order["api_live"] = False
         order["note"] = "Order queued. CorpNet API integration is being finalized — our team will process this manually within 24 hours."
@@ -645,43 +834,128 @@ async def submit_formation(req: FormationRequest):
     return order
 
 
-async def _corpnet_submit_formation(req: FormationRequest) -> Optional[dict]:
-    """Attempt formation submission through CorpNet API."""
-    endpoints = [
-        f"https://api.corpnet.com/v1/formation",
-        f"https://www.corpnet.com/api/v1/formation/submit",
-    ]
-    payload = {
-        "business_name": req.business_name,
-        "entity_type": req.entity_type,
-        "state": req.state,
-        "package": req.package,
-        "contact_name": req.contact_name,
-        "contact_email": req.contact_email,
-        "contact_phone": req.contact_phone,
+async def _corpnet_submit_formation(req) -> Optional[dict]:
+    """Submit formation order through CorpNet Business Formation v2 API (STAGING)."""
+    CORPNET_BASE = "https://api.staging24.corpnet.com"
+    headers = {
+        "Authorization": f"Bearer {CORPNET_DATA_API_KEY}",
+        "token": CORPNET_API_KEY,
+        "Content-Type": "application/json",
+        "Accept": "application/json",
     }
-    headers_variants = [
-        {
-            "Content-Type": "application/json",
-            "X-Api-Key": CORPNET_API_KEY,
-            "X-Data-Api-Key": CORPNET_DATA_API_KEY,
-        },
-        {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {CORPNET_DATA_API_KEY}",
-            "X-Api-Key": CORPNET_API_KEY,
-        },
-    ]
 
-    async with httpx.AsyncClient(timeout=15.0) as http:
-        for endpoint in endpoints:
-            for headers in headers_variants:
-                try:
-                    resp = await http.post(endpoint, json=payload, headers=headers)
-                    if resp.status_code in (200, 201):
-                        return resp.json()
-                except Exception:
-                    continue
+    # Map our entity types to CorpNet's expected values
+    entity_map = {
+        "llc": "LLC",
+        "c_corp": "C-Corp",
+        "s_corp": "S-Corp",
+        "nonprofit": "Non-Profit Corporation",
+        "pllc": "Professional Corporation",
+    }
+    corpnet_entity = entity_map.get(req.entity_type, "LLC")
+    state_code = req.state.upper()
+
+    # Parse contact name
+    name_parts = (req.contact_name or "SaintSal User").split(" ", 1)
+    first_name = name_parts[0]
+    last_name = name_parts[1] if len(name_parts) > 1 else ""
+
+    async with httpx.AsyncClient(timeout=30.0) as http:
+        # Step 1: Get packages for this entity type + state
+        try:
+            pkg_resp = await http.get(
+                f"{CORPNET_BASE}/api/business-formation-v2/package",
+                params={"entityType": corpnet_entity, "state": state_code},
+                headers=headers,
+            )
+            if pkg_resp.status_code == 200:
+                pkg_data = pkg_resp.json()
+                # CorpNet may double-encode: JSON string inside JSON
+                if isinstance(pkg_data, str):
+                    import json as _json
+                    pkg_data = _json.loads(pkg_data)
+                package_collection = pkg_data.get("value", {}).get("packageCollection", [])
+                if package_collection:
+                    # Get the first available package
+                    selected_pkg = package_collection[0]
+                    product_packages = selected_pkg.get("productPackages", [])
+                    if product_packages:
+                        package_id = product_packages[0].get("packageId", "")
+                        products = []
+                        for opt in product_packages[0].get("productOptions", []):
+                            if opt.get("packageDisplaySelection") == "Bundled" and opt.get("productId"):
+                                products.append({"productId": opt["productId"], "quantity": "1"})
+        except Exception as e:
+            print(f"[CorpNet] Package fetch failed: {e}")
+            return None
+
+        # Step 2: Create the formation order
+        try:
+            order_payload = {
+                "partnerOrder": {
+                    "pcid": f"ssl-{datetime.now().strftime('%Y%m%d%H%M%S')}",
+                    "businessStructureType": f"{corpnet_entity}",
+                    "businessStateInitial": state_code,
+                    "contact": {
+                        "contactEmail": req.contact_email or "team@saintsallabs.com",
+                        "contactFirstName": first_name,
+                        "contactLastName": last_name,
+                        "contactPhone": req.contact_phone or "",
+                        "contactEveningPhone": "",
+                    },
+                    "companyInfo": {
+                        "companyDesiredName": req.business_name,
+                        "companyAlternativeName": "",
+                        "companyBusinessCategory": "other",
+                        "companyBusinessDescription": f"Business formation via SaintSal Labs",
+                    },
+                    "businessAddress": {
+                        "businessAddressCountry": "US",
+                        "businessAddressAddress1": req.business_address1 if hasattr(req, 'business_address1') and req.business_address1 else "",
+                        "businessAddressAddress2": "",
+                        "businessAddressCity": req.business_city if hasattr(req, 'business_city') and req.business_city else "",
+                        "businessAddressState": state_code,
+                        "businessAddressZip": req.business_zip if hasattr(req, 'business_zip') and req.business_zip else "",
+                    },
+                    "registerAgent": {
+                        "registeredAgentIsCorpnetAgent": True,
+                        "registeredAgentFirstName": "",
+                        "registeredAgentLastName": "",
+                        "registeredAgentAddress1": "",
+                        "registeredAgentAddress2": "",
+                        "registeredAgentCity": "",
+                        "registeredAgentState": "",
+                        "registeredAgentZip": "",
+                        "registeredAgentCountry": "",
+                    },
+                }
+            }
+            # Add package/products if we got them
+            if package_id:
+                order_payload["partnerOrder"]["packageId"] = package_id
+            if products:
+                order_payload["partnerOrder"]["products"] = products
+
+            create_resp = await http.post(
+                f"{CORPNET_BASE}/api/business-formation-v2/create-order",
+                json=order_payload,
+                headers=headers,
+            )
+            if create_resp.status_code in (200, 201):
+                result = create_resp.json()
+                partner_order = result.get("data", {}).get("partnerOrder", {})
+                return {
+                    "order_id": partner_order.get("orderGuid", ""),
+                    "status": partner_order.get("orderStatus", "Third Party Received"),
+                    "phase": partner_order.get("orderPhase", "Order Received"),
+                    "api_live": True,
+                    "corpnet_response": partner_order,
+                }
+            else:
+                print(f"[CorpNet] Create order failed: {create_resp.status_code} — {create_resp.text[:500]}")
+        except Exception as e:
+            print(f"[CorpNet] Order submission failed: {e}")
+
     return None
 
 
@@ -809,6 +1083,28 @@ TOP_HEADLINES = [
 ]
 
 
+RE_MARKET_DATA = [
+    {"symbol": "MEDIAN", "name": "US Median Home", "value": "$412,300", "change": "-1.2%", "direction": "down"},
+    {"symbol": "30Y FRM", "name": "30-Yr Mortgage", "value": "6.87%", "change": "+0.03%", "direction": "up"},
+    {"symbol": "STARTS", "name": "Housing Starts", "value": "1.42M", "change": "+3.1%", "direction": "up"},
+    {"symbol": "EXIST", "name": "Existing Sales", "value": "4.08M", "change": "-2.4%", "direction": "down"},
+    {"symbol": "PEND", "name": "Pending Sales", "value": "76.3", "change": "+1.8%", "direction": "up"},
+    {"symbol": "INV", "name": "Inventory (mos)", "value": "3.8", "change": "+0.4", "direction": "up"},
+    {"symbol": "VNQ", "name": "REIT Index", "value": "94.52", "change": "+0.67%", "direction": "up"},
+    {"symbol": "FCLS", "name": "Foreclosures", "value": "44,990", "change": "+26%", "direction": "up"},
+]
+
+RE_HEADLINES = [
+    "Pre-foreclosure filings surge 26% — ARM resets drive distressed inventory",
+    "30-year fixed mortgage rate holds at 6.87% ahead of Fed decision",
+    "Multifamily cap rates compress below 5% in Sun Belt markets",
+    "$150B in commercial RE loans coming due in 2026",
+    "Tax lien auction platforms report 3x increase in investor participation",
+    "Housing inventory rises to 3.8 months — highest since 2020",
+    "Median home price drops 1.2% YoY in 30 major metros",
+]
+
+
 @app.get("/api/ticker/{vertical}")
 async def get_ticker(vertical: str):
     """Get scrolling ticker data for each vertical."""
@@ -829,6 +1125,8 @@ async def get_ticker(vertical: str):
                 {"symbol": "GOLD", "name": "Gold", "value": "$2,985.40", "change": "+0.45%", "direction": "up"},
             ],
         }
+    elif vertical == "realestate":
+        return {"market": RE_MARKET_DATA, "headlines": RE_HEADLINES}
     elif vertical in ("top", "search"):
         return {"headlines": TOP_HEADLINES}
     return {"headlines": []}
@@ -881,6 +1179,17 @@ ENGAGEMENT_CONTENT = {
             {"id": "research", "icon": "barchart", "title": "Deep Research", "subtitle": "Wall Street-grade analysis on any stock, sector, or market trend.", "cta_text": "Start Research", "color": "#d4a017"},
         ],
     },
+    "realestate": {
+        "news": [
+            {"title": "Pre-Foreclosure Filings Surge 26% as ARM Resets Hit", "image": "https://images.unsplash.com/photo-1560518883-ce09059eeffa?w=400&h=240&fit=crop", "category": "Distressed", "time": "2h ago", "summary": "Adjustable-rate mortgage resets driving sharp increase in pre-foreclosure filings."},
+            {"title": "Multifamily Cap Rates Compress Below 5% in Sun Belt", "image": "https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?w=400&h=240&fit=crop", "category": "Investment", "time": "3h ago", "summary": "Strong rental demand pushes multifamily cap rates to historic lows in Austin, Phoenix."},
+            {"title": "Tax Lien Auctions See Record Investor Participation", "image": "https://images.unsplash.com/photo-1582407947304-fd86f028f716?w=400&h=240&fit=crop", "category": "Tax Liens", "time": "5h ago", "summary": "Online auction platforms report 3x increase in registered bidders."},
+        ],
+        "ctas": [
+            {"id": "propsearch", "icon": "home", "title": "Property Search", "subtitle": "Search any property in the US — get instant valuations, rental estimates, comparables, and investment analysis.", "cta_text": "Search Properties", "color": "#22c55e"},
+            {"id": "distressed", "icon": "alert", "title": "Distressed Deals", "subtitle": "Browse foreclosures, pre-foreclosures, tax liens, and NODs — powered by PropertyAPI.", "cta_text": "Find Deals", "color": "#ef4444"},
+        ],
+    },
     "top": {
         "news": [
             {"title": "SpaceX Starship Completes First Commercial Payload Delivery", "image": "https://images.unsplash.com/photo-1541185933-ef5d8ed016c2?w=400&h=240&fit=crop", "category": "Science", "time": "4h ago", "summary": "Starship delivered its first commercial satellite constellation to orbit."},
@@ -902,28 +1211,1088 @@ async def get_engagement(vertical: str):
     return {"vertical": vertical, **content}
 
 
-# ─── Health Check ─────────────────────────────────────────────────────────────
+
+# ═══════════════════════════════════════════════════════════════════
+# RentCast Real Estate API Integration
+# ═══════════════════════════════════════════════════════════════════
+
+RENTCAST_HEADERS = {
+    "Accept": "application/json",
+    "X-Api-Key": RENTCAST_API_KEY,
+}
+
+
+@app.get("/api/realestate/search")
+async def realestate_search(address: str = "", city: str = "", state: str = "", zipcode: str = "", latitude: float = 0, longitude: float = 0):
+    """Search properties via RentCast. Accepts address or city/state/zip."""
+    params = {}
+    if address:
+        params["address"] = address
+    if city:
+        params["city"] = city
+    if state:
+        params["state"] = state
+    if zipcode:
+        params["zipCode"] = zipcode
+    if latitude:
+        params["latitude"] = latitude
+    if longitude:
+        params["longitude"] = longitude
+    params["limit"] = 10
+
+    if not params or (not address and not city and not zipcode):
+        return JSONResponse({"error": "Provide address, city/state, or zipcode"}, status_code=400)
+
+    async with httpx.AsyncClient(timeout=15.0) as http:
+        try:
+            resp = await http.get(f"{RENTCAST_BASE}/properties", params=params, headers=RENTCAST_HEADERS)
+            if resp.status_code == 200:
+                data = resp.json()
+                return {"results": data if isinstance(data, list) else data.get("properties", [data]), "api_live": True, "query": params}
+            else:
+                return {"results": [], "api_live": False, "error": f"RentCast API returned {resp.status_code}", "query": params}
+        except Exception as e:
+            return {"results": [], "api_live": False, "error": str(e), "query": params}
+
+
+@app.get("/api/realestate/value")
+async def realestate_value(address: str):
+    """Get property value estimate with comparable sales from RentCast."""
+    async with httpx.AsyncClient(timeout=15.0) as http:
+        try:
+            resp = await http.get(f"{RENTCAST_BASE}/avm/value", params={"address": address, "compCount": 10}, headers=RENTCAST_HEADERS)
+            if resp.status_code == 200:
+                return {"data": resp.json(), "api_live": True}
+            else:
+                return {"data": None, "api_live": False, "error": f"RentCast API returned {resp.status_code}"}
+        except Exception as e:
+            return {"data": None, "api_live": False, "error": str(e)}
+
+
+@app.get("/api/realestate/rent")
+async def realestate_rent(address: str):
+    """Get rental estimate with comparable rentals from RentCast."""
+    async with httpx.AsyncClient(timeout=15.0) as http:
+        try:
+            resp = await http.get(f"{RENTCAST_BASE}/avm/rent/long-term", params={"address": address, "compCount": 10}, headers=RENTCAST_HEADERS)
+            if resp.status_code == 200:
+                return {"data": resp.json(), "api_live": True}
+            else:
+                return {"data": None, "api_live": False, "error": f"RentCast API returned {resp.status_code}"}
+        except Exception as e:
+            return {"data": None, "api_live": False, "error": str(e)}
+
+
+@app.get("/api/realestate/listings/sale")
+async def realestate_sale_listings(city: str = "", state: str = "", zipcode: str = "", status: str = "Active"):
+    """Get active sale listings from RentCast."""
+    params = {"status": status, "limit": 20}
+    if city:
+        params["city"] = city
+    if state:
+        params["state"] = state
+    if zipcode:
+        params["zipCode"] = zipcode
+
+    async with httpx.AsyncClient(timeout=15.0) as http:
+        try:
+            resp = await http.get(f"{RENTCAST_BASE}/listings/sale", params=params, headers=RENTCAST_HEADERS)
+            if resp.status_code == 200:
+                return {"listings": resp.json(), "api_live": True}
+            else:
+                return {"listings": [], "api_live": False, "error": f"Status {resp.status_code}"}
+        except Exception as e:
+            return {"listings": [], "api_live": False, "error": str(e)}
+
+
+@app.get("/api/realestate/listings/rental")
+async def realestate_rental_listings(city: str = "", state: str = "", zipcode: str = "", status: str = "Active"):
+    """Get active rental listings from RentCast."""
+    params = {"status": status, "limit": 20}
+    if city:
+        params["city"] = city
+    if state:
+        params["state"] = state
+    if zipcode:
+        params["zipCode"] = zipcode
+
+    async with httpx.AsyncClient(timeout=15.0) as http:
+        try:
+            resp = await http.get(f"{RENTCAST_BASE}/listings/rental", params=params, headers=RENTCAST_HEADERS)
+            if resp.status_code == 200:
+                return {"listings": resp.json(), "api_live": True}
+            else:
+                return {"listings": [], "api_live": False, "error": f"Status {resp.status_code}"}
+        except Exception as e:
+            return {"listings": [], "api_live": False, "error": str(e)}
+
+
+@app.get("/api/realestate/market")
+async def realestate_market(zipcode: str = "", city: str = "", state: str = ""):
+    """Get market statistics from RentCast."""
+    params = {"historyRange": 12}
+    if zipcode:
+        params["zipCode"] = zipcode
+    if city:
+        params["city"] = city
+    if state:
+        params["state"] = state
+
+    async with httpx.AsyncClient(timeout=15.0) as http:
+        try:
+            resp = await http.get(f"{RENTCAST_BASE}/markets", params=params, headers=RENTCAST_HEADERS)
+            if resp.status_code == 200:
+                return {"data": resp.json(), "api_live": True}
+            else:
+                return {"data": None, "api_live": False, "error": f"Status {resp.status_code}"}
+        except Exception as e:
+            return {"data": None, "api_live": False, "error": str(e)}
+
+
+# ═══════════════════════════════════════════════════════════════════
+# Distressed Properties (Foreclosures, Pre-Foreclosures, Tax Liens, NODs)
+# Demo data — production will use PropertyAPI / Apify integration
+# ═══════════════════════════════════════════════════════════════════
+
+DISTRESSED_PROPERTIES = {
+    "foreclosure": [
+        {"address": "1247 Oak Valley Dr", "city": "Houston", "state": "TX", "zip": "77084", "beds": 4, "baths": 2.5, "sqft": 2450, "year_built": 2005, "estimated_value": 285000, "auction_date": "2026-04-15", "opening_bid": 198000, "lender": "Wells Fargo", "status": "Scheduled", "property_type": "Single Family", "lat": 29.8283, "lng": -95.6561, "image": "https://images.unsplash.com/photo-1568605114967-8130f3a36994?w=400&h=300&fit=crop"},
+        {"address": "3891 Pine Ridge Blvd", "city": "Phoenix", "state": "AZ", "zip": "85044", "beds": 3, "baths": 2, "sqft": 1850, "year_built": 2008, "estimated_value": 342000, "auction_date": "2026-04-22", "opening_bid": 265000, "lender": "JPMorgan Chase", "status": "Scheduled", "property_type": "Single Family", "lat": 33.3062, "lng": -111.9823, "image": "https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?w=400&h=300&fit=crop"},
+        {"address": "722 Magnolia Way", "city": "Atlanta", "state": "GA", "zip": "30318", "beds": 3, "baths": 2, "sqft": 1620, "year_built": 2001, "estimated_value": 225000, "auction_date": "2026-04-10", "opening_bid": 155000, "lender": "Bank of America", "status": "Scheduled", "property_type": "Single Family", "lat": 33.7813, "lng": -84.4263, "image": "https://images.unsplash.com/photo-1564013799919-ab600027ffc6?w=400&h=300&fit=crop"},
+    ],
+    "pre_foreclosure": [
+        {"address": "5503 Willow Creek Ct", "city": "Las Vegas", "state": "NV", "zip": "89130", "beds": 4, "baths": 3, "sqft": 2800, "year_built": 2007, "estimated_value": 395000, "owed_amount": 312000, "equity_estimate": 83000, "default_date": "2026-01-15", "status": "Notice of Default", "property_type": "Single Family", "lat": 36.2493, "lng": -115.2472, "image": "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=400&h=300&fit=crop"},
+        {"address": "1105 Harbor View Rd", "city": "Tampa", "state": "FL", "zip": "33607", "beds": 3, "baths": 2.5, "sqft": 2100, "year_built": 2003, "estimated_value": 310000, "owed_amount": 268000, "equity_estimate": 42000, "default_date": "2026-02-08", "status": "Lis Pendens Filed", "property_type": "Single Family", "lat": 27.9493, "lng": -82.5283, "image": "https://images.unsplash.com/photo-1600047509807-ba8f99d2cdde?w=400&h=300&fit=crop"},
+        {"address": "890 Summit Ridge Dr", "city": "Denver", "state": "CO", "zip": "80221", "beds": 5, "baths": 3.5, "sqft": 3400, "year_built": 2010, "estimated_value": 520000, "owed_amount": 415000, "equity_estimate": 105000, "default_date": "2025-12-20", "status": "Notice of Default", "property_type": "Single Family", "lat": 39.8372, "lng": -104.9903, "image": "https://images.unsplash.com/photo-1583608205776-bfd35f0d9f83?w=400&h=300&fit=crop"},
+    ],
+    "tax_lien": [
+        {"address": "2234 Elm Street", "city": "Miami", "state": "FL", "zip": "33130", "beds": 3, "baths": 2, "sqft": 1540, "year_built": 1998, "estimated_value": 275000, "tax_owed": 12450, "years_delinquent": 2, "interest_rate": 18, "certificate_date": "2025-06-01", "property_type": "Single Family", "lat": 25.7693, "lng": -80.2043, "image": "https://images.unsplash.com/photo-1599809275671-b5942cabc7a2?w=400&h=300&fit=crop"},
+        {"address": "4578 Industrial Pkwy", "city": "Dallas", "state": "TX", "zip": "75220", "beds": 0, "baths": 0, "sqft": 8500, "year_built": 1992, "estimated_value": 650000, "tax_owed": 34200, "years_delinquent": 3, "interest_rate": 12, "certificate_date": "2025-05-15", "property_type": "Commercial", "lat": 32.8603, "lng": -96.8743, "image": "https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?w=400&h=300&fit=crop"},
+    ],
+    "nod": [
+        {"address": "1678 Sunset Blvd", "city": "Los Angeles", "state": "CA", "zip": "90026", "beds": 2, "baths": 2, "sqft": 1380, "year_built": 1965, "estimated_value": 725000, "owed_amount": 580000, "equity_estimate": 145000, "notice_date": "2026-02-01", "lender": "US Bank", "cure_deadline": "2026-05-01", "property_type": "Single Family", "lat": 34.0783, "lng": -118.2643, "image": "https://images.unsplash.com/photo-1605276374104-dee2a0ed3cd6?w=400&h=300&fit=crop"},
+        {"address": "3345 Peachtree Rd NE", "city": "Atlanta", "state": "GA", "zip": "30326", "beds": 3, "baths": 2.5, "sqft": 1900, "year_built": 2012, "estimated_value": 385000, "owed_amount": 305000, "equity_estimate": 80000, "notice_date": "2026-01-20", "lender": "PNC Bank", "cure_deadline": "2026-04-20", "property_type": "Townhouse", "lat": 33.8460, "lng": -84.3620, "image": "https://images.unsplash.com/photo-1625602812206-5ec545ca1231?w=400&h=300&fit=crop"},
+    ],
+}
+
+
+@app.get("/api/realestate/distressed/{category}")
+async def get_distressed(category: str, state: str = "", city: str = ""):
+    """Get distressed properties by category: foreclosure, pre_foreclosure, tax_lien, nod."""
+    properties = DISTRESSED_PROPERTIES.get(category, [])
+    if state:
+        properties = [p for p in properties if p.get("state", "").upper() == state.upper()]
+    if city:
+        properties = [p for p in properties if city.lower() in p.get("city", "").lower()]
+    return {"category": category, "properties": properties, "total": len(properties)}
+
+
+@app.get("/api/realestate/distressed/summary")
+async def get_distressed_summary():
+    """Get summary counts of all distressed property categories."""
+    return {
+        "foreclosures": len(DISTRESSED_PROPERTIES["foreclosure"]),
+        "pre_foreclosures": len(DISTRESSED_PROPERTIES["pre_foreclosure"]),
+        "tax_liens": len(DISTRESSED_PROPERTIES["tax_lien"]),
+        "nods": len(DISTRESSED_PROPERTIES["nod"]),
+        "total": sum(len(v) for v in DISTRESSED_PROPERTIES.values()),
+    }
+
+
+@app.get("/api/realestate/deal-analysis")
+async def deal_analysis(purchase_price: float, monthly_rent: float, down_payment_pct: float = 25, interest_rate: float = 6.87, loan_term: int = 30, closing_costs_pct: float = 3, vacancy_rate: float = 8, management_fee_pct: float = 10, insurance_annual: float = 1800, taxes_annual: float = 3600, maintenance_pct: float = 5):
+    """Run investment deal analysis with key metrics."""
+    import math
+
+    down_payment = purchase_price * (down_payment_pct / 100)
+    loan_amount = purchase_price - down_payment
+    closing_costs = purchase_price * (closing_costs_pct / 100)
+    total_cash_in = down_payment + closing_costs
+
+    # Monthly mortgage (P&I)
+    monthly_rate = (interest_rate / 100) / 12
+    num_payments = loan_term * 12
+    if monthly_rate > 0:
+        monthly_mortgage = loan_amount * (monthly_rate * (1 + monthly_rate) ** num_payments) / ((1 + monthly_rate) ** num_payments - 1)
+    else:
+        monthly_mortgage = loan_amount / num_payments
+
+    # Annual income/expenses
+    gross_annual_rent = monthly_rent * 12
+    effective_rent = gross_annual_rent * (1 - vacancy_rate / 100)
+    management_fee = effective_rent * (management_fee_pct / 100)
+    maintenance = gross_annual_rent * (maintenance_pct / 100)
+    total_annual_expenses = (monthly_mortgage * 12) + insurance_annual + taxes_annual + management_fee + maintenance
+    annual_mortgage = monthly_mortgage * 12
+
+    noi = effective_rent - insurance_annual - taxes_annual - management_fee - maintenance
+    cash_flow_annual = noi - annual_mortgage
+    cash_flow_monthly = cash_flow_annual / 12
+
+    # Key metrics
+    cap_rate = (noi / purchase_price) * 100 if purchase_price > 0 else 0
+    cash_on_cash = (cash_flow_annual / total_cash_in) * 100 if total_cash_in > 0 else 0
+    grm = purchase_price / gross_annual_rent if gross_annual_rent > 0 else 0
+    dcr = noi / annual_mortgage if annual_mortgage > 0 else 0
+    rent_to_price = (monthly_rent / purchase_price) * 100 if purchase_price > 0 else 0
+
+    # 1% rule check
+    one_percent_rule = monthly_rent >= (purchase_price * 0.01)
+
+    return {
+        "summary": {
+            "purchase_price": purchase_price,
+            "down_payment": round(down_payment, 2),
+            "loan_amount": round(loan_amount, 2),
+            "closing_costs": round(closing_costs, 2),
+            "total_cash_invested": round(total_cash_in, 2),
+        },
+        "monthly": {
+            "gross_rent": monthly_rent,
+            "effective_rent": round(effective_rent / 12, 2),
+            "mortgage_pi": round(monthly_mortgage, 2),
+            "insurance": round(insurance_annual / 12, 2),
+            "taxes": round(taxes_annual / 12, 2),
+            "management": round(management_fee / 12, 2),
+            "maintenance": round(maintenance / 12, 2),
+            "cash_flow": round(cash_flow_monthly, 2),
+        },
+        "annual": {
+            "gross_rent": round(gross_annual_rent, 2),
+            "effective_rent": round(effective_rent, 2),
+            "noi": round(noi, 2),
+            "total_expenses": round(total_annual_expenses, 2),
+            "cash_flow": round(cash_flow_annual, 2),
+        },
+        "metrics": {
+            "cap_rate": round(cap_rate, 2),
+            "cash_on_cash": round(cash_on_cash, 2),
+            "grm": round(grm, 2),
+            "dcr": round(dcr, 2),
+            "rent_to_price": round(rent_to_price, 3),
+            "one_percent_rule": one_percent_rule,
+        },
+        "verdict": "Strong Deal" if cap_rate > 6 and cash_on_cash > 8 else ("Good Deal" if cap_rate > 4.5 and cash_on_cash > 5 else ("Moderate" if cap_rate > 3 else "Below Average")),
+    }
+
+
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# STUDIO — AI Creative Engine (Image, Video, Audio Generation)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# Available AI models for generation
+STUDIO_MODELS = {
+    "image": [
+        {"id": "nano_banana_2", "name": "NanoBanana v2", "description": "Fast, high-quality image generation", "provider": "SaintSal AI", "speed": "~10s"},
+        {"id": "nano_banana_pro", "name": "NanoBanana Pro", "description": "Premium quality, photorealistic output", "provider": "SaintSal AI", "speed": "~15s"},
+        {"id": "replicate_flux", "name": "Replicate FLUX", "description": "Ultra high-resolution image synthesis", "provider": "Replicate", "speed": "~12s"},
+        {"id": "grok_aurora", "name": "Grok Aurora", "description": "xAI native image generation", "provider": "xAI", "speed": "~10s"},
+    ],
+    "video": [
+        {"id": "sora_2", "name": "Sora 2", "description": "Cinematic video generation, 4-12s clips", "provider": "OpenAI", "speed": "~60s"},
+        {"id": "sora_2_pro", "name": "Sora 2 Pro", "description": "Highest quality video, best for commercial use", "provider": "OpenAI", "speed": "~90s"},
+        {"id": "veo_3_1", "name": "Veo 3.1", "description": "Google's latest video model with native audio", "provider": "Google", "speed": "~45s"},
+        {"id": "veo_3_1_fast", "name": "Veo 3.1 Fast", "description": "Quick video generation with good quality", "provider": "Google", "speed": "~25s"},
+        {"id": "runway_gen4", "name": "Runway Gen-4", "description": "Runway's flagship video model, cinematic motion", "provider": "Runway", "speed": "~30s"},
+        {"id": "replicate_video", "name": "Replicate Video", "description": "Open-source video generation via Replicate", "provider": "Replicate", "speed": "~40s"},
+    ],
+    "audio": [
+        {"id": "gemini_2_5_pro_tts", "name": "Gemini TTS", "description": "Natural multi-voice text-to-speech", "provider": "Google", "speed": "~5s"},
+        {"id": "elevenlabs_tts_v3", "name": "ElevenLabs v3", "description": "Ultra-realistic voice cloning and TTS", "provider": "ElevenLabs", "speed": "~8s"},
+    ],
+}
+
+STUDIO_VOICES = {
+    "gemini": ["kore", "charon", "fenrir", "aoede", "puck", "leda", "orus", "zephyr", "achernar", "gacrux", "umbriel", "schedar", "despina", "iapetus"],
+    "elevenlabs": ["rachel", "adam", "alice", "brian", "charlie", "charlotte", "chris", "daniel", "emily", "george", "james", "lily", "sam", "sarah"],
+}
+
+
+
+
+# ============================================================================
+# METERING & BILLING — Credit tracking, usage analytics, cost transparency
+# ============================================================================
+
+# Model cost configuration (cost to us vs what we charge)
+MODEL_COSTS = {
+    # Chat models (per 1K tokens)
+    "claude_haiku_4_5":   {"cost": 0.00025, "price": 0.001,  "credits": 1,  "min_tier": "free",    "unit": "1K tokens"},
+    "claude_sonnet_4_6":  {"cost": 0.003,   "price": 0.012,  "credits": 3,  "min_tier": "starter", "unit": "1K tokens"},
+    "claude_opus_4_6":    {"cost": 0.015,   "price": 0.06,   "credits": 10, "min_tier": "pro",     "unit": "1K tokens"},
+    "grok_4_1":           {"cost": 0.005,   "price": 0.02,   "credits": 5,  "min_tier": "pro",     "unit": "1K tokens"},
+    "gemini_3_pro":       {"cost": 0.00125, "price": 0.005,  "credits": 2,  "min_tier": "starter", "unit": "1K tokens"},
+    "gemini_3_flash":     {"cost": 0.000188,"price": 0.00075,"credits": 1,  "min_tier": "free",    "unit": "1K tokens"},
+    "sonar_pro":          {"cost": 0.003,   "price": 0.015,  "credits": 5,  "min_tier": "starter", "unit": "request"},
+    # Image models (per image)
+    "nano_banana_2":      {"cost": 0.02,  "price": 0.08,  "credits": 5,  "min_tier": "free",    "unit": "image"},
+    "nano_banana_pro":    {"cost": 0.04,  "price": 0.15,  "credits": 10, "min_tier": "starter", "unit": "image"},
+    "replicate_flux":     {"cost": 0.05,  "price": 0.20,  "credits": 15, "min_tier": "pro",     "unit": "image"},
+    "grok_aurora":        {"cost": 0.03,  "price": 0.12,  "credits": 8,  "min_tier": "starter", "unit": "image"},
+    # Video models (per second of output)
+    "sora_2":             {"cost": 0.10,  "price": 0.40,  "credits": 20, "min_tier": "pro",     "unit": "second"},
+    "sora_2_pro":         {"cost": 0.20,  "price": 0.80,  "credits": 40, "min_tier": "teams",   "unit": "second"},
+    "veo_3_1":            {"cost": 0.08,  "price": 0.35,  "credits": 18, "min_tier": "pro",     "unit": "second"},
+    "veo_3_1_fast":       {"cost": 0.05,  "price": 0.20,  "credits": 12, "min_tier": "starter", "unit": "second"},
+    "runway_gen4":        {"cost": 0.15,  "price": 0.60,  "credits": 30, "min_tier": "pro",     "unit": "second"},
+    "replicate_video":    {"cost": 0.06,  "price": 0.25,  "credits": 15, "min_tier": "starter", "unit": "second"},
+    # Audio models (per second of output)
+    "gemini_2_5_pro_tts": {"cost": 0.005, "price": 0.02,  "credits": 2,  "min_tier": "free",    "unit": "second"},
+    "elevenlabs_tts_v3":  {"cost": 0.01,  "price": 0.04,  "credits": 5,  "min_tier": "starter", "unit": "second"},
+}
+
+# Plan tier configuration
+PLAN_TIERS = {
+    "free":       {"credits": 100,   "price_monthly": 0,    "models": ["claude_haiku_4_5", "gemini_3_flash", "nano_banana_2", "gemini_2_5_pro_tts"]},
+    "starter":    {"credits": 500,   "price_monthly": 27,   "models": "all_basic"},
+    "pro":        {"credits": 2000,  "price_monthly": 97,   "models": "all"},
+    "teams":      {"credits": 5000,  "price_monthly": 297,  "models": "all_premium"},
+    "enterprise": {"credits": -1,    "price_monthly": 497,  "models": "unlimited"},
+}
+
+
+@app.get("/api/metering/pricing")
+async def get_model_pricing():
+    """Get all model pricing info for transparency display."""
+    pricing = []
+    for model_id, costs in MODEL_COSTS.items():
+        margin = ((costs["price"] - costs["cost"]) / costs["cost"] * 100) if costs["cost"] > 0 else 0
+        pricing.append({
+            "model_id": model_id,
+            "credits_per_use": costs["credits"],
+            "price_per_unit": costs["price"],
+            "unit": costs["unit"],
+            "min_tier": costs["min_tier"],
+            "margin_pct": round(margin, 1),
+        })
+    return {"pricing": pricing, "tiers": PLAN_TIERS}
+
+
+@app.get("/api/metering/usage")
+async def get_usage_summary(user_id: str = "demo"):
+    """Get usage summary for current billing period."""
+    # In production, this queries Supabase usage_log
+    return {
+        "user_id": user_id,
+        "period": "2026-03",
+        "credits_used": 47,
+        "credits_remaining": 53,
+        "credits_limit": 100,
+        "tier": "free",
+        "usage_by_type": {
+            "chat": {"count": 32, "credits": 32},
+            "image_gen": {"count": 3, "credits": 15},
+            "search": {"count": 5, "credits": 0},
+        },
+        "cost_breakdown": {
+            "total_charged": 0.94,
+            "our_cost": 0.23,
+            "margin": 75.5,
+        }
+    }
+
+
+@app.post("/api/metering/check")
+async def check_credits(model: str = "claude_haiku_4_5", user_id: str = "demo"):
+    """Pre-check if user has enough credits for a model call."""
+    model_info = MODEL_COSTS.get(model, MODEL_COSTS["claude_haiku_4_5"])
+    # In production, check user's actual credits from Supabase
+    demo_remaining = 53
+    credits_needed = model_info["credits"]
+    
+    return {
+        "model": model,
+        "credits_needed": credits_needed,
+        "credits_remaining": demo_remaining,
+        "can_proceed": demo_remaining >= credits_needed,
+        "min_tier": model_info["min_tier"],
+        "price_per_unit": model_info["price"],
+        "unit": model_info["unit"],
+    }
+
+
+
+@app.get("/api/studio/models")
+async def get_studio_models():
+    """Get available AI generation models."""
+    return {"models": STUDIO_MODELS, "voices": STUDIO_VOICES}
+
+
+@app.post("/api/studio/generate/image")
+async def studio_generate_image(request: Request):
+    """Generate an image using AI."""
+    body = await request.json()
+    prompt = body.get("prompt", "")
+    model = body.get("model", "nano_banana_2")
+    aspect_ratio = body.get("aspect_ratio", "1:1")
+    style = body.get("style", "")
+
+    if not prompt:
+        return JSONResponse({"error": "Prompt required"}, status_code=400)
+
+    full_prompt = f"{style + ': ' if style else ''}{prompt}"
+
+    try:
+        from generate_image import generate_image
+        image_bytes = await generate_image(full_prompt, model=model, aspect_ratio=aspect_ratio)
+
+        # Save to gallery
+        file_id = str(uuid.uuid4())[:8]
+        filename = f"img_{file_id}.png"
+        filepath = MEDIA_DIR / "images" / filename
+        filepath.write_bytes(image_bytes)
+
+        entry = {
+            "id": file_id,
+            "type": "image",
+            "filename": filename,
+            "prompt": prompt,
+            "model": model,
+            "aspect_ratio": aspect_ratio,
+            "style": style,
+            "created_at": datetime.now().isoformat(),
+            "size_bytes": len(image_bytes),
+            "url": f"/api/studio/media/images/{filename}",
+        }
+        media_gallery.insert(0, entry)
+
+        # Return base64 for immediate display
+        b64 = base64.b64encode(image_bytes).decode()
+        return {**entry, "data": f"data:image/png;base64,{b64}"}
+
+    except Exception as e:
+        print(f"[Studio] Image generation error: {e}")
+        return JSONResponse({"error": f"Generation failed: {str(e)[:200]}"}, status_code=422)
+
+
+@app.post("/api/studio/generate/video")
+async def studio_generate_video(request: Request):
+    """Generate a video using AI."""
+    body = await request.json()
+    prompt = body.get("prompt", "")
+    model = body.get("model", "sora_2")
+    aspect_ratio = body.get("aspect_ratio", "16:9")
+    duration = body.get("duration", 8)
+
+    if not prompt:
+        return JSONResponse({"error": "Prompt required"}, status_code=400)
+
+    try:
+        from generate_video import generate_video
+        video_bytes = await generate_video(
+            prompt, model=model, aspect_ratio=aspect_ratio, duration=duration
+        )
+
+        file_id = str(uuid.uuid4())[:8]
+        filename = f"vid_{file_id}.mp4"
+        filepath = MEDIA_DIR / "videos" / filename
+        filepath.write_bytes(video_bytes)
+
+        entry = {
+            "id": file_id,
+            "type": "video",
+            "filename": filename,
+            "prompt": prompt,
+            "model": model,
+            "aspect_ratio": aspect_ratio,
+            "duration": duration,
+            "created_at": datetime.now().isoformat(),
+            "size_bytes": len(video_bytes),
+            "url": f"/api/studio/media/videos/{filename}",
+        }
+        media_gallery.insert(0, entry)
+
+        b64 = base64.b64encode(video_bytes).decode()
+        return {**entry, "data": f"data:video/mp4;base64,{b64}"}
+
+    except Exception as e:
+        print(f"[Studio] Video generation error: {e}")
+        return JSONResponse({"error": f"Generation failed: {str(e)[:200]}"}, status_code=422)
+
+
+@app.post("/api/studio/generate/audio")
+async def studio_generate_audio(request: Request):
+    """Generate audio/TTS using AI."""
+    body = await request.json()
+    text = body.get("text", "")
+    voice = body.get("voice", "kore")
+    model = body.get("model", "gemini_2_5_pro_tts")
+    dialogue = body.get("dialogue", None)
+
+    if not text and not dialogue:
+        return JSONResponse({"error": "Text or dialogue required"}, status_code=400)
+
+    try:
+        from generate_audio import generate_audio as gen_audio, generate_dialogue
+
+        if dialogue:
+            audio_bytes = await generate_dialogue(dialogue, model=model)
+        else:
+            audio_bytes = await gen_audio(text, voice=voice, model=model)
+
+        file_id = str(uuid.uuid4())[:8]
+        filename = f"audio_{file_id}.mp3"
+        filepath = MEDIA_DIR / "audio" / filename
+        filepath.write_bytes(audio_bytes)
+
+        entry = {
+            "id": file_id,
+            "type": "audio",
+            "filename": filename,
+            "text": text[:200] if text else "Dialogue",
+            "voice": voice,
+            "model": model,
+            "created_at": datetime.now().isoformat(),
+            "size_bytes": len(audio_bytes),
+            "url": f"/api/studio/media/audio/{filename}",
+        }
+        media_gallery.insert(0, entry)
+
+        b64 = base64.b64encode(audio_bytes).decode()
+        return {**entry, "data": f"data:audio/mpeg;base64,{b64}"}
+
+    except Exception as e:
+        print(f"[Studio] Audio generation error: {e}")
+        return JSONResponse({"error": f"Generation failed: {str(e)[:200]}"}, status_code=422)
+
+
+@app.get("/api/studio/gallery")
+async def get_gallery():
+    """Get all generated media."""
+    return {"items": media_gallery, "total": len(media_gallery)}
+
+
+@app.get("/api/studio/media/{media_type}/{filename}")
+async def serve_media(media_type: str, filename: str):
+    """Serve generated media files."""
+    filepath = MEDIA_DIR / media_type / filename
+    if not filepath.exists():
+        return JSONResponse({"error": "File not found"}, status_code=404)
+
+    content_types = {
+        "images": "image/png",
+        "videos": "video/mp4",
+        "audio": "audio/mpeg",
+    }
+    return Response(content=filepath.read_bytes(), media_type=content_types.get(media_type, "application/octet-stream"))
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# SOCIAL CONNECT — Platform OAuth + Publishing
+# ═══════════════════════════════════════════════════════════════════════════════
+
+SOCIAL_PLATFORMS = {
+    "youtube": {
+        "name": "YouTube",
+        "icon": "youtube",
+        "color": "#FF0000",
+        "scopes": "Upload videos, manage channel, analytics",
+        "features": ["Video upload", "Shorts", "Analytics", "Channel management"],
+        "auth_url": "https://accounts.google.com/o/oauth2/v2/auth",
+        "token_url": "https://oauth2.googleapis.com/token",
+        "api_base": "https://www.googleapis.com/youtube/v3",
+        "category": "video",
+    },
+    "twitter": {
+        "name": "X (Twitter)",
+        "icon": "twitter",
+        "color": "#000000",
+        "scopes": "Post tweets, upload media, engage",
+        "features": ["Post tweets", "Upload images/video", "Threads", "Analytics"],
+        "auth_url": "https://twitter.com/i/oauth2/authorize",
+        "token_url": "https://api.twitter.com/2/oauth2/token",
+        "api_base": "https://api.twitter.com/2",
+        "category": "social",
+    },
+    "instagram": {
+        "name": "Instagram",
+        "icon": "instagram",
+        "color": "#E4405F",
+        "scopes": "Post photos/reels, stories, analytics",
+        "features": ["Photo posts", "Reels", "Stories", "Carousel", "Analytics"],
+        "auth_url": "https://api.instagram.com/oauth/authorize",
+        "token_url": "https://api.instagram.com/oauth/access_token",
+        "api_base": "https://graph.instagram.com",
+        "category": "social",
+    },
+    "facebook": {
+        "name": "Facebook",
+        "icon": "facebook",
+        "color": "#1877F2",
+        "scopes": "Post to pages, groups, upload media",
+        "features": ["Page posts", "Group posts", "Photo/video upload", "Reels", "Analytics"],
+        "auth_url": "https://www.facebook.com/v18.0/dialog/oauth",
+        "token_url": "https://graph.facebook.com/v18.0/oauth/access_token",
+        "api_base": "https://graph.facebook.com/v18.0",
+        "category": "social",
+    },
+    "tiktok": {
+        "name": "TikTok",
+        "icon": "tiktok",
+        "color": "#000000",
+        "scopes": "Upload videos, manage content, analytics",
+        "features": ["Video upload", "Sound library", "Analytics", "Direct publish"],
+        "auth_url": "https://www.tiktok.com/v2/auth/authorize",
+        "token_url": "https://open.tiktokapis.com/v2/oauth/token",
+        "api_base": "https://open.tiktokapis.com/v2",
+        "category": "video",
+    },
+    "linkedin": {
+        "name": "LinkedIn",
+        "icon": "linkedin",
+        "color": "#0A66C2",
+        "scopes": "Post articles, share content, analytics",
+        "features": ["Text posts", "Article publishing", "Image/video posts", "Analytics"],
+        "auth_url": "https://www.linkedin.com/oauth/v2/authorization",
+        "token_url": "https://www.linkedin.com/oauth/v2/accessToken",
+        "api_base": "https://api.linkedin.com/v2",
+        "category": "professional",
+    },
+    "snapchat": {
+        "name": "Snapchat",
+        "icon": "snapchat",
+        "color": "#FFFC00",
+        "scopes": "Post stories, spotlight, analytics",
+        "features": ["Spotlight videos", "Stories", "AR lenses", "Analytics"],
+        "auth_url": "https://accounts.snapchat.com/accounts/oauth2/auth",
+        "token_url": "https://accounts.snapchat.com/accounts/oauth2/token",
+        "api_base": "https://adsapi.snapchat.com/v1",
+        "category": "social",
+    },
+}
+
+
+@app.get("/api/social/platforms")
+async def get_social_platforms():
+    """Get all available social platforms with connection status."""
+    platforms = []
+    for pid, pdata in SOCIAL_PLATFORMS.items():
+        conn = social_connections.get(pid, {})
+        platforms.append({
+            "id": pid,
+            **pdata,
+            "connected": conn.get("connected", False),
+            "account_name": conn.get("account_name", ""),
+            "connected_at": conn.get("connected_at", ""),
+        })
+    return {"platforms": platforms}
+
+
+@app.post("/api/social/connect/{platform}")
+async def connect_social(platform: str, request: Request):
+    """Initiate OAuth connection for a social platform.
+    In production, this redirects to the platform's OAuth consent screen.
+    For now, we simulate the connection flow."""
+    if platform not in SOCIAL_PLATFORMS:
+        return JSONResponse({"error": f"Unknown platform: {platform}"}, status_code=400)
+
+    pdata = SOCIAL_PLATFORMS[platform]
+
+    # In production: redirect to OAuth URL with proper client_id, redirect_uri, scopes
+    # For now: return the OAuth URL pattern for the platform
+    # The actual OAuth setup requires registering apps on each platform's developer portal
+
+    oauth_url = f"{pdata['auth_url']}?client_id=YOUR_APP_CLIENT_ID&redirect_uri=YOUR_CALLBACK_URL&scope=required_scopes&response_type=code"
+
+    return {
+        "platform": platform,
+        "name": pdata["name"],
+        "auth_url": oauth_url,
+        "status": "oauth_required",
+        "instructions": f"To connect {pdata['name']}, configure your OAuth app credentials in the admin panel. Once set, users will be redirected to authorize their account.",
+        "developer_portal": _get_dev_portal(platform),
+    }
+
+
+def _get_dev_portal(platform: str) -> str:
+    portals = {
+        "youtube": "https://console.cloud.google.com/apis/credentials",
+        "twitter": "https://developer.twitter.com/en/portal/dashboard",
+        "instagram": "https://developers.facebook.com/apps",
+        "facebook": "https://developers.facebook.com/apps",
+        "tiktok": "https://developers.tiktok.com/apps",
+        "linkedin": "https://www.linkedin.com/developers/apps",
+        "snapchat": "https://business.snapchat.com/",
+    }
+    return portals.get(platform, "")
+
+
+@app.post("/api/social/disconnect/{platform}")
+async def disconnect_social(platform: str):
+    """Disconnect a social platform."""
+    if platform in social_connections:
+        del social_connections[platform]
+    return {"platform": platform, "connected": False}
+
+
+@app.post("/api/social/simulate-connect/{platform}")
+async def simulate_connect(platform: str, request: Request):
+    """Simulate connecting a platform (demo mode for UI testing)."""
+    body = await request.json()
+    account_name = body.get("account_name", f"@demo_{platform}")
+
+    social_connections[platform] = {
+        "connected": True,
+        "account_name": account_name,
+        "connected_at": datetime.now().isoformat(),
+        "access_token": "demo_token_" + str(uuid.uuid4())[:8],
+        "platform": platform,
+    }
+    return {
+        "platform": platform,
+        "connected": True,
+        "account_name": account_name,
+    }
+
+
+@app.post("/api/social/post")
+async def social_post(request: Request):
+    """Create a post across one or more social platforms.
+    Accepts text, optional media (from gallery), and target platforms."""
+    body = await request.json()
+    text = body.get("text", "")
+    platforms = body.get("platforms", [])
+    media_ids = body.get("media_ids", [])
+    schedule_at = body.get("schedule_at", None)
+
+    if not platforms:
+        return JSONResponse({"error": "Select at least one platform"}, status_code=400)
+    if not text and not media_ids:
+        return JSONResponse({"error": "Provide text or media"}, status_code=400)
+
+    results = []
+    for platform in platforms:
+        conn = social_connections.get(platform, {})
+        if not conn.get("connected"):
+            results.append({
+                "platform": platform,
+                "success": False,
+                "error": f"{SOCIAL_PLATFORMS.get(platform, {}).get('name', platform)} is not connected",
+            })
+            continue
+
+        # In production: use each platform's API to create the post
+        # For now: simulate successful posting
+        post_id = f"post_{str(uuid.uuid4())[:8]}"
+        results.append({
+            "platform": platform,
+            "success": True,
+            "post_id": post_id,
+            "status": "scheduled" if schedule_at else "published",
+            "url": _get_post_url(platform, post_id),
+            "account": conn.get("account_name", ""),
+        })
+
+    return {
+        "results": results,
+        "total_posted": sum(1 for r in results if r["success"]),
+        "total_failed": sum(1 for r in results if not r["success"]),
+    }
+
+
+def _get_post_url(platform: str, post_id: str) -> str:
+    urls = {
+        "youtube": f"https://youtube.com/watch?v={post_id}",
+        "twitter": f"https://x.com/i/status/{post_id}",
+        "instagram": f"https://instagram.com/p/{post_id}",
+        "facebook": f"https://facebook.com/{post_id}",
+        "tiktok": f"https://tiktok.com/@user/video/{post_id}",
+        "linkedin": f"https://linkedin.com/feed/update/{post_id}",
+        "snapchat": f"https://snapchat.com/s/{post_id}",
+    }
+    return urls.get(platform, f"#{post_id}")
+
+
+@app.get("/api/social/post-history")
+async def get_post_history():
+    """Get social post history."""
+    # Demo posts
+    demo_posts = [
+        {
+            "id": "demo-1",
+            "text": "Excited to announce our latest AI breakthrough! 🚀 #AI #Innovation",
+            "platforms": ["twitter", "linkedin"],
+            "status": "published",
+            "created_at": "2026-03-04T14:30:00",
+            "engagement": {"likes": 142, "comments": 23, "shares": 45},
+        },
+        {
+            "id": "demo-2",
+            "text": "Behind the scenes of our new product launch",
+            "platforms": ["instagram", "tiktok"],
+            "media_type": "video",
+            "status": "published",
+            "created_at": "2026-03-03T10:00:00",
+            "engagement": {"likes": 890, "comments": 67, "shares": 120},
+        },
+    ]
+    return {"posts": demo_posts}
+
+
+# ============================================================================
+# AUTH — Supabase Authentication (signup, login, logout, profile)
+# ============================================================================
+
+class AuthSignup(BaseModel):
+    email: str
+    password: str
+    full_name: Optional[str] = None
+
+class AuthLogin(BaseModel):
+    email: str
+    password: str
+
+class AuthMagicLink(BaseModel):
+    email: str
+
+
+@app.post("/api/auth/signup")
+async def auth_signup(data: AuthSignup):
+    """Register a new user with SaintSal™ Labs."""
+    if not supabase:
+        return JSONResponse({"error": "Auth service not configured"}, status_code=503)
+    try:
+        result = supabase.auth.sign_up({
+            "email": data.email,
+            "password": data.password,
+            "options": {
+                "data": {
+                    "full_name": data.full_name or "",
+                    "plan_tier": "free",
+                    "tier": "free"
+                }
+            }
+        })
+        if result.user:
+            return {
+                "success": True,
+                "user": {
+                    "id": str(result.user.id),
+                    "email": result.user.email,
+                    "email_confirmed": result.user.email_confirmed_at is not None,
+                },
+                "session": {
+                    "access_token": result.session.access_token if result.session else None,
+                    "refresh_token": result.session.refresh_token if result.session else None,
+                } if result.session else None,
+                "message": "Check your email to confirm your SaintSal™ Labs account" if not result.session else "Welcome to SaintSal™ Labs"
+            }
+        return JSONResponse({"error": "Signup failed"}, status_code=400)
+    except Exception as e:
+        error_msg = str(e)
+        if "already registered" in error_msg.lower() or "already been registered" in error_msg.lower():
+            return JSONResponse({"error": "This email is already registered. Try logging in."}, status_code=409)
+        return JSONResponse({"error": error_msg}, status_code=400)
+
+
+@app.post("/api/auth/login")
+async def auth_login(data: AuthLogin):
+    """Login with email and password."""
+    if not supabase:
+        return JSONResponse({"error": "Auth service not configured"}, status_code=503)
+    try:
+        result = supabase.auth.sign_in_with_password({
+            "email": data.email,
+            "password": data.password,
+        })
+        if result.user and result.session:
+            # Fetch profile data
+            profile = None
+            if supabase_admin:
+                try:
+                    p = supabase_admin.table("profiles").select("*").eq("id", str(result.user.id)).single().execute()
+                    profile = p.data
+                except Exception:
+                    pass
+            return {
+                "success": True,
+                "user": {
+                    "id": str(result.user.id),
+                    "email": result.user.email,
+                    "full_name": profile.get("full_name", "") if profile else "",
+                    "plan_tier": profile.get("tier", "free") if profile else "free",
+                    "credits_remaining": (profile.get("request_limit", 100) - profile.get("monthly_requests", 0)) if profile else 100,
+                    "credits_limit": profile.get("request_limit", 100) if profile else 100,
+                    "avatar_url": profile.get("avatar_url", "") if profile else "",
+                },
+                "session": {
+                    "access_token": result.session.access_token,
+                    "refresh_token": result.session.refresh_token,
+                    "expires_at": result.session.expires_at,
+                }
+            }
+        return JSONResponse({"error": "Invalid credentials"}, status_code=401)
+    except Exception as e:
+        error_msg = str(e)
+        if "invalid" in error_msg.lower() or "credentials" in error_msg.lower():
+            return JSONResponse({"error": "Invalid email or password"}, status_code=401)
+        return JSONResponse({"error": error_msg}, status_code=400)
+
+
+@app.post("/api/auth/magic-link")
+async def auth_magic_link(data: AuthMagicLink):
+    """Send a passwordless magic link."""
+    if not supabase:
+        return JSONResponse({"error": "Auth service not configured"}, status_code=503)
+    try:
+        supabase.auth.sign_in_with_otp({"email": data.email})
+        return {"success": True, "message": "Magic link sent to your email"}
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+
+
+@app.post("/api/auth/refresh")
+async def auth_refresh(request: Request):
+    """Refresh an expired session."""
+    if not supabase:
+        return JSONResponse({"error": "Auth service not configured"}, status_code=503)
+    body = await request.json()
+    refresh_token = body.get("refresh_token")
+    if not refresh_token:
+        return JSONResponse({"error": "refresh_token required"}, status_code=400)
+    try:
+        result = supabase.auth.refresh_session(refresh_token)
+        if result.session:
+            return {
+                "success": True,
+                "session": {
+                    "access_token": result.session.access_token,
+                    "refresh_token": result.session.refresh_token,
+                    "expires_at": result.session.expires_at,
+                }
+            }
+        return JSONResponse({"error": "Session refresh failed"}, status_code=401)
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=401)
+
+
+@app.post("/api/auth/logout")
+async def auth_logout(authorization: Optional[str] = Header(None)):
+    """Sign out the current user."""
+    if supabase and authorization and authorization.startswith("Bearer "):
+        try:
+            supabase.auth.sign_out()
+        except Exception:
+            pass
+    return {"success": True}
+
+
+@app.get("/api/auth/profile")
+async def auth_profile(user=Depends(get_current_user)):
+    """Get the current user's profile with credit balance."""
+    if not user:
+        return JSONResponse({"error": "Not authenticated"}, status_code=401)
+    if not supabase_admin:
+        return JSONResponse({"error": "Profile service unavailable"}, status_code=503)
+    try:
+        result = supabase_admin.table("profiles").select("*").eq("id", user["id"]).single().execute()
+        profile = result.data
+        return {
+            "user": {
+                "id": profile["id"],
+                "email": profile["email"],
+                "full_name": profile.get("full_name", ""),
+                "avatar_url": profile.get("avatar_url", ""),
+                "plan_tier": profile.get("tier", "free"),
+                "credits_remaining": profile.get("request_limit", 100) - profile.get("monthly_requests", 0),
+                "credits_limit": profile.get("request_limit", 100),
+                "onboarding_complete": profile.get("onboarding_complete", False),
+                "stripe_customer_id": profile.get("stripe_customer_id"),
+            }
+        }
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.get("/api/auth/usage")
+async def auth_usage(user=Depends(get_current_user)):
+    """Get the current user's usage for this billing period."""
+    if not user:
+        return JSONResponse({"error": "Not authenticated"}, status_code=401)
+    if not supabase_admin:
+        # Return demo data if Supabase not configured
+        return _demo_usage()
+    try:
+        result = supabase_admin.rpc("get_usage_summary", {"p_user_id": user["id"]}).execute()
+        return {"usage": result.data}
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+async def deduct_user_credits(user_id: str, credits: int, action_type: str, model: str, provider: str, metadata: dict = None):
+    """Deduct credits from a user's balance and log the usage. Returns result dict."""
+    if not supabase_admin:
+        # Supabase not configured — allow operations in demo mode
+        return {"success": True, "credits_used": credits, "credits_remaining": 999, "tier": "demo"}
+    
+    model_info = MODEL_COSTS.get(model, {})
+    model_cost = model_info.get("cost", 0)
+    charged = model_info.get("price", 0)
+    
+    try:
+        result = supabase_admin.rpc("deduct_credits", {
+            "p_user_id": user_id,
+            "p_credits": credits,
+            "p_action_type": action_type,
+            "p_model": model,
+            "p_provider": provider,
+            "p_model_cost": model_cost,
+            "p_charged": charged,
+            "p_metadata": metadata or {}
+        }).execute()
+        return result.data
+    except Exception as e:
+        print(f"Credit deduction failed: {e}")
+        return {"success": False, "error": str(e)}
+
+
+def _demo_usage():
+    """Return demo usage data when Supabase is not configured."""
+    return {
+        "user_id": "demo",
+        "period": datetime.now().strftime("%Y-%m"),
+        "credits_used": 47,
+        "credits_remaining": 53,
+        "credits_limit": 100,
+        "tier": "free",
+        "usage_by_type": {
+            "chat": {"count": 32, "credits": 32},
+            "image_gen": {"count": 3, "credits": 15},
+            "search": {"count": 5, "credits": 0},
+        },
+        "cost_breakdown": {
+            "total_charged": 0.94,
+            "our_cost": 0.23,
+            "margin": 75.5,
+        }
+    }
+
+
+# ─── Health Check ───────────────────────────────────────────────────────────────────
 
 @app.get("/api/health")
 async def health():
     return {
         "status": "ok",
         "service": "SaintSal.ai",
-        "version": "3.0",
+        "version": "6.0-supabase-auth",
         "integrations": {
+            "supabase": {"public": supabase is not None, "admin": supabase_admin is not None, "url": SUPABASE_URL},
             "godaddy": {"configured": bool(GODADDY_API_KEY), "base": GODADDY_BASE},
             "corpnet": {"configured": bool(CORPNET_API_KEY), "data_key_set": bool(CORPNET_DATA_API_KEY)},
             "tavily": {"configured": bool(TAVILY_API_KEY)},
+            "rentcast": {"configured": bool(RENTCAST_API_KEY), "base": RENTCAST_BASE},
+            "google_maps": {"configured": bool(GOOGLE_MAPS_KEY)},
+            "studio": {"image_gen": True, "video_gen": True, "audio_gen": True},
+            "social_platforms": list(SOCIAL_PLATFORMS.keys()),
+            "social_connected": [k for k, v in social_connections.items() if v.get("connected")],
         },
     }
 
 
-# ─── Serve Static Files (for Render deployment) ─────────────────────────────
-
-from pathlib import Path
-from fastapi.responses import FileResponse
-from fastapi.staticfiles import StaticFiles
-
+# ── Static file serving (must be AFTER all API routes) ──────────────────────
 _static_dir = Path(__file__).parent
 
 @app.get("/")
@@ -934,10 +2303,11 @@ async def serve_index():
         return FileResponse(str(index), media_type="text/html")
     return JSONResponse({"error": "index.html not found"}, status_code=404)
 
-# Serve static assets (logos, images, favicon, etc.)
+# Serve static assets (CSS, JS, images, icons)
 app.mount("/", StaticFiles(directory=str(_static_dir), html=False), name="static")
 
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run(app, host="0.0.0.0", port=port)
