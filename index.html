@@ -540,9 +540,52 @@
           <!-- Chat Panel -->
           <div class="studio-chat-panel" id="studioChatPanel">
             <div class="studio-messages" id="studioMessages">
-              <div class="studio-messages-empty">
-                <svg viewBox="0 0 24 24" fill="none" stroke="var(--text-faint)" stroke-width="1" stroke-linecap="round" width="40" height="40"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
-                <span>Start a conversation with SAL</span>
+              <div class="studio-messages-empty" id="studioEmptyState">
+                <div class="studio-showcase">
+                  <div class="studio-showcase-title">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="var(--accent-gold)" stroke-width="1.5" stroke-linecap="round" width="24" height="24"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+                    <span>SAL Studio</span>
+                  </div>
+                  <div class="studio-showcase-sub">Create anything with AI — select a mode and describe what you want.</div>
+                  <div class="studio-showcase-grid" id="studioShowcaseGrid">
+                    <div class="studio-showcase-card" onclick="document.getElementById('studioPrompt').value='A cinematic photo of a futuristic city skyline at golden hour, neon reflections in rain puddles';document.getElementById('studioPrompt').focus()">
+                      <div class="showcase-card-icon" style="background:rgba(59,130,246,0.15);color:#3b82f6">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="20" height="20"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                      </div>
+                      <div class="showcase-card-text">
+                        <div class="showcase-card-title">Generate Images</div>
+                        <div class="showcase-card-desc">Cinematic city skyline at golden hour</div>
+                      </div>
+                    </div>
+                    <div class="studio-showcase-card" onclick="document.getElementById('studioPrompt').value='A 10-second product reveal video with smooth camera orbit around a glowing device on a dark surface';document.getElementById('studioPrompt').focus()">
+                      <div class="showcase-card-icon" style="background:rgba(168,85,247,0.15);color:#a855f7">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="20" height="20"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                      </div>
+                      <div class="showcase-card-text">
+                        <div class="showcase-card-title">Create Videos</div>
+                        <div class="showcase-card-desc">Product reveal with camera orbit</div>
+                      </div>
+                    </div>
+                    <div class="studio-showcase-card" onclick="document.getElementById('studioPrompt').value='A warm, professional voiceover: Welcome to SaintSal Labs, where innovation meets intelligence.';document.getElementById('studioPrompt').focus()">
+                      <div class="showcase-card-icon" style="background:rgba(34,197,94,0.15);color:#22c55e">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="20" height="20"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/></svg>
+                      </div>
+                      <div class="showcase-card-text">
+                        <div class="showcase-card-title">Generate Audio</div>
+                        <div class="showcase-card-desc">Professional voiceover with AI</div>
+                      </div>
+                    </div>
+                    <div class="studio-showcase-card" onclick="document.getElementById('studioPrompt').value='A modern SaaS landing page with hero section, pricing cards, and dark theme with glass morphism';document.getElementById('studioPrompt').focus()">
+                      <div class="showcase-card-icon" style="background:rgba(245,158,11,0.15);color:#f59e0b">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="20" height="20"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+                      </div>
+                      <div class="showcase-card-text">
+                        <div class="showcase-card-title">Design with Stitch</div>
+                        <div class="showcase-card-desc">SaaS landing page with glass morphism</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
             <div class="studio-input-area">

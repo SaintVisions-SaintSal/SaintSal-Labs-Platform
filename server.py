@@ -13,7 +13,7 @@ from typing import Optional
 
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect, File, UploadFile, Form, Depends, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse, JSONResponse, Response, FileResponse, HTMLResponse
+from fastapi.responses import StreamingResponse, JSONResponse, Response, FileResponse, HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from anthropic import Anthropic
 import openai
@@ -2687,6 +2687,56 @@ async def auth_magic_link(data: AuthMagicLink):
         return {"success": True, "message": "Magic link sent to your email"}
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=400)
+
+
+@app.get("/api/auth/google")
+async def auth_google(request: Request):
+    """Initiate Google OAuth sign-in via Supabase."""
+    if not supabase:
+        return JSONResponse({"error": "Auth service not configured"}, status_code=503)
+    try:
+        # Determine the redirect URL — go back to the frontend root
+        # Supabase will append tokens as hash fragments
+        origin = str(request.base_url).rstrip("/")
+        redirect_to = origin + "/"
+        result = supabase.auth.sign_in_with_oauth({
+            "provider": "google",
+            "options": {
+                "redirect_to": redirect_to
+            }
+        })
+        if result and result.url:
+            return {"url": result.url}
+        return JSONResponse({"error": "Failed to generate Google sign-in URL"}, status_code=500)
+    except Exception as e:
+        return JSONResponse({"error": f"Google OAuth error: {str(e)}"}, status_code=500)
+
+
+@app.get("/api/auth/callback")
+async def auth_callback(request: Request):
+    """Handle OAuth callback — exchange code for session and redirect to frontend."""
+    params = dict(request.query_params)
+    
+    # PKCE flow: Supabase sends a code that needs to be exchanged
+    code = params.get("code", "")
+    if code:
+        try:
+            result = supabase.auth.exchange_code_for_session({"auth_code": code})
+            if result.session:
+                redirect_url = f"/?auth=callback&access_token={result.session.access_token}&refresh_token={result.session.refresh_token}#chat"
+                return RedirectResponse(url=redirect_url)
+        except Exception as e:
+            print(f"[AUTH] Code exchange error: {e}")
+    
+    # Implicit flow: tokens may be in query params
+    access_token = params.get("access_token", "")
+    if access_token:
+        refresh_token = params.get("refresh_token", "")
+        redirect_url = f"/?auth=callback&access_token={access_token}&refresh_token={refresh_token}#chat"
+        return RedirectResponse(url=redirect_url)
+    
+    # Fallback: redirect home
+    return RedirectResponse(url="/#chat")
 
 
 @app.post("/api/auth/refresh")
