@@ -1166,6 +1166,153 @@ function studioSwitchMode(mode) {
   if (models.length > 0) selectStudioModel(models[0].id);
   // Load Stitch projects on first Design switch
   if (mode === 'design' && !studioState.designProjectsLoaded) loadStitchProjects();
+
+  // Update prompt placeholder per mode
+  var placeholders = {
+    image: 'Describe the image you want to create...',
+    video: 'Describe the scene, action, and camera movement...',
+    audio: 'Enter text to convert to speech...',
+    code: 'Describe the code or app you want to build...',
+    design: 'Describe the UI screen you want to design...'
+  };
+  var promptEl = document.getElementById('studioPrompt');
+  if (promptEl) promptEl.placeholder = placeholders[mode] || 'Describe what you want to create...';
+
+  // Update welcome text
+  var welcomeSub = document.querySelector('.studio-welcome-sub');
+  var welcomeTexts = {
+    image: 'Generate images with AI. Photorealistic, cinematic, anime, pixel art — any style.',
+    video: 'Create video clips from text. Cinematic scenes, product demos, animations.',
+    audio: 'Convert text to natural speech. Multiple voices and styles.',
+    code: 'Build apps, scripts, and components with AI code generation.',
+    design: 'Design UI screens with Google Stitch. Describe a page and get interactive prototypes.'
+  };
+  if (welcomeSub) welcomeSub.textContent = welcomeTexts[mode] || 'Select a model and start creating.';
+
+  // Update showcase tagline per mode
+  var taglineEl = document.getElementById('studioShowcaseTagline');
+  var taglines = {
+    image: 'Generate stunning images — photorealistic, cinematic, anime, pixel art, and more.',
+    video: 'Create video clips from text — cinematic scenes, product demos, animations.',
+    audio: 'Convert text to natural speech — multiple voices, languages, and styles.',
+    code: 'Build apps, scripts, widgets, and full web experiences with AI.',
+    design: 'Design interactive UI prototypes — powered by Google Stitch.'
+  };
+  if (taglineEl) taglineEl.textContent = taglines[mode] || 'Create anything with AI — images, videos, audio, code, and UI designs.';
+  renderStudioExampleChips();
+}
+
+/* ============================================
+   STUDIO SHOWCASE — Expand/Collapse + Example Prompts
+   ============================================ */
+var showcaseState = { collapsed: false, userDismissed: false };
+
+function collapseShowcase() {
+  var el = document.getElementById('studioShowcase');
+  if (!el || el.classList.contains('collapsed')) return;
+  el.classList.add('collapsed');
+  showcaseState.collapsed = true;
+  // Show expand bar
+  var bar = document.getElementById('studioExpandBar');
+  if (bar) bar.classList.add('visible');
+}
+
+function expandShowcase() {
+  var el = document.getElementById('studioShowcase');
+  if (!el) return;
+  el.classList.remove('collapsed');
+  showcaseState.collapsed = false;
+  showcaseState.userDismissed = false;
+  var bar = document.getElementById('studioExpandBar');
+  if (bar) bar.classList.remove('visible');
+}
+
+function toggleShowcase() {
+  var el = document.getElementById('studioShowcase');
+  if (!el) return;
+  if (el.classList.contains('collapsed')) {
+    expandShowcase();
+  } else {
+    collapseShowcase();
+    showcaseState.userDismissed = true;
+  }
+}
+
+// Per-mode example prompts
+var studioExamplePrompts = {
+  image: [
+    { icon: '🏞️', text: 'Cinematic sunset over a futuristic city skyline' },
+    { icon: '👤', text: 'Professional headshot with studio lighting, warm tones' },
+    { icon: '🎨', text: 'Watercolor painting of a Japanese garden in spring' },
+    { icon: '🚀', text: 'Pixel art spaceship battle scene, retro style' },
+  ],
+  video: [
+    { icon: '🎬', text: 'Drone flyover of mountain landscape at golden hour' },
+    { icon: '📱', text: 'Product showcase of a sleek smartphone rotating on dark background' },
+    { icon: '🌊', text: 'Ocean waves crashing on rocks in slow motion' },
+    { icon: '✨', text: 'Logo reveal animation with particle effects' },
+  ],
+  audio: [
+    { icon: '🎙️', text: 'Welcome to SaintSal Labs, the future of responsible AI.' },
+    { icon: '📚', text: 'In a world driven by artificial intelligence, one platform stands apart.' },
+    { icon: '🎵', text: 'Good morning! Here is your daily briefing from SAL.' },
+    { icon: '🗣️', text: 'Thank you for choosing SaintSal. How can I help you today?' },
+  ],
+  code: [
+    { icon: '🌐', text: 'Build a responsive landing page with hero, features, and pricing' },
+    { icon: '📈', text: 'Create an interactive dashboard with charts and real-time data' },
+    { icon: '🎮', text: 'Build a simple 2D platformer game with HTML5 Canvas' },
+    { icon: '🖥️', text: 'Weather widget with location detection and 5-day forecast' },
+  ],
+  design: [
+    { icon: '📱', text: 'Mobile app onboarding flow with 3 screens' },
+    { icon: '🛒', text: 'E-commerce product page with image gallery and reviews' },
+    { icon: '📊', text: 'SaaS analytics dashboard with dark theme' },
+    { icon: '⚙️', text: 'Settings page with toggles, dropdowns, and profile section' },
+  ],
+};
+
+function renderStudioExampleChips() {
+  var container = document.getElementById('studioExampleChips');
+  if (!container) return;
+  var mode = studioState.mode;
+  var examples = studioExamplePrompts[mode] || studioExamplePrompts.image;
+  var html = '';
+  examples.forEach(function(ex) {
+    html += '<button class="studio-example-chip" onclick="useExamplePrompt(this)" data-prompt="' + escapeAttr(ex.text) + '">';
+    html += '<span>' + ex.icon + '</span> ' + escapeHtml(ex.text.length > 50 ? ex.text.substring(0, 47) + '...' : ex.text);
+    html += '</button>';
+  });
+  container.innerHTML = html;
+}
+
+function useExamplePrompt(el) {
+  var prompt = el.getAttribute('data-prompt');
+  if (!prompt) return;
+  var input = document.getElementById('studioPrompt');
+  if (input) {
+    input.value = prompt;
+    input.focus();
+  }
+  collapseShowcase();
+}
+
+// Auto-collapse on scroll within messages area
+function initShowcaseScrollListener() {
+  var msgs = document.getElementById('studioMessages');
+  if (msgs) {
+    msgs.addEventListener('scroll', function() {
+      if (!showcaseState.collapsed && msgs.scrollTop > 30) {
+        collapseShowcase();
+      }
+    });
+  }
+}
+
+// Initialize showcase on Studio load
+function initStudioShowcase() {
+  renderStudioExampleChips();
+  initShowcaseScrollListener();
 }
 
 function studioToggleView(view) {
@@ -1260,7 +1407,13 @@ async function studioGenerate() {
 
   studioState.generating = true;
   var btn = document.getElementById('studioGenerateBtn');
-  if (btn) btn.disabled = true;
+  if (btn) { btn.disabled = true; btn.classList.add('generating'); btn.innerHTML = '<div class="studio-btn-spinner"></div>'; }
+  var restoreBtn = function() {
+    if (btn) {
+      btn.disabled = false; btn.classList.remove('generating');
+      btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>';
+    }
+  };
 
   // Add user message to chat
   studioAddMessage('user', prompt);
@@ -1304,7 +1457,7 @@ async function studioGenerate() {
       studioAddMessage('assistant', 'Design generation failed: ' + (e.message || 'Network error'), { model: studioState.selectedModel, tier: studioState.selectedTier });
     }
     studioState.generating = false;
-    if (btn) btn.disabled = false;
+    restoreBtn();
     return;
   }
 
@@ -1372,7 +1525,7 @@ async function studioGenerate() {
   }
 
   studioState.generating = false;
-  if (btn) btn.disabled = false;
+  restoreBtn();
 }
 
 function showStudioResult(html) {
@@ -1758,7 +1911,7 @@ handleHash = function() {
   _origHandleHash();
   if (currentView === 'connectors') renderConnectorsView();
   if (currentView === 'domains') initDomainsView();
-  if (currentView === 'studio') { loadStudioModels(); renderStudioControls(); renderStudioGallery(); loadStudioGallery(); }
+  if (currentView === 'studio') { loadStudioModels(); renderStudioControls(); renderStudioGallery(); loadStudioGallery(); initStudioShowcase(); }
 };
 
 function loadStudioGallery() {

@@ -518,19 +518,99 @@
           </div>
           <!-- Chat Panel -->
           <div class="studio-chat-panel" id="studioChatPanel">
-            <div class="studio-messages" id="studioMessages">
-              <div class="studio-welcome">
-                <div class="studio-welcome-icon">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="var(--accent-gold)" stroke-width="2" width="32" height="32"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+            <!-- Expandable Showcase Hero -->
+            <div class="studio-showcase" id="studioShowcase">
+              <div class="studio-showcase-inner">
+                <div class="studio-showcase-header">
+                  <div class="studio-showcase-badge">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="var(--accent-gold)" stroke-width="2" width="20" height="20"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+                    <span>SAL Studio</span>
+                  </div>
+                  <div class="studio-showcase-tagline" id="studioShowcaseTagline">Create anything with AI — images, videos, audio, code, and UI designs.</div>
                 </div>
-                <div class="studio-welcome-text">SAL Studio</div>
-                <div class="studio-welcome-sub">Create images, videos, audio, code, and UI designs with AI. Select a model and start creating.</div>
+
+                <!-- Capability tiles -->
+                <div class="studio-showcase-tiles" id="studioShowcaseTiles">
+                  <div class="studio-tile" onclick="studioSwitchMode('image');collapseShowcase()">
+                    <div class="studio-tile-icon" style="background:rgba(139,92,246,0.12)"><svg viewBox="0 0 24 24" fill="none" stroke="#8B5CF6" stroke-width="2" width="22" height="22"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg></div>
+                    <div class="studio-tile-label">Image Gen</div>
+                    <div class="studio-tile-sub">Photorealistic, anime, 3D</div>
+                  </div>
+                  <div class="studio-tile" onclick="studioSwitchMode('video');collapseShowcase()">
+                    <div class="studio-tile-icon" style="background:rgba(236,72,153,0.12)"><svg viewBox="0 0 24 24" fill="none" stroke="#EC4899" stroke-width="2" width="22" height="22"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg></div>
+                    <div class="studio-tile-label">Video Gen</div>
+                    <div class="studio-tile-sub">Cinematic clips & scenes</div>
+                  </div>
+                  <div class="studio-tile" onclick="studioSwitchMode('audio');collapseShowcase()">
+                    <div class="studio-tile-icon" style="background:rgba(16,185,129,0.12)"><svg viewBox="0 0 24 24" fill="none" stroke="#10B981" stroke-width="2" width="22" height="22"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg></div>
+                    <div class="studio-tile-label">Audio Gen</div>
+                    <div class="studio-tile-sub">Text-to-speech & voices</div>
+                  </div>
+                  <div class="studio-tile" onclick="studioSwitchMode('code');collapseShowcase()">
+                    <div class="studio-tile-icon" style="background:rgba(59,130,246,0.12)"><svg viewBox="0 0 24 24" fill="none" stroke="#3B82F6" stroke-width="2" width="22" height="22"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg></div>
+                    <div class="studio-tile-label">Apps & Code</div>
+                    <div class="studio-tile-sub">Build apps & widgets</div>
+                  </div>
+                  <div class="studio-tile" onclick="studioSwitchMode('design');collapseShowcase()">
+                    <div class="studio-tile-icon" style="background:rgba(245,158,11,0.12)"><svg viewBox="0 0 24 24" fill="none" stroke="#F59E0B" stroke-width="2" width="22" height="22"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="4" rx="1"/><rect x="14" y="10" width="7" height="11" rx="1"/><rect x="3" y="13" width="7" height="8" rx="1"/></svg></div>
+                    <div class="studio-tile-label">UI Design</div>
+                    <div class="studio-tile-sub">Google Stitch prototypes</div>
+                  </div>
+                </div>
+
+                <!-- Example prompts (per-mode, swapped via JS) -->
+                <div class="studio-showcase-examples" id="studioExamples">
+                  <div class="studio-examples-label">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="var(--accent-gold)" stroke-width="2" width="14" height="14"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+                    <span>Try an example</span>
+                  </div>
+                  <div class="studio-example-chips" id="studioExampleChips"></div>
+                </div>
+
+                <!-- Showcase gallery (curated examples) -->
+                <div class="studio-showcase-gallery">
+                  <div class="studio-gallery-label">What people are creating</div>
+                  <div class="studio-showcase-scroll">
+                    <div class="studio-showcase-card">
+                      <div class="studio-showcase-card-img" style="background:linear-gradient(135deg,#1a1a2e,#16213e,#0f3460);display:flex;align-items:center;justify-content:center;"><svg viewBox="0 0 24 24" fill="none" stroke="#8B5CF6" stroke-width="1.5" width="32" height="32"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg></div>
+                      <div class="studio-showcase-card-meta">Cinematic Portraits</div>
+                    </div>
+                    <div class="studio-showcase-card">
+                      <div class="studio-showcase-card-img" style="background:linear-gradient(135deg,#0d1117,#161b22,#21262d);display:flex;align-items:center;justify-content:center;"><svg viewBox="0 0 24 24" fill="none" stroke="#EC4899" stroke-width="1.5" width="32" height="32"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg></div>
+                      <div class="studio-showcase-card-meta">Product Videos</div>
+                    </div>
+                    <div class="studio-showcase-card">
+                      <div class="studio-showcase-card-img" style="background:linear-gradient(135deg,#064e3b,#065f46,#047857);display:flex;align-items:center;justify-content:center;"><svg viewBox="0 0 24 24" fill="none" stroke="#10B981" stroke-width="1.5" width="32" height="32"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg></div>
+                      <div class="studio-showcase-card-meta">Web Apps</div>
+                    </div>
+                    <div class="studio-showcase-card">
+                      <div class="studio-showcase-card-img" style="background:linear-gradient(135deg,#312e81,#3730a3,#4338ca);display:flex;align-items:center;justify-content:center;"><svg viewBox="0 0 24 24" fill="none" stroke="#F59E0B" stroke-width="1.5" width="32" height="32"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="4" rx="1"/><rect x="14" y="10" width="7" height="11" rx="1"/><rect x="3" y="13" width="7" height="8" rx="1"/></svg></div>
+                      <div class="studio-showcase-card-meta">UI Prototypes</div>
+                    </div>
+                    <div class="studio-showcase-card">
+                      <div class="studio-showcase-card-img" style="background:linear-gradient(135deg,#1e1b4b,#312e81,#4338ca);display:flex;align-items:center;justify-content:center;"><svg viewBox="0 0 24 24" fill="none" stroke="#3B82F6" stroke-width="1.5" width="32" height="32"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></div>
+                      <div class="studio-showcase-card-meta">Landing Pages</div>
+                    </div>
+                  </div>
+                </div>
               </div>
+              <!-- Collapse toggle -->
+              <button class="studio-showcase-toggle" id="studioShowcaseToggle" onclick="toggleShowcase()">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><polyline points="18 15 12 9 6 15"/></svg>
+              </button>
             </div>
+
+            <!-- Expand bar (visible when showcase collapsed) -->
+            <div class="studio-expand-bar" id="studioExpandBar" onclick="expandShowcase()">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><polyline points="6 9 12 15 18 9"/></svg>
+              <span>Show Studio capabilities</span>
+            </div>
+
+            <div class="studio-messages" id="studioMessages"></div>
             <div class="studio-input-area">
               <div id="studioControls" class="studio-controls"></div>
               <div class="studio-prompt-bar">
-                <textarea id="studioPrompt" class="studio-prompt-input" rows="2" placeholder="Describe what you want to create..." onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();studioGenerate()}"></textarea>
+                <textarea id="studioPrompt" class="studio-prompt-input" rows="2" placeholder="Describe what you want to create..." onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();studioGenerate()}" onfocus="collapseShowcase()"></textarea>
                 <button class="studio-generate-btn" id="studioGenerateBtn" onclick="studioGenerate()">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
                 </button>

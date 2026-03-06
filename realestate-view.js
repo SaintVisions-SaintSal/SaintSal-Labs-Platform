@@ -831,19 +831,93 @@ function reFormatDate(dateStr) {
 function renderRealEstatePanel() {
   var html = '';
 
-  // Hero
-  html += '<div class="re-hero">';
-  html += '<div class="re-hero-content">';
+  // ═══ HERO ═══
+  html += '<div class="home-hero">';
+  html += '<div class="home-hero-content">';
   html += '<img src="saintsal-labs-logo.png" class="home-hero-logo" alt="SaintSal">';
-  html += '<div class="re-hero-text">';
-  html += '<div class="re-hero-title">Real Estate Intelligence</div>';
-  html += '<div class="re-hero-subtitle">Elite investment research engine — property search, comparables, distressed deals, deal analysis, and live market data. Powered by RentCast + CookinCapital.</div>';
+  html += '<div class="home-hero-text">';
+  html += '<div class="home-hero-title">Real Estate <span class="labs-green">Intelligence</span></div>';
+  html += '<div class="home-hero-subtitle">Elite investment research engine. Property search, valuations, comparables, distressed deal pipeline, deal analysis, and live market data. Powered by RentCast + CookinCapital.</div>';
   html += '<div class="home-hero-badges">';
   html += '<span class="home-hero-badge gold">\u26A1 Live RentCast Data</span>';
   html += '<span class="home-hero-badge green">\u2728 Deal Analyzer</span>';
   html += '<span class="home-hero-badge blue">\uD83C\uDFE0 CookinCapital</span>';
   html += '<span class="home-hero-badge red">\uD83D\uDD25 Distressed Pipeline</span>';
   html += '</div></div></div></div>';
+
+  // ═══ 3 INDUSTRY TILES ═══
+  html += '<div class="re-industry-grid">';
+  html += '<div class="re-industry-tile" onclick="reSetTab(\'search\');setTimeout(function(){var i=document.getElementById(\'reSearchInput\');if(i){i.value=\'Huntington Beach, CA\';reSearchProperties();}},150)">';
+  html += '<div class="re-industry-img" style="background-image:url(https://images.unsplash.com/photo-1564013799919-ab600027ffc6?w=600&q=80)"></div>';
+  html += '<div class="re-industry-content">';
+  html += '<div class="re-industry-label">Property Search</div>';
+  html += '<div class="re-industry-title">Find Your Next Investment</div>';
+  html += '<div class="re-industry-desc">Search active listings across any market. Filter by price, beds, property type. One-click comps and deal analysis on every property.</div>';
+  html += '</div></div>';
+
+  html += '<div class="re-industry-tile" onclick="reSetTab(\'distressed\')">';
+  html += '<div class="re-industry-img" style="background-image:url(https://images.unsplash.com/photo-1582407947092-45fde093756e?w=600&q=80)"></div>';
+  html += '<div class="re-industry-content">';
+  html += '<div class="re-industry-label hot">Distressed Deals</div>';
+  html += '<div class="re-industry-title">Foreclosures & Pre-Foreclosures</div>';
+  html += '<div class="re-industry-desc">Live distressed pipeline. Foreclosures, tax liens, NODs. Opening bids, auction dates, equity estimates, and discount-to-market analysis.</div>';
+  html += '</div></div>';
+
+  html += '<div class="re-industry-tile" onclick="reSetTab(\'market\')">';
+  html += '<div class="re-industry-img" style="background-image:url(https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?w=600&q=80)"></div>';
+  html += '<div class="re-industry-content">';
+  html += '<div class="re-industry-label blue">Market Intelligence</div>';
+  html += '<div class="re-industry-title">Live Market Data & Trends</div>';
+  html += '<div class="re-industry-desc">Median prices, rent ratios, days on market, sale-to-list ratios, and distressed inventory. Data from RentCast for any ZIP or city.</div>';
+  html += '</div></div>';
+  html += '</div>';
+
+  // ═══ EXAMPLE SEARCHES + DEAL ANALYZER PREVIEW ═══
+  html += '<div class="re-showcase-row">';
+
+  // Example searches
+  html += '<div class="re-showcase-section">';
+  html += '<div class="feed-section-header"><div class="feed-section-icon"><svg viewBox="0 0 24 24" fill="none" stroke="var(--accent-gold)" stroke-width="2" width="16" height="16"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></div><span class="feed-section-title">Try a Search</span></div>';
+  var examples = [
+    { q: 'Miami, FL', label: 'Miami, FL', icon: '\uD83C\uDFD6\uFE0F', desc: 'Beachfront condos & investment properties' },
+    { q: 'Austin, TX', label: 'Austin, TX', icon: '\uD83E\uDD20', desc: 'Fast-growing tech hub with strong rental yields' },
+    { q: '90210', label: 'Beverly Hills 90210', icon: '\u2B50', desc: 'Luxury market, ultra-high-net-worth properties' },
+    { q: 'Nashville, TN', label: 'Nashville, TN', icon: '\uD83C\uDFB5', desc: 'Short-term rental goldmine, tourism-driven' },
+    { q: 'Detroit, MI', label: 'Detroit, MI', icon: '\uD83C\uDFED', desc: 'Deep-discount cash-flow plays under $100K' },
+  ];
+  examples.forEach(function(ex) {
+    html += '<div class="re-example-card" onclick="reSetTab(\'search\');setTimeout(function(){var i=document.getElementById(\'reSearchInput\');if(i){i.value=\'' + escapeAttr(ex.q) + '\';reSearchProperties();}},150)">';
+    html += '<div class="re-example-icon">' + ex.icon + '</div>';
+    html += '<div class="re-example-body"><div class="re-example-label">' + escapeHtml(ex.label) + '</div><div class="re-example-desc">' + escapeHtml(ex.desc) + '</div></div>';
+    html += '<svg viewBox="0 0 24 24" fill="none" stroke="var(--text-faint)" stroke-width="2" width="16" height="16"><polyline points="9 18 15 12 9 6"/></svg>';
+    html += '</div>';
+  });
+  html += '</div>';
+
+  // Deal analyzer preview
+  html += '<div class="re-showcase-section">';
+  html += '<div class="feed-section-header"><div class="feed-section-icon"><svg viewBox="0 0 24 24" fill="none" stroke="var(--accent-green)" stroke-width="2" width="16" height="16"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg></div><span class="feed-section-title">Deal Analyzer</span></div>';
+  html += '<div class="re-deal-preview" onclick="reSetTab(\'calculator\')">';
+  html += '<div class="re-deal-preview-header">Investment Analysis Engine</div>';
+  html += '<div class="re-deal-preview-desc">Enter any property and get instant cap rate, cash-on-cash return, DSCR, 1% rule, monthly cash flow, and a graded investment verdict.</div>';
+  html += '<div class="re-deal-preview-metrics">';
+  html += '<div class="re-deal-metric"><div class="re-deal-metric-val" style="color:var(--accent-green)">7.2%</div><div class="re-deal-metric-label">Cap Rate</div></div>';
+  html += '<div class="re-deal-metric"><div class="re-deal-metric-val" style="color:var(--accent-gold)">12.4%</div><div class="re-deal-metric-label">Cash-on-Cash</div></div>';
+  html += '<div class="re-deal-metric"><div class="re-deal-metric-val" style="color:var(--accent-blue)">$482</div><div class="re-deal-metric-label">Monthly CF</div></div>';
+  html += '<div class="re-deal-metric"><div class="re-deal-metric-val grade" style="color:var(--accent-green)">A</div><div class="re-deal-metric-label">Grade</div></div>';
+  html += '</div>';
+  html += '<div class="re-deal-preview-cta">Run Your Own Analysis <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><polyline points="9 18 15 12 9 6"/></svg></div>';
+  html += '</div>';
+
+  // CookinCapital CTA
+  html += '<div class="re-cookin-cta">';
+  html += '<div class="re-cookin-logo">\uD83D\uDD25</div>';
+  html += '<div class="re-cookin-body"><div class="re-cookin-title">CookinCapital Lending</div><div class="re-cookin-desc">Commercial funding $5K–$100M. 57 funding partners. SBA, bridge, hard money, DSCR loans.</div></div>';
+  html += '<a href="https://cookincapital.com" target="_blank" class="re-cookin-btn">Apply Now</a>';
+  html += '</div>';
+
+  html += '</div>'; // showcase-section
+  html += '</div>'; // showcase-row
 
   // Tab navigation — 6 tabs
   html += '<div class="re-tabs">';
