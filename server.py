@@ -146,10 +146,10 @@ Your approach: Provide market analysis, stock insights, crypto updates, economic
 
 TAVILY_API_KEY = os.environ.get("TAVILY_API_KEY", "")
 
-async def search_web(query: str, search_depth: str = "basic", max_results: int = 5, topic: str = "general"):
+async def search_web(query: str, search_depth: str = "basic", max_results: int = 5, topic: str = "general", include_answer: bool = False):
     """Search the web using Tavily API."""
     if not TAVILY_API_KEY:
-        return {"results": [], "query": query}
+        return {"results": [], "query": query, "answer": ""}
     
     async with httpx.AsyncClient(timeout=15.0) as http:
         try:
@@ -159,7 +159,7 @@ async def search_web(query: str, search_depth: str = "basic", max_results: int =
                 "search_depth": search_depth,
                 "max_results": max_results,
                 "topic": topic,
-                "include_answer": False,
+                "include_answer": include_answer,
                 "include_raw_content": False,
             })
             data = resp.json()
@@ -174,10 +174,11 @@ async def search_web(query: str, search_depth: str = "basic", max_results: int =
                     for r in data.get("results", [])[:max_results]
                 ],
                 "query": query,
+                "answer": data.get("answer", ""),
             }
         except Exception as e:
             print(f"Tavily search error: {e}")
-            return {"results": [], "query": query}
+            return {"results": [], "query": query, "answer": ""}
 
 
 # ─── Vertical-Specific Search Enhancement ─────────────────────────────────────
@@ -218,8 +219,9 @@ def enhance_search_query(query: str, vertical: str) -> list[str]:
         return [base]
 
 
-async def multi_search(query: str, vertical: str, max_results: int = 8) -> list:
-    """Run enhanced vertical-specific searches in parallel."""
+async def multi_search(query: str, vertical: str, max_results: int = 8) -> tuple:
+    """Run enhanced vertical-specific searches in parallel.
+    Returns (sources_list, tavily_answer_str)."""
     queries = enhance_search_query(query, vertical)
     topic_map = {"sports": "news", "news": "news", "finance": "news",
                  "realestate": "general", "tech": "general", "search": "general"}
@@ -227,24 +229,30 @@ async def multi_search(query: str, vertical: str, max_results: int = 8) -> list:
 
     all_sources = []
     seen_urls = set()
+    tavily_answer = ""
 
-    # Run searches in parallel
-    tasks = [
-        search_web(q, search_depth="advanced", max_results=max_results, topic=topic)
-        for q in queries
-    ]
+    # First query gets include_answer=True for AI synthesis
+    tasks = []
+    for i, q in enumerate(queries):
+        tasks.append(
+            search_web(q, search_depth="advanced", max_results=max_results, topic=topic,
+                       include_answer=(i == 0))
+        )
     results = await asyncio.gather(*tasks, return_exceptions=True)
 
     for result in results:
         if isinstance(result, Exception):
             continue
+        # Capture Tavily AI answer from first result
+        if not tavily_answer and result.get("answer"):
+            tavily_answer = result["answer"]
         for source in result.get("results", []):
             url = source.get("url", "")
             if url and url not in seen_urls:
                 seen_urls.add(url)
                 all_sources.append(source)
 
-    return all_sources[:max_results]
+    return all_sources[:max_results], tavily_answer
 
 
 # ─── Discover Feed (Trending Topics) ─────────────────────────────────────────
@@ -347,8 +355,9 @@ async def chat(request: Request):
     sources = []
     
     # Step 1: Enhanced vertical-specific web search
+    tavily_answer = ""
     if use_search and query:
-        sources = await multi_search(query, vertical, max_results=8)
+        sources, tavily_answer = await multi_search(query, vertical, max_results=8)
         
         if sources:
             context = "\n\n".join([
@@ -408,14 +417,21 @@ async def chat(request: Request):
             except Exception as e:
                 print(f"[Chat] xAI/Grok error: {e}")
 
-        # Final fallback: show raw search results
+        # Final fallback: use Tavily AI answer or show raw search results
         if not ai_responded:
-            if sources:
+            if tavily_answer:
+                # Tavily provides an AI-synthesized answer
+                fallback = tavily_answer
+                if sources:
+                    fallback += "\n\n---\n\n**Sources:**\n"
+                    for i, s in enumerate(sources):
+                        fallback += f"[{i+1}] [{s['title']}]({s['url']})\n"
+            elif sources:
                 fallback = "Here's what I found from the web:\n\n"
                 for i, s in enumerate(sources):
                     fallback += f"**[{i+1}] {s['title']}** ({s['domain']})\n{s['content']}\n\n"
             else:
-                fallback = "*AI models are temporarily unavailable. Please try again in a moment.*"
+                fallback = "*I couldn't find results for that query. Please try rephrasing or try a different search.*"
             yield f"data: {json.dumps({'type': 'text', 'content': fallback})}\n\n"
         
         yield f"data: {json.dumps({'type': 'done'})}\n\n"
@@ -448,12 +464,13 @@ async def websocket_chat(websocket: WebSocket):
             
             system_prompt = SYSTEM_PROMPTS.get(vertical, SYSTEM_PROMPTS["search"])
             sources = []
+            tavily_answer = ""
             
             # Phase 1: Enhanced vertical search
             if use_search:
                 await websocket.send_json({"type": "phase", "phase": "searching", "query": query})
                 try:
-                    sources = await multi_search(query, vertical, max_results=8)
+                    sources, tavily_answer = await multi_search(query, vertical, max_results=8)
                 except Exception as e:
                     print(f"[WS] Search error: {e}")
                 
@@ -474,18 +491,11 @@ async def websocket_chat(websocket: WebSocket):
                 messages.append({"role": msg["role"], "content": msg["content"]})
             messages.append({"role": "user", "content": query})
             
-            # Phase 3: Stream tokens
-            if not client:
-                # Fallback when Anthropic is not configured
-                if sources:
-                    fallback = "Here's what I found from the web:\n\n"
-                    for i, s in enumerate(sources):
-                        fallback += f"**[{i+1}] {s['title']}** ({s['domain']})\n{s['content']}\n\n"
-                    fallback += "\n---\n*Set ANTHROPIC_API_KEY to enable full AI responses.*"
-                else:
-                    fallback = "*AI not configured. Set ANTHROPIC_API_KEY in Render env vars.*"
-                await websocket.send_json({"type": "text", "content": fallback})
-            else:
+            # Phase 3: Stream tokens (multi-LLM with fallback)
+            ai_responded = False
+
+            # Try Anthropic (Claude) first
+            if client:
                 try:
                     with client.messages.stream(
                         model="claude-sonnet-4-20250514",
@@ -495,10 +505,44 @@ async def websocket_chat(websocket: WebSocket):
                     ) as stream:
                         for text in stream.text_stream:
                             await websocket.send_json({"type": "text", "content": text})
+                    ai_responded = True
                 except Exception as e:
-                    print(f"[WS] Stream error: {e}")
-                    await websocket.send_json({"type": "error", "message": f"AI generation error: {str(e)[:200]}"})
-            
+                    print(f"[WS] Anthropic error: {e}")
+
+            # Fallback to xAI/Grok
+            if not ai_responded and xai_client:
+                try:
+                    xai_messages = [{"role": "system", "content": system_prompt}] + [
+                        {"role": m["role"], "content": m["content"]} for m in messages
+                    ]
+                    stream = xai_client.chat.completions.create(
+                        model="grok-3-latest",
+                        messages=xai_messages,
+                        max_tokens=4096,
+                        stream=True,
+                    )
+                    for chunk in stream:
+                        if chunk.choices and chunk.choices[0].delta.content:
+                            await websocket.send_json({"type": "text", "content": chunk.choices[0].delta.content})
+                    ai_responded = True
+                except Exception as e:
+                    print(f"[WS] xAI/Grok error: {e}")
+
+            # Final fallback: Tavily AI answer or raw sources
+            if not ai_responded:
+                if tavily_answer:
+                    fallback = tavily_answer
+                    if sources:
+                        fallback += "\n\n---\n\n**Sources:**\n"
+                        for i, s in enumerate(sources):
+                            fallback += f"[{i+1}] [{s['title']}]({s['url']})\n"
+                elif sources:
+                    fallback = "Here's what I found from the web:\n\n"
+                    for i, s in enumerate(sources):
+                        fallback += f"**[{i+1}] {s['title']}** ({s['domain']})\n{s['content']}\n\n"
+                else:
+                    fallback = "*I couldn't find results for that query. Please try rephrasing.*"
+                await websocket.send_json({"type": "text", "content": fallback})            
             # Done
             await websocket.send_json({"type": "done"})
     
