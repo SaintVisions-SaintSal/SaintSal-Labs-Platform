@@ -622,48 +622,67 @@ ENTITY_TYPES = [
     {"id": "pllc", "name": "PLLC", "full_name": "Professional LLC", "description": "For licensed professionals — doctors, lawyers, CPAs, architects."},
 ]
 
+# Packages — CLIENT prices from SaintVision Product Catalog v2
+# Our cost is separate (Basic $79, Deluxe $199, Complete $249)
 PACKAGES = [
     {
         "id": "basic",
         "name": "Basic",
-        "price": 79,
+        "product_id": "SV-CORP-001",
+        "price": 197,  # Client price ($79 cost → 150% markup)
         "processing": "5-7 business days",
         "features": [
-            "Entity formation filing",
             "Name availability search",
-            "Articles of Organization/Incorporation",
+            "Articles of Organization / Incorporation",
+            "60-day Registered Agent",
+            "B.I.Z. compliance tool",
             "Standard processing (5-7 days)",
+        ],
+    },
+    {
+        "id": "deluxe",
+        "name": "Deluxe",
+        "product_id": "SV-CORP-002",
+        "price": 397,  # Client price ($199 cost → 100% markup)
+        "popular": True,
+        "processing": "24-hour rush",
+        "features": [
+            "Everything in Basic",
+            "EIN / Federal Tax ID filing",
+            "Registered Agent (1 full year)",
+            "24-hour rush processing",
+            "Physical Articles copy mailed",
         ],
     },
     {
         "id": "complete",
         "name": "Complete",
-        "price": 199,
-        "popular": True,
-        "processing": "3-5 business days",
-        "features": [
-            "Everything in Basic",
-            "EIN / Federal Tax ID filing",
-            "Registered agent (1 year)",
-            "Operating agreement / Bylaws",
-            "Banking resolution",
-            "Express processing (3-5 days)",
-        ],
-    },
-    {
-        "id": "premium",
-        "name": "Premium",
-        "price": 349,
+        "product_id": "SV-CORP-003",
+        "price": 449,  # Client price ($249 cost → 80% markup)
         "processing": "24-hour rush",
         "features": [
-            "Everything in Complete",
-            "Business license research",
-            "S-Corp election (if applicable)",
-            "Compliance monitoring & alerts",
-            "Annual report reminders",
+            "Everything in Deluxe",
+            "Custom Operating Agreement / Bylaws",
+            "LLC Kit & Seal / Corporate Kit",
+            "Corporate Minutes template",
+            "Stock Certificates (Corps)",
             "24-hour rush processing",
         ],
     },
+]
+
+# Additional CorpNet products from catalog
+CORPNET_ADDONS = [
+    {"id": "dba", "product_id": "SV-CORP-007", "name": "DBA Filing", "price": 149, "type": "one-time"},
+    {"id": "ra_annual", "product_id": "SV-CORP-008", "name": "Registered Agent — Annual", "price": 224, "type": "annual"},
+    {"id": "s_corp_election", "product_id": "SV-CORP-009", "name": "S-Corp Election (Form 2553)", "price": 149, "type": "one-time"},
+    {"id": "annual_report", "product_id": "SV-CORP-010", "name": "Annual Report Filing", "price": 179, "type": "annual"},
+    {"id": "foreign_llc", "product_id": "SV-CORP-011", "name": "Foreign LLC Qualification", "price": 297, "type": "one-time"},
+    {"id": "biz_license", "product_id": "SV-CORP-012", "name": "Business License Research", "price": 169, "type": "one-time"},
+    {"id": "nonprofit", "product_id": "SV-CORP-013", "name": "Nonprofit Formation (501c3)", "price": 197, "type": "one-time"},
+    {"id": "amendment", "product_id": "SV-CORP-014", "name": "Amendment Filing", "price": 169, "type": "one-time"},
+    {"id": "dissolution", "product_id": "SV-CORP-015", "name": "Dissolution / Withdrawal", "price": 224, "type": "one-time"},
+    {"id": "ai_consult", "product_id": "SV-CORP-016", "name": "SaintSal AI Business Consult", "price": 79, "type": "one-time"},
 ]
 
 
@@ -679,6 +698,55 @@ class FormationRequest(BaseModel):
     business_city: Optional[str] = None
     business_zip: Optional[str] = None
     business_description: Optional[str] = None
+
+
+# Full product catalog endpoint
+@app.get("/api/catalog")
+async def get_product_catalog():
+    """Return the full SaintVision product catalog."""
+    return {
+        "corpnet": {
+            "formation_packages": PACKAGES,
+            "addons": CORPNET_ADDONS,
+        },
+        "subscriptions": [
+            {"id": "SV-SAL-FREE", "name": "Free", "price": 0, "billing": "free", "stripe_price_id": "price_1T5bkAL47U80vDLAslOm3HoX", "features": ["50 msgs/mo", "Basic AI chat", "Finance & RE modules"]},
+            {"id": "SV-SAL-START", "name": "Starter", "price": 27, "billing": "monthly", "stripe_price_id": "price_1T5bkAL47U80vDLAaChP4Hqg", "features": ["500 msgs/mo", "All 6 domain modules", "SaintSal core", "Email support"]},
+            {"id": "SV-SAL-PRO", "name": "Pro", "price": 97, "billing": "monthly", "stripe_price_id": "price_1T5bkBL47U80vDLALiVDkOgb", "features": ["Unlimited msgs", "All AI models", "SaintSal Labs access", "Cookin.io builder", "Priority support"], "required_for": "Premium Snapshots"},
+            {"id": "SV-SAL-TEAM", "name": "Teams", "price": 297, "billing": "monthly", "stripe_price_id": "price_1T5bkCL47U80vDLANsCa647K", "features": ["Everything in Pro", "Up to 5 seats", "Shared agents", "Team analytics", "GHL CRM integration"]},
+            {"id": "SV-SAL-ENT", "name": "Enterprise", "price": 497, "billing": "monthly", "stripe_price_id": "price_1T5bkDL47U80vDLANXWF33A7", "features": ["Everything in Teams", "Unlimited seats", "White-label", "Custom integrations", "Dedicated support"]},
+        ],
+        "snapshots": {
+            "premium": [
+                {"id": "SV-SNAP-RE", "name": "Real Estate Pro", "price": 997, "requires": "Pro ($97/mo)", "features": "300+ custom values, 4 pipelines, 26 workflows"},
+                {"id": "SV-SNAP-RL", "name": "Residential Lending Pro", "price": 997, "requires": "Pro ($97/mo)", "features": "Mortgage pre-qual funnel, rate automation, LO pipeline"},
+                {"id": "SV-SNAP-CL", "name": "Commercial Lending Pro", "price": 1497, "requires": "Pro ($97/mo)", "features": "Deal intake ($5K-$100M), SBA/CMBS/Bridge pipelines"},
+                {"id": "SV-SNAP-IT", "name": "Investment / Tax / Legal Pro", "price": 1497, "requires": "Pro ($97/mo)", "features": "AUM pipeline, tax prep workflows, compliance"},
+                {"id": "SV-SNAP-CC", "name": "Card Store / Collectibles Pro", "price": 797, "requires": "Pro ($97/mo)", "features": "Storefront funnel, inventory pipeline, grading"},
+            ],
+            "standard": [
+                {"id": "SV-STD-001", "name": "Dental Practice", "price": 197, "requires": "Starter ($27/mo)"},
+                {"id": "SV-STD-002", "name": "Insurance Agency", "price": 197, "requires": "Starter ($27/mo)"},
+                {"id": "SV-STD-003", "name": "Fitness / Gym", "price": 197, "requires": "Starter ($27/mo)"},
+                {"id": "SV-STD-004", "name": "Restaurant / Food Service", "price": 197, "requires": "Starter ($27/mo)"},
+                {"id": "SV-STD-005", "name": "Auto Detailing", "price": 197, "requires": "Starter ($27/mo)"},
+                {"id": "SV-STD-006", "name": "Home Services (HVAC/Plumb/Elec)", "price": 197, "requires": "Starter ($27/mo)"},
+                {"id": "SV-STD-007", "name": "Med Spa / Aesthetics", "price": 197, "requires": "Starter ($27/mo)"},
+                {"id": "SV-STD-008", "name": "Salon / Barbershop", "price": 197, "requires": "Starter ($27/mo)"},
+                {"id": "SV-STD-009", "name": "Coaching / Consulting", "price": 197, "requires": "Starter ($27/mo)"},
+                {"id": "SV-STD-010", "name": "Roofing / Construction", "price": 197, "requires": "Starter ($27/mo)"},
+                {"id": "SV-STD-011", "name": "Chiropractor / Wellness", "price": 197, "requires": "Starter ($27/mo)"},
+                {"id": "SV-STD-012", "name": "Ecommerce / DTC Brand", "price": 197, "requires": "Starter ($27/mo)"},
+                {"id": "SV-STD-013", "name": "Nonprofit / Charity", "price": 197, "requires": "Starter ($27/mo)"},
+            ],
+        },
+        "bundles": [
+            {"id": "SV-BUN-START", "name": "Starter Launch Bundle", "setup": 347, "monthly": 27, "includes": "CorpNet Deluxe LLC + 1 Standard Snapshot + Starter sub"},
+            {"id": "SV-BUN-PRO", "name": "Pro Business Bundle", "setup": 997, "monthly": 97, "includes": "CorpNet Complete LLC + 1 Premium Snapshot + Pro sub + onboarding"},
+            {"id": "SV-BUN-EMPIRE", "name": "Empire Bundle", "setup": 4497, "monthly": 297, "includes": "All 5 Premium Snapshots + CorpNet Complete + Teams + 90-day onboarding"},
+        ],
+        "compute_tiers": COMPUTE_TIERS,
+    }
 
 
 @app.get("/api/corpnet/entity-types")
@@ -1486,14 +1554,14 @@ async def deal_analysis(purchase_price: float, monthly_rent: float, down_payment
 STUDIO_MODELS = {
     "image": [
         {"id": "nano_banana_2",  "name": "NanoBanana v2",  "description": "Fast, high-quality image generation",     "provider": "SaintSal",  "speed": "~10s", "tier": "pro",     "cost_per_min": 0.25, "credits": 5},
-        {"id": "nano_banana_pro","name": "NanoBanana Pro", "description": "Premium quality, photorealistic output",   "provider": "SaintSal",  "speed": "~15s", "tier": "max",     "cost_per_min": 0.50, "credits": 10},
-        {"id": "replicate_flux", "name": "Replicate FLUX", "description": "Ultra high-resolution image synthesis",    "provider": "Replicate", "speed": "~12s", "tier": "max",     "cost_per_min": 0.50, "credits": 15},
+        {"id": "nano_banana_pro","name": "NanoBanana Pro", "description": "Premium quality, photorealistic output",   "provider": "SaintSal",  "speed": "~15s", "tier": "max",     "cost_per_min": 0.75, "credits": 10},
+        {"id": "replicate_flux", "name": "Replicate FLUX", "description": "Ultra high-resolution image synthesis",    "provider": "Replicate", "speed": "~12s", "tier": "max",     "cost_per_min": 0.75, "credits": 15},
         {"id": "grok_aurora",    "name": "Grok Aurora",    "description": "xAI native premium image generation",     "provider": "xAI",      "speed": "~10s", "tier": "max_pro", "cost_per_min": 1.00, "credits": 15},
     ],
     "video": [
-        {"id": "sora_2",         "name": "Sora 2",         "description": "Cinematic video generation, 4-12s clips",  "provider": "OpenAI",    "speed": "~60s", "tier": "max",     "cost_per_min": 0.50, "credits": 20},
+        {"id": "sora_2",         "name": "Sora 2",         "description": "Cinematic video generation, 4-12s clips",  "provider": "OpenAI",    "speed": "~60s", "tier": "max",     "cost_per_min": 0.75, "credits": 20},
         {"id": "sora_2_pro",     "name": "Sora 2 Pro",     "description": "Highest quality, best for commercial use", "provider": "OpenAI",    "speed": "~90s", "tier": "max_pro", "cost_per_min": 1.00, "credits": 40},
-        {"id": "veo_3_1",        "name": "Veo 3.1",        "description": "Google's latest with native audio",        "provider": "Google",    "speed": "~45s", "tier": "max",     "cost_per_min": 0.50, "credits": 18},
+        {"id": "veo_3_1",        "name": "Veo 3.1",        "description": "Google's latest with native audio",        "provider": "Google",    "speed": "~45s", "tier": "max",     "cost_per_min": 0.75, "credits": 18},
         {"id": "runway_gen4",    "name": "Runway Gen-4",   "description": "Runway flagship, cinematic motion",        "provider": "Runway",    "speed": "~30s", "tier": "max_pro", "cost_per_min": 1.00, "credits": 30},
     ],
     "audio": [
@@ -1506,7 +1574,7 @@ STUDIO_MODELS = {
         {"id": "gemini_flash",       "name": "Gemini 2.5 Flash",       "description": "Lightning fast",                  "provider": "Google",     "speed": "~1s",  "tier": "mini",    "cost_per_min": 0.05, "credits": 1},
         {"id": "claude_sonnet",      "name": "Claude 3.7 Sonnet",      "description": "Best speed + quality balance",    "provider": "Anthropic",  "speed": "~2s",  "tier": "pro",     "cost_per_min": 0.25, "credits": 3},
         {"id": "gpt4o",              "name": "GPT-4o",                 "description": "OpenAI flagship multimodal",      "provider": "OpenAI",     "speed": "~2s",  "tier": "pro",     "cost_per_min": 0.25, "credits": 3},
-        {"id": "claude_opus",        "name": "Claude 3 Opus",          "description": "Maximum reasoning power",         "provider": "Anthropic",  "speed": "~5s",  "tier": "max",     "cost_per_min": 0.50, "credits": 10},
+        {"id": "claude_opus",        "name": "Claude 3 Opus",          "description": "Maximum reasoning power",         "provider": "Anthropic",  "speed": "~5s",  "tier": "max",     "cost_per_min": 0.75, "credits": 10},
         {"id": "o3_mini",            "name": "o3-mini",                "description": "Advanced reasoning engine",       "provider": "OpenAI",     "speed": "~8s",  "tier": "max_pro", "cost_per_min": 1.00, "credits": 15},
     ],
 }
@@ -1525,7 +1593,7 @@ STUDIO_VOICES = {
 # Stripe Metered Price IDs:
 #   Mini ($0.05/min):     price_1T5bkVL47U80vDLAHHAjXmJh
 #   Pro ($0.25/min):      price_1T5bkWL47U80vDLA4EI3dylp
-#   Max ($0.50/min):      price_1T5bkXL47U80vDLAdF4S8y4T
+#   Max ($0.75/min):      price_1T5bkXL47U80vDLAdF4S8y4T
 #   Max Pro ($1.00/min):  price_1T5bkYL47U80vDLA5v8o0c2o
 # ============================================================================
 
@@ -1535,7 +1603,7 @@ STRIPE_SECRET = os.environ.get("STRIPE_SECRET_KEY", "")
 COMPUTE_TIERS = {
     "mini":     {"price_per_min": 0.05, "label": "Mini",     "stripe_price_id": "price_1T5bkVL47U80vDLAHHAjXmJh", "color": "#6B7280"},
     "pro":      {"price_per_min": 0.25, "label": "Pro",      "stripe_price_id": "price_1T5bkWL47U80vDLA4EI3dylp", "color": "#10B981"},
-    "max":      {"price_per_min": 0.50, "label": "Max",      "stripe_price_id": "price_1T5bkXL47U80vDLAdF4S8y4T", "color": "#8B5CF6"},
+    "max":      {"price_per_min": 0.75, "label": "Max",      "stripe_price_id": "price_1T5bkXL47U80vDLAdF4S8y4T", "color": "#8B5CF6"},
     "max_pro":  {"price_per_min": 1.00, "label": "Max Pro",  "stripe_price_id": "price_1T5bkYL47U80vDLA5v8o0c2o", "color": "#F59E0B"},
 }
 
@@ -1558,16 +1626,16 @@ MODEL_COSTS = {
     "sonar_pro":         {"name": "Perplexity Sonar Pro",  "provider": "Perplexity", "category": "search","tier": "pro",     "our_cost": 0.030,  "charge": 0.25, "credits": 5,  "min_plan": "starter", "speed": "~3s",  "quality": "Pro"},
     "nano_banana_2":     {"name": "NanoBanana v2",        "provider": "SaintSal",   "category": "image", "tier": "pro",     "our_cost": 0.020,  "charge": 0.25, "credits": 5,  "min_plan": "starter", "speed": "~10s", "quality": "Pro"},
     "elevenlabs_pro":    {"name": "ElevenLabs Pro TTS",   "provider": "ElevenLabs", "category": "audio", "tier": "pro",     "our_cost": 0.030,  "charge": 0.25, "credits": 5,  "min_plan": "starter", "speed": "~5s",  "quality": "Pro"},
-    # ═══ MAX TIER ($0.50/min) ═══
-    "claude_opus":       {"name": "Claude 3 Opus",        "provider": "Anthropic",  "category": "chat",  "tier": "max",     "our_cost": 0.225,  "charge": 0.50, "credits": 10, "min_plan": "pro",     "speed": "~5s",  "quality": "Ultra"},
-    "gpt45":             {"name": "GPT-4.5",              "provider": "OpenAI",     "category": "chat",  "tier": "max",     "our_cost": 0.300,  "charge": 0.50, "credits": 10, "min_plan": "pro",     "speed": "~5s",  "quality": "Ultra"},
-    "gemini_ultra":      {"name": "Gemini Ultra",         "provider": "Google",     "category": "chat",  "tier": "max",     "our_cost": 0.150,  "charge": 0.50, "credits": 8,  "min_plan": "pro",     "speed": "~4s",  "quality": "Ultra"},
-    "grok3":             {"name": "Grok 3",               "provider": "xAI",        "category": "chat",  "tier": "max",     "our_cost": 0.180,  "charge": 0.50, "credits": 8,  "min_plan": "pro",     "speed": "~4s",  "quality": "Ultra"},
-    "nano_banana_pro":   {"name": "NanoBanana Pro",       "provider": "SaintSal",   "category": "image", "tier": "max",     "our_cost": 0.080,  "charge": 0.50, "credits": 10, "min_plan": "pro",     "speed": "~15s", "quality": "Ultra"},
-    "replicate_flux":    {"name": "Replicate FLUX",       "provider": "Replicate",  "category": "image", "tier": "max",     "our_cost": 0.100,  "charge": 0.50, "credits": 15, "min_plan": "pro",     "speed": "~12s", "quality": "Ultra"},
-    "sora_2":            {"name": "Sora 2",               "provider": "OpenAI",     "category": "video", "tier": "max",     "our_cost": 0.200,  "charge": 0.50, "credits": 20, "min_plan": "pro",     "speed": "~60s", "quality": "Ultra"},
-    "veo_3_1":           {"name": "Veo 3.1",              "provider": "Google",     "category": "video", "tier": "max",     "our_cost": 0.150,  "charge": 0.50, "credits": 18, "min_plan": "pro",     "speed": "~45s", "quality": "Ultra"},
-    "assemblyai":        {"name": "AssemblyAI",           "provider": "AssemblyAI", "category": "transcription", "tier": "max", "our_cost": 0.010, "charge": 0.50, "credits": 3, "min_plan": "pro", "speed": "~RT", "quality": "Ultra"},
+    # ═══ MAX TIER ($0.75/min) ═══
+    "claude_opus":       {"name": "Claude 3 Opus",        "provider": "Anthropic",  "category": "chat",  "tier": "max",     "our_cost": 0.225,  "charge": 0.75, "credits": 10, "min_plan": "pro",     "speed": "~5s",  "quality": "Ultra"},
+    "gpt45":             {"name": "GPT-4.5",              "provider": "OpenAI",     "category": "chat",  "tier": "max",     "our_cost": 0.300,  "charge": 0.75, "credits": 10, "min_plan": "pro",     "speed": "~5s",  "quality": "Ultra"},
+    "gemini_ultra":      {"name": "Gemini Ultra",         "provider": "Google",     "category": "chat",  "tier": "max",     "our_cost": 0.150,  "charge": 0.75, "credits": 8,  "min_plan": "pro",     "speed": "~4s",  "quality": "Ultra"},
+    "grok3":             {"name": "Grok 3",               "provider": "xAI",        "category": "chat",  "tier": "max",     "our_cost": 0.180,  "charge": 0.75, "credits": 8,  "min_plan": "pro",     "speed": "~4s",  "quality": "Ultra"},
+    "nano_banana_pro":   {"name": "NanoBanana Pro",       "provider": "SaintSal",   "category": "image", "tier": "max",     "our_cost": 0.080,  "charge": 0.75, "credits": 10, "min_plan": "pro",     "speed": "~15s", "quality": "Ultra"},
+    "replicate_flux":    {"name": "Replicate FLUX",       "provider": "Replicate",  "category": "image", "tier": "max",     "our_cost": 0.100,  "charge": 0.75, "credits": 15, "min_plan": "pro",     "speed": "~12s", "quality": "Ultra"},
+    "sora_2":            {"name": "Sora 2",               "provider": "OpenAI",     "category": "video", "tier": "max",     "our_cost": 0.200,  "charge": 0.75, "credits": 20, "min_plan": "pro",     "speed": "~60s", "quality": "Ultra"},
+    "veo_3_1":           {"name": "Veo 3.1",              "provider": "Google",     "category": "video", "tier": "max",     "our_cost": 0.150,  "charge": 0.75, "credits": 18, "min_plan": "pro",     "speed": "~45s", "quality": "Ultra"},
+    "assemblyai":        {"name": "AssemblyAI",           "provider": "AssemblyAI", "category": "transcription", "tier": "max", "our_cost": 0.010, "charge": 0.75, "credits": 3, "min_plan": "pro", "speed": "~RT", "quality": "Ultra"},
     # ═══ MAX PRO TIER ($1.00/min) ═══
     "o3_mini":               {"name": "o3-mini",                  "provider": "OpenAI",     "category": "chat",  "tier": "max_pro", "our_cost": 0.165,  "charge": 1.00, "credits": 15, "min_plan": "teams",   "speed": "~8s",  "quality": "Flagship"},
     "claude_sonnet_think":   {"name": "Claude Sonnet (Thinking)", "provider": "Anthropic",  "category": "chat",  "tier": "max_pro", "our_cost": 0.0675, "charge": 1.00, "credits": 12, "min_plan": "teams",   "speed": "~10s", "quality": "Flagship"},

@@ -1040,7 +1040,7 @@ var studioState = {
   tierPricing: {
     mini:    { price_per_min: 0.05, label: 'Mini',    color: '#6B7280' },
     pro:     { price_per_min: 0.25, label: 'Pro',     color: '#10B981' },
-    max:     { price_per_min: 0.50, label: 'Max',     color: '#8B5CF6' },
+    max:     { price_per_min: 0.75, label: 'Max',     color: '#8B5CF6' },
     max_pro: { price_per_min: 1.00, label: 'Max Pro', color: '#F59E0B' },
   },
 };
