@@ -1444,17 +1444,6 @@ DISTRESSED_PROPERTIES = {
 }
 
 
-@app.get("/api/realestate/distressed/{category}")
-async def get_distressed(category: str, state: str = "", city: str = ""):
-    """Get distressed properties by category: foreclosure, pre_foreclosure, tax_lien, nod."""
-    properties = DISTRESSED_PROPERTIES.get(category, [])
-    if state:
-        properties = [p for p in properties if p.get("state", "").upper() == state.upper()]
-    if city:
-        properties = [p for p in properties if city.lower() in p.get("city", "").lower()]
-    return {"category": category, "properties": properties, "total": len(properties)}
-
-
 @app.get("/api/realestate/distressed/summary")
 async def get_distressed_summary():
     """Get summary counts of all distressed property categories."""
@@ -1465,6 +1454,17 @@ async def get_distressed_summary():
         "nods": len(DISTRESSED_PROPERTIES["nod"]),
         "total": sum(len(v) for v in DISTRESSED_PROPERTIES.values()),
     }
+
+
+@app.get("/api/realestate/distressed/{category}")
+async def get_distressed(category: str, state: str = "", city: str = ""):
+    """Get distressed properties by category: foreclosure, pre_foreclosure, tax_lien, nod."""
+    properties = DISTRESSED_PROPERTIES.get(category, [])
+    if state:
+        properties = [p for p in properties if p.get("state", "").upper() == state.upper()]
+    if city:
+        properties = [p for p in properties if city.lower() in p.get("city", "").lower()]
+    return {"category": category, "properties": properties, "total": len(properties)}
 
 
 @app.get("/api/realestate/deal-analysis")
