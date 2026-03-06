@@ -1,0 +1,584 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<!--
+   ______                            __
+  / ____/___  ____ ___  ____  __  __/ /____  _____
+ / /   / __ \/ __ `__ \/ __ \/ / / / __/ _ \/ ___/
+/ /___/ /_/ / / / / / / /_/ / /_/ / /_/  __/ /
+\____/\____/_/ /_/ /_/ .___/\__,_/\__/\___/_/
+                    /_/
+        Created with Perplexity Computer
+        https://www.perplexity.ai/computer
+-->
+
+<!-- Perplexity Computer Attribution — SEO Meta Tags -->
+<meta name="generator" content="Perplexity Computer">
+<meta name="author" content="Perplexity Computer">
+<meta property="og:see_also" content="https://www.perplexity.ai/computer">
+<link rel="author" href="https://www.perplexity.ai/computer">
+
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SaintSal™ · Responsible Intelligence</title>
+<link rel="icon" type="image/png" href="favicon.png">
+<link rel="shortcut icon" href="favicon.ico">
+<link rel="apple-touch-icon" href="saintsal-icon.png">
+<meta name="description" content="SaintSal™ — AI Search & Chat powered by HACP™ Human-AI Connection Protocol. Responsible Intelligence.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="app-shell">
+  <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar()"></div>
+
+  <!-- Sidebar -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-header">
+      <div class="sidebar-logo" onclick="navigate('chat')">
+        <img src="saintsal-icon.png" alt="SaintSal" class="sidebar-logo-icon"><div class="sidebar-logo-text-wrap"><span class="sidebar-logo-text">SaintSal<sup class="sidebar-logo-tm">™</sup></span><span class="sidebar-logo-labs">LABS</span></div>
+      </div>
+      <div class="sidebar-tagline">Responsible Intelligence</div>
+      <button class="new-chat-btn" onclick="newChat()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        New Chat
+      </button>
+    </div>
+
+    <nav class="sidebar-nav">
+      <div class="nav-section-label">Search & AI</div>
+      <div class="nav-item active" data-vertical="search" onclick="switchVertical('search',this)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        Search
+      </div>
+      <div class="nav-item" data-vertical="sports" onclick="switchVertical('sports',this)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 22V2h4v20"/><path d="M8 9v2"/><path d="M16 9v2"/></svg>
+        Sports
+      </div>
+      <div class="nav-item" data-vertical="news" onclick="switchVertical('news',this)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-2 2Zm0 0a2 2 0 0 1-2-2v-9c0-1.1.9-2 2-2h2"/><path d="M18 14h-8"/><path d="M15 18h-5"/><path d="M10 6h8v4h-8V6Z"/></svg>
+        News
+      </div>
+      <div class="nav-item" data-vertical="tech" onclick="switchVertical('tech',this)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+        Tech
+      </div>
+      <div class="nav-item" data-vertical="finance" onclick="switchVertical('finance',this)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
+        Finance
+      </div>
+      <div class="nav-item" data-vertical="realestate" onclick="switchVertical('realestate',this)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+        Real Estate
+      </div>
+
+      <div class="nav-divider"></div>
+
+      <div class="nav-section-label">Build</div>
+      <div class="nav-item" data-view="studio" onclick="setView('studio')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/><line x1="12" y1="2" x2="12" y2="22" stroke-dasharray="2 4" opacity="0.3"/></svg>
+        Studio
+      </div>
+      <div class="nav-item" data-view="domains" onclick="setView('domains')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+        Domains
+      </div>
+      <div class="nav-item" data-view="launchpad" onclick="setView('launchpad'); loadPackagePricing(_lpState.state); loadFilings();">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"/><path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"/><path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0"/><path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5"/></svg>
+        Launch Pad
+      </div>
+
+      <div class="nav-divider"></div>
+
+      <div class="nav-section-label">Intelligence</div>
+      <div class="nav-item" data-vertical="search" onclick="switchVertical('search',this)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+        WarRoom
+        <span class="nav-badge">PRO</span>
+      </div>
+      <div class="nav-item" data-vertical="search" onclick="switchVertical('search',this)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+        Voice AI
+        <span class="nav-badge">PRO</span>
+      </div>
+      <div class="nav-item" data-view="bizplan" onclick="navigate('bizplan')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/><path d="M7 8h2"/><path d="M7 12h5"/></svg>
+        Business Plan
+      </div>
+
+      <div class="nav-divider"></div>
+
+      <div class="nav-section-label">System</div>
+      <div class="nav-item" data-view="connectors" onclick="setView('connectors')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"/><path d="m14.7 6.3-1 1"/><path d="m6.3 14.7 1-1"/><circle cx="12" cy="12" r="2"/><path d="m10.3 17.7-1 1"/><path d="m17.7 10.3-1 1"/></svg>
+        Connectors
+      </div>
+      <div class="nav-item" data-view="pricing" onclick="navigate('pricing')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
+        Pricing
+      </div>
+      <div class="nav-item" data-view="account" onclick="navigate('account')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        Account
+      </div>
+
+      <div class="nav-divider"></div>
+      <div class="nav-section-label">Recent</div>
+      <div class="recent-item" id="recentChats"></div>
+    </nav>
+
+    <div class="sidebar-footer">
+      <div class="user-profile" onclick="navigate('account')">
+        <div class="user-avatar">C</div>
+        <div class="user-info">
+          <span class="user-name">Cap</span>
+          <span class="user-plan-badge">PRO</span>
+        </div>
+        <button class="user-settings" aria-label="Settings">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M12 1v2m0 18v2M4.22 4.22l1.42 1.42m12.73 12.73 1.42 1.42M1 12h2m18 0h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+        </button>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Main Content -->
+  <div class="main-content">
+    <!-- Top Bar -->
+    <div class="topbar">
+      <div class="topbar-left">
+        <button class="hamburger-btn" onclick="toggleSidebar()" aria-label="Menu">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+        </button>
+        <div class="topbar-breadcrumb" id="topbarBreadcrumb"><span>Search</span></div>
+      </div>
+      <div class="topbar-right">
+        <div class="compute-meter">
+          <span>1,247 / 2,000 min</span>
+          <div class="compute-bar-wrap"><div class="compute-bar-fill" style="width:62%"></div></div>
+        </div>
+        <button class="theme-toggle" onclick="toggleTheme()" aria-label="Toggle theme" id="themeToggle">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" id="themeIcon"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+        </button>
+        <div class="topbar-avatar" onclick="navigate('account')">C</div>
+      </div>
+    </div>
+
+    <!-- Chat/Discover View (MAIN VERTICAL VIEW) -->
+    <div class="view chat-view active" id="chatView">
+      <!-- Universal Ticker Banner (all verticals) -->
+      <div class="ticker-banner" id="tickerBanner"></div>
+
+      <!-- Discover Feed -->
+      <div class="discover-area" id="discoverArea">
+        <!-- Engagement: News with images -->
+        <div class="engagement-section" id="engagementSection" style="display:none"></div>
+        <!-- Trending topic cards -->
+        <div class="discover-grid" id="discoverGrid"></div>
+      </div>
+
+      <!-- Chat Thread Area -->
+      <div class="chat-thread-area" id="chatThreadArea">
+        <div class="chat-thread-inner" id="chatThreadInner">
+          <button class="back-to-discover" onclick="backToDiscover()">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="15 18 9 12 15 6"/></svg>
+            <span id="backLabel">Back to Search</span>
+          </button>
+          <div class="chat-messages" id="chatMessages"></div>
+        </div>
+      </div>
+
+      <!-- Prompt Bar -->
+      <div class="prompt-bar-wrap">
+        <div class="prompt-bar">
+          <button class="prompt-attach" aria-label="Attach file">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          </button>
+          <input class="prompt-input" type="text" placeholder="Ask SAL anything..." id="promptInput" onkeydown="if(event.key==='Enter'&&!event.shiftKey)handleSend()">
+          <button class="prompt-model-select" aria-label="Model selector">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="14" height="14"><circle cx="12" cy="12" r="3"/><path d="M12 1v4m0 14v4M4.22 4.22l2.83 2.83m9.9 9.9 2.83 2.83M1 12h4m14 0h4M4.22 19.78l2.83-2.83m9.9-9.9 2.83-2.83"/></svg>
+            SAL Pro
+          </button>
+          <button class="prompt-mic" aria-label="Voice input">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg>
+          </button>
+          <button class="prompt-send" onclick="handleSend()" id="sendBtn" aria-label="Send">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+          </button>
+        </div>
+        <div class="prompt-footer">SaintSal™ uses Responsible Intelligence · HACP Protocol</div>
+      </div>
+      <div class="app-footer">SaintSal™ <span class="footer-labs-green">LABS</span> · Responsible Intelligence · Patent #10,290,222 · <a href="https://www.perplexity.ai/computer" target="_blank" rel="noopener noreferrer">Created with Perplexity Computer</a></div>
+    </div>
+
+    <!-- Pricing View -->
+    <div class="view pricing-view" id="pricingView">
+      <div class="pricing-inner">
+        <div class="pricing-header">
+          <div class="pricing-title">Choose Your Intelligence Tier</div>
+          <div class="pricing-subtitle">Scale your AI capabilities with SaintSal™ — from personal research to enterprise deployment.</div>
+          <div class="billing-toggle-wrap">
+            <span class="billing-label active" id="billingMonthly" onclick="setBilling('monthly')">Monthly</span>
+            <div class="billing-toggle" id="billingToggle" onclick="toggleBilling()"><div class="billing-toggle-knob"></div></div>
+            <span class="billing-label" id="billingAnnual" onclick="setBilling('annual')">Annual</span>
+            <span class="billing-badge" id="billingBadge">2 MONTHS FREE</span>
+          </div>
+        </div>
+
+        <div class="pricing-cards" id="pricingCards">
+          <div class="pricing-card card-free">
+            <div class="card-accent"></div>
+            <div class="card-icon-wrap"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="1"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="9"/></svg></div>
+            <div class="card-tier-name">Free</div>
+            <div class="card-price"><span class="card-price-amount">$0</span><span class="card-price-period">/mo</span></div>
+            <div class="card-desc">Try SAL Mini — no commitment</div>
+            <div class="card-tagline">Get started with AI-powered research and chat.</div>
+            <div class="card-features">
+              <div class="card-feature"><svg class="card-feature-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>SAL Mini (Claude Haiku / GPT-5 Fast)</div>
+              <div class="card-feature"><svg class="card-feature-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>100 compute min/mo</div>
+              <div class="card-feature"><svg class="card-feature-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>1 seat</div>
+              <div class="card-feature"><svg class="card-feature-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Search &amp; chat across verticals</div>
+            </div>
+            <a class="card-cta" href="https://buy.stripe.com/28EaEYgvk7zjbaPa2gbjW06" target="_blank" rel="noopener noreferrer">Start Free</a>
+          </div>
+          <div class="pricing-card card-starter">
+            <div class="card-accent"></div>
+            <div class="card-icon-wrap"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg></div>
+            <div class="card-tier-name">Starter</div>
+            <div class="card-price"><span class="card-price-amount" data-monthly="$27" data-annual="$270">$27</span><span class="card-price-period" data-monthly="/mo" data-annual="/yr">/mo</span></div>
+            <div class="card-desc">Getting serious</div>
+            <div class="card-tagline">SAL Mini + Pro for deeper insights and advanced research.</div>
+            <div class="card-features">
+              <div class="card-feature"><svg class="card-feature-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>SAL Mini + SAL Pro</div>
+              <div class="card-feature"><svg class="card-feature-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>500 compute min/mo</div>
+              <div class="card-feature"><svg class="card-feature-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>1 seat</div>
+              <div class="card-feature"><svg class="card-feature-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Advanced research mode</div>
+            </div>
+            <a class="card-cta" href="https://buy.stripe.com/8x2eVea6W3j30wb3DSbjW07" data-monthly-link="https://buy.stripe.com/8x2eVea6W3j30wb3DSbjW07" data-annual-link="https://buy.stripe.com/8x2eVea6W3j30wb3DSbjW07" target="_blank" rel="noopener noreferrer">Get Started</a>
+          </div>
+          <div class="pricing-card card-pro popular">
+            <div class="card-popular-badge">MOST POPULAR</div>
+            <div class="card-accent"></div>
+            <div class="card-icon-wrap"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M2 4l3 12h14l3-12-5.5 7L12 2l-4.5 9L2 4z"/><path d="M5 16l-1 4h16l-1-4"/></svg></div>
+            <div class="card-tier-name">Pro</div>
+            <div class="card-price"><span class="card-price-amount" data-monthly="$97" data-annual="$970">$97</span><span class="card-price-period" data-monthly="/mo" data-annual="/yr">/mo</span></div>
+            <div class="card-desc">The Main Character</div>
+            <div class="card-tagline">Full power. WarRoom, Voice AI, SAL Max — where serious operators live.</div>
+            <div class="card-features">
+              <div class="card-feature"><svg class="card-feature-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>SAL Mini + Pro + Max</div>
+              <div class="card-feature"><svg class="card-feature-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>2,000 compute min/mo</div>
+              <div class="card-feature"><svg class="card-feature-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>WarRoom intelligence</div>
+              <div class="card-feature"><svg class="card-feature-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Voice AI assistant</div>
+              <div class="card-feature"><svg class="card-feature-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>1 seat</div>
+            </div>
+            <a class="card-cta" href="https://buy.stripe.com/5kQ3cw92S8Dn3In4HWbjW08" data-monthly-link="https://buy.stripe.com/5kQ3cw92S8Dn3In4HWbjW08" data-annual-link="https://buy.stripe.com/5kQ3cw92S8Dn3In4HWbjW08" target="_blank" rel="noopener noreferrer">Go Pro</a>
+          </div>
+          <div class="pricing-card card-teams">
+            <div class="card-tier-badge" style="background:var(--accent-purple-dim);color:var(--accent-purple);">FOR TEAMS</div>
+            <div class="card-accent"></div>
+            <div class="card-icon-wrap"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><circle cx="12" cy="10" r="2"/><path d="M12 12v2"/><path d="M9 14h6"/></svg></div>
+            <div class="card-tier-name">Teams</div>
+            <div class="card-price"><span class="card-price-amount" data-monthly="$297" data-annual="$2,970">$297</span><span class="card-price-period" data-monthly="/mo" data-annual="/yr">/mo</span></div>
+            <div class="card-desc">Operator Stack</div>
+            <div class="card-tagline">5 seats, shared compute, GHL Builder, SAL Max Fast — you don't work alone.</div>
+            <div class="card-features">
+              <div class="card-feature"><svg class="card-feature-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>All 4 SAL models included</div>
+              <div class="card-feature"><svg class="card-feature-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>10,000 shared min/mo</div>
+              <div class="card-feature"><svg class="card-feature-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>5 Pro seats included</div>
+              <div class="card-feature"><svg class="card-feature-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>GHL Builder access</div>
+              <div class="card-feature"><svg class="card-feature-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>WarRoom + Voice AI</div>
+            </div>
+            <a class="card-cta" href="https://buy.stripe.com/fZufZi5QG9Hr2Ej4HWbjW09" data-monthly-link="https://buy.stripe.com/fZufZi5QG9Hr2Ej4HWbjW09" data-annual-link="https://buy.stripe.com/fZufZi5QG9Hr2Ej4HWbjW09" target="_blank" rel="noopener noreferrer">Build Your Team</a>
+          </div>
+          <div class="pricing-card card-enterprise">
+            <div class="card-tier-badge" style="background:rgba(255,255,255,0.06);color:var(--text-secondary);">ENTERPRISE</div>
+            <div class="card-accent"></div>
+            <div class="card-icon-wrap"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M12 2v5"/><path d="M7 2h10"/><path d="M7 12h2"/><path d="M15 12h2"/><path d="M7 16h10"/></svg></div>
+            <div class="card-tier-name">Enterprise</div>
+            <div class="card-price"><span class="card-price-amount" data-monthly="$497" data-annual="$4,970">$497</span><span class="card-price-period" data-monthly="/mo" data-annual="/yr">/mo</span></div>
+            <div class="card-desc">Full Spectrum Dominance</div>
+            <div class="card-tagline">Unlimited compute, white-label, API, HACP™ Protocol. Strategic partnership.</div>
+            <div class="card-features">
+              <div class="card-feature"><svg class="card-feature-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Unlimited compute</div>
+              <div class="card-feature"><svg class="card-feature-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>White Label deployment</div>
+              <div class="card-feature"><svg class="card-feature-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Full API access</div>
+              <div class="card-feature"><svg class="card-feature-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>HACP™ Protocol (Patent #10,290,222)</div>
+              <div class="card-feature"><svg class="card-feature-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Enterprise SLA + Custom seats</div>
+            </div>
+            <a class="card-cta" href="https://buy.stripe.com/7sY5kEbb0cTDa6L2zObjW0a" data-monthly-link="https://buy.stripe.com/7sY5kEbb0cTDa6L2zObjW0a" data-annual-link="https://buy.stripe.com/7sY5kEbb0cTDa6L2zObjW0a" target="_blank" rel="noopener noreferrer">Partner With Us</a>
+          </div>
+        </div>
+
+        <div class="comparison-section">
+          <div class="comparison-title">Feature Comparison</div>
+          <div class="comparison-table-wrap">
+            <table class="comparison-table">
+              <thead><tr><th>Feature</th><th>Free</th><th>Starter</th><th style="color:var(--accent-gold)">Pro</th><th>Teams</th><th>Enterprise</th></tr></thead>
+              <tbody>
+                <tr><td>SAL Mini</td><td><span class="check-yes">✅</span></td><td><span class="check-yes">✅</span></td><td><span class="check-yes">✅</span></td><td><span class="check-yes">✅</span></td><td><span class="check-yes">✅</span></td></tr>
+                <tr><td>SAL Pro</td><td><span class="check-no">❌</span></td><td><span class="check-yes">✅</span></td><td><span class="check-yes">✅</span></td><td><span class="check-yes">✅</span></td><td><span class="check-yes">✅</span></td></tr>
+                <tr><td>SAL Max</td><td><span class="check-no">❌</span></td><td><span class="check-no">❌</span></td><td><span class="check-yes">✅</span></td><td><span class="check-yes">✅</span></td><td><span class="check-yes">✅</span></td></tr>
+                <tr><td>SAL Max Fast</td><td><span class="check-no">❌</span></td><td><span class="check-no">❌</span></td><td><span class="check-no">❌</span></td><td><span class="check-yes">✅</span></td><td><span class="check-yes">✅</span></td></tr>
+                <tr><td>Compute Minutes</td><td>100</td><td>500</td><td>2,000</td><td>10,000</td><td>Unlimited</td></tr>
+                <tr><td>WarRoom</td><td><span class="check-no">❌</span></td><td><span class="check-no">❌</span></td><td><span class="check-yes">✅</span></td><td><span class="check-yes">✅</span></td><td><span class="check-yes">✅</span></td></tr>
+                <tr><td>Voice AI</td><td><span class="check-no">❌</span></td><td><span class="check-no">❌</span></td><td><span class="check-yes">✅</span></td><td><span class="check-yes">✅</span></td><td><span class="check-yes">✅</span></td></tr>
+                <tr><td>GHL Builder</td><td><span class="check-no">❌</span></td><td><span class="check-no">❌</span></td><td><span class="check-no">❌</span></td><td><span class="check-yes">✅</span></td><td><span class="check-yes">✅</span></td></tr>
+                <tr><td>Team Seats</td><td>1</td><td>1</td><td>1</td><td>5</td><td>Custom</td></tr>
+                <tr><td>API Access</td><td><span class="check-no">❌</span></td><td><span class="check-no">❌</span></td><td><span class="check-no">❌</span></td><td><span class="check-no">❌</span></td><td><span class="check-yes">✅</span></td></tr>
+                <tr><td>White Label</td><td><span class="check-no">❌</span></td><td><span class="check-no">❌</span></td><td><span class="check-no">❌</span></td><td><span class="check-no">❌</span></td><td><span class="check-yes">✅</span></td></tr>
+                <tr><td>HACP™ Protocol</td><td><span class="check-no">❌</span></td><td><span class="check-no">❌</span></td><td><span class="check-no">❌</span></td><td><span class="check-no">❌</span></td><td><span class="check-yes">✅</span></td></tr>
+                <tr><td>Enterprise SLA</td><td><span class="check-no">❌</span></td><td><span class="check-no">❌</span></td><td><span class="check-no">❌</span></td><td><span class="check-no">❌</span></td><td><span class="check-yes">✅</span></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="overage-section">
+          <div class="overage-title">Compute Overage Rates</div>
+          <div class="overage-subtitle">When you exceed your plan's compute minutes, usage continues at metered rates.</div>
+          <div class="overage-cards">
+            <div class="overage-card"><div class="overage-card-model">SAL Mini</div><div class="overage-card-rate">$0.05<span class="overage-card-unit">/min</span></div></div>
+            <div class="overage-card"><div class="overage-card-model">SAL Pro</div><div class="overage-card-rate">$0.25<span class="overage-card-unit">/min</span></div></div>
+            <div class="overage-card"><div class="overage-card-model">SAL Max</div><div class="overage-card-rate">$0.75<span class="overage-card-unit">/min</span></div></div>
+            <div class="overage-card"><div class="overage-card-model">SAL Max Fast</div><div class="overage-card-rate">$1.00<span class="overage-card-unit">/min</span></div></div>
+          </div>
+        </div>
+      </div>
+      <div class="app-footer">SaintSal™ <span class="footer-labs-green">LABS</span> · Responsible Intelligence · Patent #10,290,222 · <a href="https://www.perplexity.ai/computer" target="_blank" rel="noopener noreferrer">Created with Perplexity Computer</a></div>
+    </div>
+
+    <!-- Welcome View -->
+    <div class="view welcome-view" id="welcomeView"><div class="welcome-inner" id="welcomeInner"></div></div>
+
+    <!-- Account View -->
+    <div class="view account-view" id="accountView">
+      <div class="account-inner">
+        <div class="account-title">Account</div>
+        <div class="account-section">
+          <div class="account-section-title">Profile</div>
+          <div class="profile-row"><div class="profile-avatar-lg">C</div><div class="profile-details"><div class="profile-name">Cap</div><div class="profile-email">cap@hacpglobal.ai</div></div></div>
+        </div>
+        <div class="account-section">
+          <div class="account-section-title">Current Plan</div>
+          <div class="plan-row">
+            <div class="plan-info"><span class="plan-badge-lg"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M2 4l3 12h14l3-12-5.5 7L12 2l-4.5 9L2 4z"/></svg>PRO</span><span style="font-size:var(--text-xs);color:var(--text-muted)">$97/mo · Renews Apr 4, 2026</span></div>
+            <button class="plan-manage-btn" onclick="navigate('pricing')">Upgrade</button>
+          </div>
+        </div>
+        <div class="account-section">
+          <div class="account-section-title">Compute Usage</div>
+          <div class="usage-meter-wrap"><div class="usage-labels"><span>1,247 minutes used</span><span>2,000 min total</span></div><div class="usage-bar"><div class="usage-bar-fill normal" style="width:62%"></div></div></div>
+        </div>
+        <div class="account-section">
+          <div class="account-section-title">Connected Services</div>
+          <div class="services-grid">
+            <div class="service-item"><div class="service-icon" style="background:var(--accent-green-dim);"><svg viewBox="0 0 24 24" fill="none" stroke="var(--accent-green)" stroke-width="2" stroke-linecap="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg></div><div><div class="service-name">GoHighLevel (GHL)</div><div class="service-status connected">● Connected</div></div></div>
+            <div class="service-item"><div class="service-icon" style="background:var(--accent-purple-dim);"><svg viewBox="0 0 24 24" fill="none" stroke="var(--accent-purple)" stroke-width="2" stroke-linecap="round"><rect x="1" y="4" width="22" height="16" rx="2"/><path d="M1 10h22"/></svg></div><div><div class="service-name">Stripe Billing</div><div class="service-status connected">● Connected</div></div></div>
+          </div>
+        </div>
+      </div>
+      <div class="app-footer">SaintSal™ <span class="footer-labs-green">LABS</span> · Responsible Intelligence · Patent #10,290,222 · <a href="https://www.perplexity.ai/computer" target="_blank" rel="noopener noreferrer">Created with Perplexity Computer</a></div>
+    </div>
+
+    <!-- Studio View -->
+    <div class="view studio-view active" id="studioView">
+      <div class="studio-layout">
+        <div class="studio-main">
+          <div class="studio-header">
+            <div class="studio-title">
+              <svg viewBox="0 0 24 24" fill="none" stroke="var(--accent-gold)" stroke-width="2" width="22" height="22"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+              <span>SAL Studio</span>
+              <span class="labs-green" style="font-family:'Orbitron',sans-serif;font-size:var(--text-xs);margin-left:4px;">AI</span>
+            </div>
+            <div class="studio-mode-tabs">
+              <button class="studio-mode-btn active" data-mode="image" onclick="studioSwitchMode('image')">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+                Image
+              </button>
+              <button class="studio-mode-btn" data-mode="video" onclick="studioSwitchMode('video')">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
+                Video
+              </button>
+              <button class="studio-mode-btn" data-mode="audio" onclick="studioSwitchMode('audio')">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+                Audio
+              </button>
+            </div>
+          </div>
+          <div id="studioControls" class="studio-controls"></div>
+          <div id="studioResultArea" class="studio-result-area" style="display:none;"></div>
+        </div>
+        <div class="studio-sidebar-panel">
+          <div class="studio-gallery-header">
+            <span>Gallery</span>
+            <span class="studio-gallery-count" id="studioGalleryCount">0</span>
+          </div>
+          <div id="studioGalleryGrid" class="studio-gallery-grid">
+            <div class="studio-gallery-empty">Your generated media will appear here</div>
+          </div>
+        </div>
+      </div>
+      <div class="app-footer">SaintSal™ <span class="footer-labs-green">LABS</span> · Responsible Intelligence · Patent #10,290,222 · <a href="https://www.perplexity.ai/computer" target="_blank" rel="noopener noreferrer">Created with Perplexity Computer</a></div>
+    </div>
+
+    <!-- Domains View -->
+    <div class="view domains-view" id="domainsView">
+      <div class="domains-inner">
+        <div class="domains-hero"><h1>Find Your Perfect Domain</h1><p>Search, register, and manage domains — powered by GoDaddy's global infrastructure.</p></div>
+        <div class="domains-search"><input class="domains-search-input" type="text" placeholder="Search domains..." id="domainSearchInput" onkeydown="if(event.key==='Enter')searchDomains()"><button class="domains-search-btn" onclick="searchDomains()">Search Domains</button></div>
+        <div class="domains-filters">
+          <button class="domain-filter-chip active" onclick="filterDomain(this,'all')">All</button>
+          <button class="domain-filter-chip" onclick="filterDomain(this,'.com')">.com</button>
+          <button class="domain-filter-chip" onclick="filterDomain(this,'.ai')">.ai</button>
+          <button class="domain-filter-chip" onclick="filterDomain(this,'.io')">.io</button>
+          <button class="domain-filter-chip" onclick="filterDomain(this,'.net')">.net</button>
+          <button class="domain-filter-chip" onclick="filterDomain(this,'.org')">.org</button>
+          <button class="domain-filter-chip" onclick="filterDomain(this,'.co')">.co</button>
+        </div>
+        <div class="domains-results" id="domainResults">
+          <div class="domain-result"><div class="domain-name">saintsal.com</div><div class="domain-price">$12.99<span>/yr</span></div><div class="domain-status available">Available</div><button class="domain-buy-btn" onclick="openDomainModal('saintsal.com','$12.99')">Buy</button></div>
+          <div class="domain-result"><div class="domain-name">saintsal.ai</div><div class="domain-price">$29.99<span>/yr</span></div><div class="domain-status available">Available</div><button class="domain-buy-btn" onclick="openDomainModal('saintsal.ai','$29.99')">Buy</button></div>
+          <div class="domain-result"><div class="domain-name">saintsal.io</div><div class="domain-price">$39.99<span>/yr</span></div><div class="domain-status available">Available</div><button class="domain-buy-btn" onclick="openDomainModal('saintsal.io','$39.99')">Buy</button></div>
+          <div class="domain-result"><div class="domain-name">saintsal.net</div><div class="domain-price">$9.99<span>/yr</span></div><div class="domain-status taken">Taken</div><button class="domain-buy-btn disabled">Taken</button></div>
+        </div>
+        <div class="domains-powered" id="domainApiNote" style="display:none;color:var(--accent-amber);margin-bottom:12px"></div>
+        <div class="domains-powered">Powered by GoDaddy · Domain registration and DNS management</div>
+        <div class="domains-managed">
+          <div class="domains-managed-title">Your Domains</div>
+          <div class="managed-domain"><div class="managed-domain-info"><div class="managed-domain-name">hacpglobal.ai</div><div class="managed-domain-meta">Renews Mar 15, 2027 · DNS: Cloudflare</div></div><div class="managed-domain-status">Active</div><button class="managed-domain-btn">Manage DNS</button></div>
+          <div class="managed-domain"><div class="managed-domain-info"><div class="managed-domain-name">saintsal.ai</div><div class="managed-domain-meta">Renews Jun 22, 2027 · DNS: Vercel</div></div><div class="managed-domain-status">Active</div><button class="managed-domain-btn">Manage DNS</button></div>
+        </div>
+      </div>
+      <div class="app-footer">SaintSal™ <span class="footer-labs-green">LABS</span> · Responsible Intelligence · Patent #10,290,222 · <a href="https://www.perplexity.ai/computer" target="_blank" rel="noopener noreferrer">Created with Perplexity Computer</a></div>
+    </div>
+
+    <!-- Launch Pad View -->
+    <div class="view launchpad-view" id="launchpadView">
+      <div class="launchpad-inner">
+        <div class="launchpad-hero"><h1>Launch Your Business</h1><p>From entity formation to EIN filing — get your business legally established in minutes.</p></div>
+        <div class="lp-steps"><div class="lp-step active"><div class="lp-step-num">1</div>Entity Type</div><div class="lp-step-connector"></div><div class="lp-step"><div class="lp-step-num">2</div>State</div><div class="lp-step-connector"></div><div class="lp-step"><div class="lp-step-num">3</div>Details</div><div class="lp-step-connector"></div><div class="lp-step"><div class="lp-step-num">4</div>Package</div><div class="lp-step-connector"></div><div class="lp-step"><div class="lp-step-num">5</div>Review</div></div>
+        <div class="lp-entity-grid">
+          <div class="lp-entity-card selected" onclick="selectEntity(this)"><div class="lp-entity-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M12 8v8"/><path d="M8 12h8"/></svg></div><div class="lp-entity-name">LLC</div><div class="lp-entity-desc">Limited liability protection with flexible management structure.</div></div>
+          <div class="lp-entity-card" onclick="selectEntity(this)"><div class="lp-entity-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg></div><div class="lp-entity-name">C Corporation</div><div class="lp-entity-desc">Ideal for raising venture capital.</div></div>
+          <div class="lp-entity-card" onclick="selectEntity(this)"><div class="lp-entity-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></div><div class="lp-entity-name">S Corporation</div><div class="lp-entity-desc">Pass-through taxation with corporate structure.</div></div>
+        </div>
+        <div class="lp-packages">
+          <div class="lp-package"><div class="lp-package-name">Basic</div><div class="lp-package-price">$79</div><div class="lp-package-features"><div class="lp-package-feature"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Entity formation filing</div><div class="lp-package-feature"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Standard processing (5–7 days)</div></div><button class="lp-package-btn">Select Basic</button></div>
+          <div class="lp-package recommended"><div class="lp-package-name">Complete</div><div class="lp-package-price">$199</div><div class="lp-package-features"><div class="lp-package-feature"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Entity formation + EIN filing</div><div class="lp-package-feature"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Registered agent (1 year)</div><div class="lp-package-feature"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Operating agreement</div></div><button class="lp-package-btn">Select Complete</button></div>
+          <div class="lp-package"><div class="lp-package-name">Premium</div><div class="lp-package-price">$349</div><div class="lp-package-features"><div class="lp-package-feature"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Everything in Complete</div><div class="lp-package-feature"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Business license research</div><div class="lp-package-feature"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Expedited processing (24hr)</div></div><button class="lp-package-btn">Select Premium</button></div>
+        </div>
+        <div class="lp-filings">
+          <div class="lp-filings-title">Your Filings</div>
+          <div class="lp-filing-card"><div class="lp-filing-header"><div class="lp-filing-name">HACP Global LLC — Delaware</div><div class="lp-filing-status review">In Review</div></div><div class="lp-filing-progress"><div class="lp-filing-step done"></div><div class="lp-filing-step done"></div><div class="lp-filing-step current"></div><div class="lp-filing-step"></div></div><div class="lp-filing-labels"><span>Submitted</span><span>In Review</span><span>Filed</span><span>Complete</span></div></div>
+          <div class="lp-filing-card"><div class="lp-filing-header"><div class="lp-filing-name">SaintSal Labs Inc — Wyoming</div><div class="lp-filing-status complete">Complete</div></div><div class="lp-filing-progress"><div class="lp-filing-step done"></div><div class="lp-filing-step done"></div><div class="lp-filing-step done"></div><div class="lp-filing-step done"></div></div><div class="lp-filing-labels"><span>Submitted</span><span>In Review</span><span>Filed</span><span>Complete</span></div></div>
+        </div>
+        <div class="lp-powered">Powered by CorpNet · HACP™ Protocol · Patent #10,290,222</div>
+      </div>
+      <div class="app-footer">SaintSal™ <span class="footer-labs-green">LABS</span> · Responsible Intelligence · Patent #10,290,222 · <a href="https://www.perplexity.ai/computer" target="_blank" rel="noopener noreferrer">Created with Perplexity Computer</a></div>
+    </div>
+
+    <!-- Connectors View -->
+    <div class="view connectors-view" id="connectorsView">
+      <div class="connectors-layout">
+        <div class="connectors-header">
+          <div class="connectors-title">
+            <svg viewBox="0 0 24 24" fill="none" stroke="var(--accent-gold)" stroke-width="2" width="22" height="22"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
+            <span>Social Connections</span>
+          </div>
+          <div class="connectors-subtitle">Connect your social media accounts to publish content directly from Studio</div>
+        </div>
+        <div id="connectorsGrid" class="connectors-grid"></div>
+      </div>
+      <div class="app-footer">SaintSal™ <span class="footer-labs-green">LABS</span> · Responsible Intelligence · Patent #10,290,222 · <a href="https://www.perplexity.ai/computer" target="_blank" rel="noopener noreferrer">Created with Perplexity Computer</a></div>
+    </div>
+
+    <!-- Business Plan View -->
+    <div class="view bizplan-view" id="bizplanView">
+      <div class="bizplan-inner">
+        <div class="bizplan-hero"><h1>Build Your Business Plan</h1><p>From idea to execution in minutes — AI-powered planning with actionable tracking.</p></div>
+        <div class="bizplan-form">
+          <div class="bizplan-form-title">Plan Generator</div>
+          <div class="bizplan-form-grid">
+            <div class="bizplan-field"><label class="bizplan-label">Business Name</label><input class="bizplan-input" type="text" value="SaintSal Labs"></div>
+            <div class="bizplan-field"><label class="bizplan-label">Industry</label><select class="bizplan-select"><option>AI / Machine Learning</option><option>SaaS</option><option>E-commerce</option></select></div>
+            <div class="bizplan-field full"><label class="bizplan-label">Target Market</label><textarea class="bizplan-textarea">Small to mid-size businesses seeking AI-powered search, automation, and intelligence tools.</textarea></div>
+            <div class="bizplan-field"><label class="bizplan-label">Revenue Model</label><select class="bizplan-select"><option>SaaS (Subscription)</option><option>Marketplace</option></select></div>
+            <div class="bizplan-field"><label class="bizplan-label">Starting Budget</label><div class="bizplan-slider-wrap"><input class="bizplan-slider" type="range" min="1" max="1000" value="250" oninput="this.nextElementSibling.textContent='$'+Number(this.value).toLocaleString()+'K'"><span class="bizplan-slider-val">$250K</span></div></div>
+          </div>
+          <button class="bizplan-generate-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/></svg>Generate Plan</button>
+        </div>
+        <div class="bizplan-preview">
+          <div class="bizplan-section"><h2><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg> Executive Summary</h2><p><span class="highlight">SaintSal Labs</span> is an AI-powered intelligence platform that democratizes enterprise-grade AI for SMBs. Built on the <span class="highlight">HACP™ Protocol</span> (Patent #10,290,222), targeting a <span class="highlight">$47B addressable market</span>.</p></div>
+          <div class="bizplan-section"><h2><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg> Revenue Projections</h2><div class="bizplan-chart"><div class="chart-bar-group"><div class="chart-bar" style="height:15%"></div><div class="chart-value">$42K</div><div class="chart-label">Q1</div></div><div class="chart-bar-group"><div class="chart-bar" style="height:28%"></div><div class="chart-value">$87K</div><div class="chart-label">Q2</div></div><div class="chart-bar-group"><div class="chart-bar" style="height:45%"></div><div class="chart-value">$156K</div><div class="chart-label">Q3</div></div><div class="chart-bar-group"><div class="chart-bar" style="height:62%"></div><div class="chart-value">$241K</div><div class="chart-label">Q4</div></div><div class="chart-bar-group"><div class="chart-bar" style="height:100%"></div><div class="chart-value">$612K</div><div class="chart-label">Y2</div></div></div></div>
+          <div class="bizplan-section"><h2><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="2"/><path d="M1 10h22"/></svg> Financial Projections</h2><table class="bizplan-table"><thead><tr><th>Metric</th><th>Year 1</th><th>Year 2</th><th>Year 3</th></tr></thead><tbody><tr><td>Revenue</td><td>$526K</td><td>$2.1M</td><td>$5.8M</td></tr><tr><td>Customers</td><td>420</td><td>1,680</td><td>4,200</td></tr><tr><td>Gross Margin</td><td>72%</td><td>78%</td><td>82%</td></tr></tbody></table></div>
+        </div>
+        <div class="bizplan-actions">
+          <button class="bizplan-action-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>Export as PDF</button>
+          <button class="bizplan-action-btn primary"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/></svg>Execute with SAL</button>
+        </div>
+      </div>
+      <div class="app-footer">SaintSal™ <span class="footer-labs-green">LABS</span> · Responsible Intelligence · Patent #10,290,222 · <a href="https://www.perplexity.ai/computer" target="_blank" rel="noopener noreferrer">Created with Perplexity Computer</a></div>
+    </div>
+
+  </div><!-- end main-content -->
+</div><!-- end app-shell -->
+
+<!-- Domain Purchase Modal -->
+<div class="modal-overlay" id="domainModal">
+  <div class="modal" style="position:relative;">
+    <button style="position:absolute;top:16px;right:16px;color:var(--text-muted);font-size:18px;" onclick="closeDomainModal()">✕</button>
+    <div class="modal-title">Register Domain</div>
+    <div style="font-size:var(--text-lg);font-weight:700;color:var(--accent-gold);margin-bottom:var(--space-4);" id="modalDomainName">saintsal.ai</div>
+    <div class="modal-field"><label class="modal-label">Registration Period</label><select class="modal-select"><option>1 Year</option><option>2 Years</option><option>5 Years</option></select></div>
+    <div class="modal-toggle-row"><div class="modal-toggle-label">Privacy Protection<span>Hide your personal info from WHOIS</span></div><div class="mini-toggle on" onclick="this.classList.toggle('on')"><div class="mini-toggle-knob"></div></div></div>
+    <div class="modal-toggle-row"><div class="modal-toggle-label">Auto-Renew<span>Automatically renew before expiration</span></div><div class="mini-toggle on" onclick="this.classList.toggle('on')"><div class="mini-toggle-knob"></div></div></div>
+    <div class="modal-total"><span>Total</span><span id="modalDomainPrice">$29.99/yr</span></div>
+    <button class="modal-cta" onclick="closeDomainModal()">Complete Purchase</button>
+  </div>
+</div>
+
+<!-- Mobile Tab Bar -->
+<div class="mobile-tabs" id="mobileTabs">
+  <div class="mobile-tabs-inner">
+    <button class="mobile-tab active" onclick="switchVertical('search'); setMobileTab(this)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>Search
+    </button>
+    <button class="mobile-tab" onclick="switchVertical('sports'); setMobileTab(this)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M10 22V2h4v20"/></svg>Sports
+    </button>
+    <button class="mobile-tab" onclick="switchVertical('finance'); setMobileTab(this)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>Finance
+    </button>
+    <button class="mobile-tab" onclick="switchVertical('realestate'); setMobileTab(this)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>RE
+    </button>
+    <button class="mobile-tab" onclick="toggleMobileMore()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>More
+    </button>
+  </div>
+</div>
+
+<div class="mobile-more-menu" id="mobileMoreMenu">
+  <div class="mobile-more-grid">
+    <div class="mobile-more-item" onclick="navigate('studio');closeMobileMore()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>Studio</div>
+    <div class="mobile-more-item" onclick="navigate('bizplan');closeMobileMore()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/></svg>Biz Plan</div>
+    <div class="mobile-more-item" onclick="navigate('connectors');closeMobileMore()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="2"/></svg>Connectors</div>
+    <div class="mobile-more-item" onclick="navigate('pricing');closeMobileMore()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/></svg>Pricing</div>
+    <div class="mobile-more-item" onclick="navigate('account');closeMobileMore()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>Account</div>
+  </div>
+</div>
+
+<script src="app.js"></script>
+
+
+    <!-- Social Composer Modal -->
+    <div id="socialComposerModal" class="modal-overlay">
+      <div class="modal-content social-composer-modal">
+        <button class="modal-close" onclick="closeSocialComposer()">&times;</button>
+        <div id="socialComposerContent"></div>
+      </div>
+    </div>
+  </body>
+</html>

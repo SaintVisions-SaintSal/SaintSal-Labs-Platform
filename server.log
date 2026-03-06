@@ -1,0 +1,7 @@
+INFO:     Started server process [7127]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+✅ Supabase public client initialized: https://euxrlpuegeiggedqbkiv.supabase.co
+✅ Supabase admin client initialized
+INFO:     127.0.0.1:56002 - "GET /api/health HTTP/1.1" 200 OK

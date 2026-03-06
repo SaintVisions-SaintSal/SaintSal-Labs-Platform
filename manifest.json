@@ -1,0 +1,32 @@
+{
+  "name": "SaintSal™ Labs",
+  "short_name": "SaintSal",
+  "description": "AI Search & Chat powered by HACP™ Human-AI Connection Protocol. Responsible Intelligence.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0a0a0a",
+  "theme_color": "#0a0a0a",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "favicon.png",
+      "sizes": "32x32",
+      "type": "image/png"
+    },
+    {
+      "src": "saintsal-icon-sm.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "saintsal-icon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["productivity", "business", "utilities"],
+  "lang": "en",
+  "dir": "ltr"
+}
