@@ -22,7 +22,13 @@ from supabase import create_client, Client as SupabaseClient
 app = FastAPI()
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
-client = Anthropic()
+# Initialize Anthropic client (requires ANTHROPIC_API_KEY env var)
+try:
+    client = Anthropic()
+    print(f"✅ Anthropic client initialized")
+except Exception as e:
+    client = None
+    print(f"⚠️ Anthropic client not initialized (set ANTHROPIC_API_KEY): {e}")
 
 # ─── Supabase Client ──────────────────────────────────────────────────────────
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "https://euxrlpuegeiggedqbkiv.supabase.co")
@@ -259,18 +265,36 @@ async def chat(request: Request):
         if sources:
             yield f"data: {json.dumps({'type': 'sources', 'sources': sources})}\n\n"
         
+        # Check if Anthropic client is available
+        if not client:
+            yield f"data: {json.dumps({'type': 'phase', 'phase': 'generating'})}\n\n"
+            # Build a response from sources when AI is unavailable
+            if sources:
+                fallback = "Here's what I found from the web:\n\n"
+                for i, s in enumerate(sources):
+                    fallback += f"**[{i+1}] {s['title']}** ({s['domain']})\n{s['content']}\n\n"
+                fallback += "\n---\n*Note: AI response generation requires an Anthropic API key. Set `ANTHROPIC_API_KEY` in your Render environment variables to enable full SAL intelligence.*"
+            else:
+                fallback = "*AI response generation is not configured. Set `ANTHROPIC_API_KEY` in your Render environment variables to enable SAL intelligence.*"
+            yield f"data: {json.dumps({'type': 'text', 'content': fallback})}\n\n"
+            yield f"data: {json.dumps({'type': 'done'})}\n\n"
+            return
+        
         # Phase: thinking
         yield f"data: {json.dumps({'type': 'phase', 'phase': 'generating'})}\n\n"
         
         # Stream the AI response token-by-token
-        with client.messages.stream(
-            model="claude_sonnet_4_6",
-            max_tokens=4096,
-            system=system_prompt,
-            messages=messages,
-        ) as stream:
-            for text in stream.text_stream:
-                yield f"data: {json.dumps({'type': 'text', 'content': text})}\n\n"
+        try:
+            with client.messages.stream(
+                model="claude-sonnet-4-20250514",
+                max_tokens=4096,
+                system=system_prompt,
+                messages=messages,
+            ) as stream:
+                for text in stream.text_stream:
+                    yield f"data: {json.dumps({'type': 'text', 'content': text})}\n\n"
+        except Exception as e:
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e)[:300]})}\n\n"
         
         yield f"data: {json.dumps({'type': 'done'})}\n\n"
     
@@ -337,18 +361,29 @@ async def websocket_chat(websocket: WebSocket):
             messages.append({"role": "user", "content": query})
             
             # Phase 3: Stream tokens
-            try:
-                with client.messages.stream(
-                    model="claude_sonnet_4_6",
-                    max_tokens=4096,
-                    system=system_prompt,
-                    messages=messages,
-                ) as stream:
-                    for text in stream.text_stream:
-                        await websocket.send_json({"type": "text", "content": text})
-            except Exception as e:
-                print(f"[WS] Stream error: {e}")
-                await websocket.send_json({"type": "error", "message": f"AI generation error: {str(e)[:200]}"})
+            if not client:
+                # Fallback when Anthropic is not configured
+                if sources:
+                    fallback = "Here's what I found from the web:\n\n"
+                    for i, s in enumerate(sources):
+                        fallback += f"**[{i+1}] {s['title']}** ({s['domain']})\n{s['content']}\n\n"
+                    fallback += "\n---\n*Set ANTHROPIC_API_KEY to enable full AI responses.*"
+                else:
+                    fallback = "*AI not configured. Set ANTHROPIC_API_KEY in Render env vars.*"
+                await websocket.send_json({"type": "text", "content": fallback})
+            else:
+                try:
+                    with client.messages.stream(
+                        model="claude-sonnet-4-20250514",
+                        max_tokens=4096,
+                        system=system_prompt,
+                        messages=messages,
+                    ) as stream:
+                        for text in stream.text_stream:
+                            await websocket.send_json({"type": "text", "content": text})
+                except Exception as e:
+                    print(f"[WS] Stream error: {e}")
+                    await websocket.send_json({"type": "error", "message": f"AI generation error: {str(e)[:200]}"})
             
             # Done
             await websocket.send_json({"type": "done"})
