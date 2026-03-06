@@ -43,6 +43,9 @@ function setView(view) {
   if (view === 'domains') {
     setTimeout(initDomainsView, 100);
   }
+  if (view === 'studio') {
+    setTimeout(function() { loadStudioModels(); renderStudioControls(); renderStudioGallery(); loadStudioGallery(); initStudioShowcase(); }, 50);
+  }
 
   // Update sidebar active for non-vertical views
   document.querySelectorAll('.nav-item[data-view]').forEach(function(item) {
@@ -1311,8 +1314,10 @@ function initShowcaseScrollListener() {
 
 // Initialize showcase on Studio load
 function initStudioShowcase() {
-  renderStudioExampleChips();
-  initShowcaseScrollListener();
+  setTimeout(function() {
+    renderStudioExampleChips();
+    initShowcaseScrollListener();
+  }, 50);
 }
 
 function studioToggleView(view) {
