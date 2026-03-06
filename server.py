@@ -13,7 +13,7 @@ from typing import Optional
 
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect, File, UploadFile, Form, Depends, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse, JSONResponse, Response, FileResponse
+from fastapi.responses import StreamingResponse, JSONResponse, Response, FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from anthropic import Anthropic
 from pydantic import BaseModel
@@ -2465,6 +2465,277 @@ async def health():
             "social_connected": [k for k, v in social_connections.items() if v.get("connected")],
         },
     }
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# ENHANCED DOMAINS — DNS, WHOIS, SSL, Managed Domains
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@app.get("/api/domains/managed")
+async def get_managed_domains():
+    """Get user's managed domains from GoDaddy."""
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as http:
+            resp = await http.get(
+                f"{GODADDY_BASE}/v1/domains",
+                headers=GODADDY_HEADERS,
+            )
+            if resp.status_code == 200:
+                domains = resp.json()
+                result = []
+                for d in domains:
+                    result.append({
+                        "domain": d.get("domain", ""),
+                        "status": d.get("status", "UNKNOWN"),
+                        "expires": d.get("expires", "")[:10] if d.get("expires") else "N/A",
+                        "renewAuto": d.get("renewAuto", False),
+                        "privacy": d.get("privacy", False),
+                        "locked": d.get("locked", False),
+                        "nameServers": d.get("nameServers", []),
+                    })
+                return {"domains": result, "api_live": True}
+            else:
+                return {"domains": [], "api_live": False, "note": f"GoDaddy API returned {resp.status_code} — showing your known domains"}
+    except Exception as e:
+        return {"domains": [], "api_live": False, "note": f"GoDaddy API unavailable — showing your known domains"}
+
+
+@app.get("/api/domains/dns/{domain}")
+async def get_dns_records(domain: str):
+    """Get DNS records for a domain from GoDaddy."""
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as http:
+            resp = await http.get(
+                f"{GODADDY_BASE}/v1/domains/{domain}/records",
+                headers=GODADDY_HEADERS,
+            )
+            if resp.status_code == 200:
+                records = resp.json()
+                return {"domain": domain, "records": records, "api_live": True}
+            else:
+                return {"domain": domain, "records": [], "api_live": False, "note": f"GoDaddy API returned {resp.status_code} — showing example records"}
+    except Exception as e:
+        return {"domain": domain, "records": [], "api_live": False, "note": "GoDaddy API unavailable — showing example records"}
+
+
+@app.get("/api/domains/whois/{domain}")
+async def get_whois(domain: str):
+    """Get WHOIS info for a domain."""
+    try:
+        # Try Python whois lookup (no GoDaddy API needed)
+        import subprocess
+        result = subprocess.run(["whois", domain], capture_output=True, text=True, timeout=10)
+        if result.returncode == 0 and result.stdout:
+            lines = result.stdout.strip().split("\n")
+            whois = {}
+            for line in lines:
+                if ":" in line:
+                    key, val = line.split(":", 1)
+                    key = key.strip().lower()
+                    val = val.strip()
+                    if "registrar" in key and "registrar" not in whois:
+                        whois["registrar"] = val
+                    elif "creation" in key or "created" in key:
+                        whois["createdDate"] = val
+                    elif "expir" in key:
+                        whois["expiresDate"] = val
+                    elif "updated" in key:
+                        whois["updatedDate"] = val
+                    elif "name server" in key:
+                        if "nameServers" not in whois:
+                            whois["nameServers"] = []
+                        whois["nameServers"].append(val.lower())
+                    elif "status" in key:
+                        if "status" not in whois:
+                            whois["status"] = []
+                        whois["status"].append(val.split(" ")[0])
+            return {"domain": domain, "whois": whois, "api_live": True}
+    except Exception:
+        pass
+
+    # Fallback: try GoDaddy API
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as http:
+            resp = await http.get(
+                f"{GODADDY_BASE}/v1/domains/{domain}",
+                headers=GODADDY_HEADERS,
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                return {
+                    "domain": domain,
+                    "whois": {
+                        "registrar": "GoDaddy.com, LLC",
+                        "createdDate": data.get("createdAt", "N/A"),
+                        "expiresDate": data.get("expires", "N/A"),
+                        "nameServers": data.get("nameServers", []),
+                        "status": [data.get("status", "UNKNOWN")],
+                    },
+                    "api_live": True,
+                }
+    except Exception:
+        pass
+
+    return {
+        "domain": domain,
+        "whois": {"registrar": "Unknown", "createdDate": "N/A", "expiresDate": "N/A", "nameServers": [], "status": []},
+        "api_live": False,
+        "note": "WHOIS lookup unavailable"
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# CONNECTORS — Generic OAuth + API Key Management for 70+ Integrations
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# In-memory connector storage (production: Supabase encrypted vault)
+connector_credentials = {}
+
+
+@app.post("/api/connectors/auth/{connector_id}")
+async def initiate_connector_auth(connector_id: str, request: Request):
+    """Initiate OAuth flow for a connector."""
+    # Check if we have stored OAuth credentials for this connector
+    creds = connector_credentials.get(connector_id, {})
+    client_id = creds.get("client_id", "")
+    
+    # Platform-specific OAuth URLs
+    oauth_configs = {
+        "youtube": {"auth_url": "https://accounts.google.com/o/oauth2/v2/auth", "scopes": "https://www.googleapis.com/auth/youtube"},
+        "twitter": {"auth_url": "https://twitter.com/i/oauth2/authorize", "scopes": "tweet.read tweet.write users.read"},
+        "instagram": {"auth_url": "https://api.instagram.com/oauth/authorize", "scopes": "instagram_basic,instagram_content_publish"},
+        "facebook": {"auth_url": "https://www.facebook.com/v18.0/dialog/oauth", "scopes": "pages_manage_posts,pages_read_engagement"},
+        "tiktok": {"auth_url": "https://www.tiktok.com/v2/auth/authorize/", "scopes": "video.upload,video.list"},
+        "linkedin": {"auth_url": "https://www.linkedin.com/oauth/v2/authorization", "scopes": "w_member_social,r_liteprofile"},
+        "snapchat": {"auth_url": "https://accounts.snapchat.com/accounts/oauth2/auth", "scopes": "snapchat-marketing-api"},
+        "gohighlevel": {"auth_url": "https://marketplace.gohighlevel.com/oauth/chooselocation", "scopes": "contacts.write opportunities.write"},
+        "hubspot": {"auth_url": "https://app.hubspot.com/oauth/authorize", "scopes": "crm.objects.contacts.read crm.objects.deals.read"},
+        "salesforce": {"auth_url": "https://login.salesforce.com/services/oauth2/authorize", "scopes": "api refresh_token"},
+        "shopify": {"auth_url": "https://YOUR_SHOP.myshopify.com/admin/oauth/authorize", "scopes": "read_products,write_orders"},
+        "github": {"auth_url": "https://github.com/login/oauth/authorize", "scopes": "repo user"},
+        "slack": {"auth_url": "https://slack.com/oauth/v2/authorize", "scopes": "chat:write channels:read"},
+        "notion": {"auth_url": "https://api.notion.com/v1/oauth/authorize", "scopes": ""},
+        "discord": {"auth_url": "https://discord.com/api/oauth2/authorize", "scopes": "bot messages.read"},
+        "coinbase": {"auth_url": "https://www.coinbase.com/oauth/authorize", "scopes": "wallet:accounts:read"},
+    }
+    
+    config = oauth_configs.get(connector_id, {})
+    auth_base = config.get("auth_url", "")
+    scopes = config.get("scopes", "")
+    redirect_uri = f"{os.environ.get('APP_URL', 'https://saintsallabs.com')}/api/connectors/callback/{connector_id}"
+    
+    if client_id and auth_base:
+        # Build real OAuth URL
+        import urllib.parse
+        params = {
+            "client_id": client_id,
+            "redirect_uri": redirect_uri,
+            "scope": scopes,
+            "response_type": "code",
+            "state": connector_id,
+        }
+        auth_url = f"{auth_base}?{urllib.parse.urlencode(params)}"
+        return {"auth_url": auth_url, "status": "redirect", "connector": connector_id}
+    else:
+        return {
+            "auth_url": f"{auth_base}?client_id=YOUR_APP_CLIENT_ID&redirect_uri={redirect_uri}&scope={scopes}&response_type=code" if auth_base else "",
+            "status": "setup_required",
+            "connector": connector_id,
+            "message": f"OAuth credentials not yet configured for {connector_id}. Set up your app credentials to enable connection.",
+            "redirect_uri": redirect_uri,
+        }
+
+
+@app.get("/api/connectors/callback/{connector_id}")
+async def connector_oauth_callback(connector_id: str, code: str = "", state: str = ""):
+    """Handle OAuth callback — exchange code for token."""
+    if not code:
+        return JSONResponse({"error": "No authorization code received"}, status_code=400)
+    
+    creds = connector_credentials.get(connector_id, {})
+    # In production: exchange code for token using client_secret
+    # Store token in encrypted Supabase vault
+    
+    # For now, mark as connected
+    connector_credentials[connector_id] = {
+        **creds,
+        "connected": True,
+        "auth_code": code,
+        "connected_at": datetime.now().isoformat(),
+    }
+    
+    # Redirect back to app
+    return HTMLResponse(f"""
+        <html><body><script>
+            window.opener && window.opener.postMessage({{type: 'connector_connected', connector: '{connector_id}'}}, '*');
+            window.close();
+        </script><p>Connected! You can close this window.</p></body></html>
+    """)
+
+
+@app.post("/api/connectors/save-key")
+async def save_connector_api_key(request: Request):
+    """Save an API key for a connector."""
+    body = await request.json()
+    connector_id = body.get("connector_id", "")
+    api_key = body.get("api_key", "")
+    
+    if not connector_id or not api_key:
+        return JSONResponse({"error": "Connector ID and API key required"}, status_code=400)
+    
+    # Store (in production: encrypt and store in Supabase)
+    connector_credentials[connector_id] = {
+        "api_key": api_key[:4] + "***" + api_key[-4:],  # Mask for storage
+        "api_key_full": api_key,  # In production: encrypt this
+        "connected": True,
+        "connected_at": datetime.now().isoformat(),
+    }
+    
+    return {"status": "connected", "connector": connector_id, "message": f"API key saved for {connector_id}"}
+
+
+@app.post("/api/connectors/save-oauth-creds")
+async def save_connector_oauth_creds(request: Request):
+    """Save OAuth client credentials and initiate auth flow."""
+    body = await request.json()
+    connector_id = body.get("connector_id", "")
+    client_id = body.get("client_id", "")
+    client_secret = body.get("client_secret", "")
+    
+    if not connector_id or not client_id:
+        return JSONResponse({"error": "Connector ID and Client ID required"}, status_code=400)
+    
+    connector_credentials[connector_id] = {
+        "client_id": client_id,
+        "client_secret": client_secret,
+        "connected": False,
+    }
+    
+    # Now initiate the OAuth flow with the saved credentials
+    # Re-call the auth endpoint which will now use the stored client_id
+    from starlette.requests import Request as StarletteRequest
+    result = await initiate_connector_auth(connector_id, request)
+    return result
+
+
+@app.get("/api/connectors/status")
+async def get_connectors_status():
+    """Get connection status for all connectors."""
+    status = {}
+    for cid, creds in connector_credentials.items():
+        status[cid] = {
+            "connected": creds.get("connected", False),
+            "connected_at": creds.get("connected_at"),
+            "has_key": bool(creds.get("api_key") or creds.get("client_id")),
+        }
+    # Also include social connections
+    for pid, conn in social_connections.items():
+        if pid not in status:
+            status[pid] = {
+                "connected": conn.get("connected", False),
+                "connected_at": conn.get("connected_at"),
+            }
+    return {"connectors": status}
 
 
 # ── Static file serving (must be AFTER all API routes) ──────────────────────

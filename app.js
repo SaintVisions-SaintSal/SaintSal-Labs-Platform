@@ -40,6 +40,9 @@ function setView(view) {
   if (view === 'connectors') {
     setTimeout(renderConnectorsView, 100);
   }
+  if (view === 'domains') {
+    setTimeout(initDomainsView, 100);
+  }
 
   // Update sidebar active for non-vertical views
   document.querySelectorAll('.nav-item[data-view]').forEach(function(item) {
@@ -55,7 +58,7 @@ function setView(view) {
     document.getElementById('topbarBreadcrumb').innerHTML = '<span>' + (verticalNames[currentVertical] || 'Search') + '</span>';
   } else {
     document.querySelectorAll('.nav-item[data-vertical]').forEach(function(i) { i.classList.remove('active'); });
-    var breadcrumbMap = { pricing:'Pricing', welcome:'Welcome', account:'Account', studio:'Studio', domains:'Domains', launchpad:'Launch Pad', connectors:'Connectors', bizplan:'Business Plan' };
+    var breadcrumbMap = { pricing:'Pricing', welcome:'Welcome', account:'Account', studio:'Studio', domains:'Domains & SSL', launchpad:'Launch Pad', connectors:'Integrations', bizplan:'Business Plan' };
     document.getElementById('topbarBreadcrumb').innerHTML = '<span>' + (breadcrumbMap[view] || view) + '</span>';
   }
 
@@ -1565,6 +1568,7 @@ var _origHandleHash = handleHash;
 handleHash = function() {
   _origHandleHash();
   if (currentView === 'connectors') renderConnectorsView();
+  if (currentView === 'domains') initDomainsView();
   if (currentView === 'studio') { loadStudioModels(); renderStudioControls(); renderStudioGallery(); loadStudioGallery(); }
 };
 

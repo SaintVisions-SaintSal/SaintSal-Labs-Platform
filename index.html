@@ -34,6 +34,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="connectors-domains.css">
 </head>
 <body>
 
@@ -119,7 +120,7 @@
       <div class="nav-section-label">System</div>
       <div class="nav-item" data-view="connectors" onclick="setView('connectors')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"/><path d="m14.7 6.3-1 1"/><path d="m6.3 14.7 1-1"/><circle cx="12" cy="12" r="2"/><path d="m10.3 17.7-1 1"/><path d="m17.7 10.3-1 1"/></svg>
-        Connectors
+        Integrations
       </div>
       <div class="nav-item" data-view="pricing" onclick="navigate('pricing')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
@@ -607,16 +608,7 @@
 
     <!-- Connectors View -->
     <div class="view connectors-view" id="connectorsView">
-      <div class="connectors-layout">
-        <div class="connectors-header">
-          <div class="connectors-title">
-            <svg viewBox="0 0 24 24" fill="none" stroke="var(--accent-gold)" stroke-width="2" width="22" height="22"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
-            <span>Social Connections</span>
-          </div>
-          <div class="connectors-subtitle">Connect your social media accounts to publish content directly from Studio</div>
-        </div>
-        <div id="connectorsGrid" class="connectors-grid"></div>
-      </div>
+      <div class="connectors-layout" style="max-width:1100px;margin:0 auto;padding:var(--space-6) var(--space-5);"></div>
       <div class="app-footer">SaintSal™ <span class="footer-labs-green">LABS</span> · Responsible Intelligence · Patent #10,290,222 · <a href="https://www.perplexity.ai/computer" target="_blank" rel="noopener noreferrer">Created with Perplexity Computer</a></div>
     </div>
 
@@ -665,6 +657,9 @@
   </div>
 </div>
 
+<!-- Connector Auth Modal -->
+<div class="modal-overlay" id="connectorModal"></div>
+
 <!-- Mobile Tab Bar -->
 <div class="mobile-tabs" id="mobileTabs">
   <div class="mobile-tabs-inner">
@@ -690,13 +685,16 @@
   <div class="mobile-more-grid">
     <div class="mobile-more-item" onclick="navigate('studio');closeMobileMore()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>Studio</div>
     <div class="mobile-more-item" onclick="navigate('bizplan');closeMobileMore()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/></svg>Biz Plan</div>
-    <div class="mobile-more-item" onclick="navigate('connectors');closeMobileMore()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="2"/></svg>Connectors</div>
+    <div class="mobile-more-item" onclick="navigate('connectors');closeMobileMore()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="2"/></svg>Integrations</div>
     <div class="mobile-more-item" onclick="navigate('pricing');closeMobileMore()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/></svg>Pricing</div>
     <div class="mobile-more-item" onclick="navigate('account');closeMobileMore()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>Account</div>
   </div>
 </div>
 
 <script src="app.js"></script>
+<script src="connectors-data.js"></script>
+<script src="connectors-view.js"></script>
+<script src="domains-view.js"></script>
 
 
     <!-- Social Composer Modal -->
@@ -709,11 +707,11 @@
   
 <script id="force-view-script">
 window.addEventListener('DOMContentLoaded', function() {
-  // Override: force view to 'connectors' after handleHash runs
+  // Initialize the current view if it's a special view
   setTimeout(function() {
-    if(window.setView) setView('connectors');
-    
-  }, 50);
+    if (window.currentView === 'connectors' && window.renderConnectorsView) renderConnectorsView();
+    if (window.currentView === 'domains' && window.initDomainsView) initDomainsView();
+  }, 100);
 });
 </script>
 </body>
