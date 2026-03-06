@@ -16,6 +16,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, JSONResponse, Response, FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from anthropic import Anthropic
+import openai
 from pydantic import BaseModel
 from supabase import create_client, Client as SupabaseClient
 
@@ -29,6 +30,19 @@ try:
 except Exception as e:
     client = None
     print(f"⚠️ Anthropic client not initialized (set ANTHROPIC_API_KEY): {e}")
+
+# Initialize xAI/Grok client (OpenAI-compatible fallback)
+XAI_API_KEY = os.environ.get("XAI_API_KEY", "")
+xai_client = None
+if XAI_API_KEY:
+    try:
+        xai_client = openai.OpenAI(api_key=XAI_API_KEY, base_url="https://api.x.ai/v1")
+        print(f"✅ xAI/Grok client initialized (fallback LLM)")
+    except Exception as e:
+        print(f"⚠️ xAI/Grok client not initialized: {e}")
+
+ELEVENLABS_API_KEY = os.environ.get("ELEVENLABS_API_KEY", "")
+print(f"{'✅' if ELEVENLABS_API_KEY else '⚠️'} ElevenLabs API key {'configured' if ELEVENLABS_API_KEY else 'not set'}")
 
 # ─── Supabase Client ──────────────────────────────────────────────────────────
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "https://euxrlpuegeiggedqbkiv.supabase.co")
@@ -166,6 +180,73 @@ async def search_web(query: str, search_depth: str = "basic", max_results: int =
             return {"results": [], "query": query}
 
 
+# ─── Vertical-Specific Search Enhancement ─────────────────────────────────────
+
+def enhance_search_query(query: str, vertical: str) -> list[str]:
+    """Generate optimized search queries based on vertical context.
+    Returns a list of queries to run in parallel for richer results."""
+    base = query.strip()
+    if not base:
+        return [base]
+
+    if vertical == "sports":
+        return [
+            f"{base} latest scores results 2026",
+            f"{base} injury news trade rumors today",
+        ]
+    elif vertical == "finance":
+        return [
+            f"{base} stock market analysis 2026",
+            f"{base} financial data earnings report",
+        ]
+    elif vertical == "realestate":
+        return [
+            f"{base} real estate market data 2026",
+            f"{base} property listings investment analysis",
+        ]
+    elif vertical == "tech":
+        return [
+            f"{base} technology news latest 2026",
+            f"{base} product launch developer tools",
+        ]
+    elif vertical == "news":
+        return [
+            f"{base} breaking news today 2026",
+            f"{base} analysis latest developments",
+        ]
+    else:
+        return [base]
+
+
+async def multi_search(query: str, vertical: str, max_results: int = 8) -> list:
+    """Run enhanced vertical-specific searches in parallel."""
+    queries = enhance_search_query(query, vertical)
+    topic_map = {"sports": "news", "news": "news", "finance": "news",
+                 "realestate": "general", "tech": "general", "search": "general"}
+    topic = topic_map.get(vertical, "general")
+
+    all_sources = []
+    seen_urls = set()
+
+    # Run searches in parallel
+    tasks = [
+        search_web(q, search_depth="advanced", max_results=max_results, topic=topic)
+        for q in queries
+    ]
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+
+    for result in results:
+        if isinstance(result, Exception):
+            continue
+        for source in result.get("results", []):
+            url = source.get("url", "")
+            if url and url not in seen_urls:
+                seen_urls.add(url)
+                all_sources.append(source)
+
+    return all_sources[:max_results]
+
+
 # ─── Discover Feed (Trending Topics) ─────────────────────────────────────────
 
 DISCOVER_TOPICS = {
@@ -216,9 +297,39 @@ DISCOVER_TOPICS = {
 
 @app.get("/api/discover/{category}")
 async def get_discover(category: str):
-    """Get trending topics for a category."""
+    """Get trending topics — live from Tavily search when available, hardcoded fallback."""
+    # Try live search first
+    if TAVILY_API_KEY:
+        live_queries = {
+            "top": "trending news today 2026",
+            "sports": "sports scores results today 2026",
+            "news": "breaking news today headlines 2026",
+            "tech": "technology AI news today 2026",
+            "finance": "stock market crypto financial news today 2026",
+            "realestate": "real estate housing market news 2026",
+        }
+        query = live_queries.get(category, live_queries["top"])
+        try:
+            results = await search_web(query, search_depth="basic", max_results=6, topic="news")
+            live_topics = []
+            for r in results.get("results", []):
+                live_topics.append({
+                    "title": r.get("title", ""),
+                    "category": category.capitalize(),
+                    "sources": 1,
+                    "time": "Live",
+                    "summary": r.get("content", "")[:200],
+                    "url": r.get("url", ""),
+                    "domain": r.get("domain", ""),
+                })
+            if live_topics:
+                return {"category": category, "topics": live_topics, "updated_at": datetime.now().isoformat(), "live": True}
+        except Exception as e:
+            print(f"Live discover failed for {category}: {e}")
+
+    # Fallback to hardcoded
     topics = DISCOVER_TOPICS.get(category, DISCOVER_TOPICS["top"])
-    return {"category": category, "topics": topics, "updated_at": datetime.now().isoformat()}
+    return {"category": category, "topics": topics, "updated_at": datetime.now().isoformat(), "live": False}
 
 
 # ─── Chat with Streaming ─────────────────────────────────────────────────────
@@ -235,16 +346,9 @@ async def chat(request: Request):
     system_prompt = SYSTEM_PROMPTS.get(vertical, SYSTEM_PROMPTS["search"])
     sources = []
     
-    # Step 1: Web search for RAG context
+    # Step 1: Enhanced vertical-specific web search
     if use_search and query:
-        topic_map = {"sports": "news", "news": "news", "finance": "news", "realestate": "general", "tech": "general", "search": "general"}
-        search_results = await search_web(
-            query,
-            search_depth="advanced",
-            max_results=8,
-            topic=topic_map.get(vertical, "general")
-        )
-        sources = search_results.get("results", [])
+        sources = await multi_search(query, vertical, max_results=8)
         
         if sources:
             context = "\n\n".join([
@@ -265,36 +369,54 @@ async def chat(request: Request):
         if sources:
             yield f"data: {json.dumps({'type': 'sources', 'sources': sources})}\n\n"
         
-        # Check if Anthropic client is available
-        if not client:
-            yield f"data: {json.dumps({'type': 'phase', 'phase': 'generating'})}\n\n"
-            # Build a response from sources when AI is unavailable
+        # Phase: thinking
+        yield f"data: {json.dumps({'type': 'phase', 'phase': 'generating'})}\n\n"
+
+        ai_responded = False
+
+        # Try Anthropic (Claude) first
+        if client:
+            try:
+                with client.messages.stream(
+                    model="claude-sonnet-4-20250514",
+                    max_tokens=4096,
+                    system=system_prompt,
+                    messages=messages,
+                ) as stream:
+                    for text in stream.text_stream:
+                        yield f"data: {json.dumps({'type': 'text', 'content': text})}\n\n"
+                ai_responded = True
+            except Exception as e:
+                print(f"[Chat] Anthropic error: {e}")
+
+        # Fallback to xAI/Grok
+        if not ai_responded and xai_client:
+            try:
+                xai_messages = [{"role": "system", "content": system_prompt}] + [
+                    {"role": m["role"], "content": m["content"]} for m in messages
+                ]
+                stream = xai_client.chat.completions.create(
+                    model="grok-3-latest",
+                    messages=xai_messages,
+                    max_tokens=4096,
+                    stream=True,
+                )
+                for chunk in stream:
+                    if chunk.choices and chunk.choices[0].delta.content:
+                        yield f"data: {json.dumps({'type': 'text', 'content': chunk.choices[0].delta.content})}\n\n"
+                ai_responded = True
+            except Exception as e:
+                print(f"[Chat] xAI/Grok error: {e}")
+
+        # Final fallback: show raw search results
+        if not ai_responded:
             if sources:
                 fallback = "Here's what I found from the web:\n\n"
                 for i, s in enumerate(sources):
                     fallback += f"**[{i+1}] {s['title']}** ({s['domain']})\n{s['content']}\n\n"
-                fallback += "\n---\n*Note: AI response generation requires an Anthropic API key. Set `ANTHROPIC_API_KEY` in your Render environment variables to enable full SAL intelligence.*"
             else:
-                fallback = "*AI response generation is not configured. Set `ANTHROPIC_API_KEY` in your Render environment variables to enable SAL intelligence.*"
+                fallback = "*AI models are temporarily unavailable. Please try again in a moment.*"
             yield f"data: {json.dumps({'type': 'text', 'content': fallback})}\n\n"
-            yield f"data: {json.dumps({'type': 'done'})}\n\n"
-            return
-        
-        # Phase: thinking
-        yield f"data: {json.dumps({'type': 'phase', 'phase': 'generating'})}\n\n"
-        
-        # Stream the AI response token-by-token
-        try:
-            with client.messages.stream(
-                model="claude-sonnet-4-20250514",
-                max_tokens=4096,
-                system=system_prompt,
-                messages=messages,
-            ) as stream:
-                for text in stream.text_stream:
-                    yield f"data: {json.dumps({'type': 'text', 'content': text})}\n\n"
-        except Exception as e:
-            yield f"data: {json.dumps({'type': 'error', 'message': str(e)[:300]})}\n\n"
         
         yield f"data: {json.dumps({'type': 'done'})}\n\n"
     
@@ -327,19 +449,11 @@ async def websocket_chat(websocket: WebSocket):
             system_prompt = SYSTEM_PROMPTS.get(vertical, SYSTEM_PROMPTS["search"])
             sources = []
             
-            # Phase 1: Searching
+            # Phase 1: Enhanced vertical search
             if use_search:
                 await websocket.send_json({"type": "phase", "phase": "searching", "query": query})
-                
-                topic_map = {"sports": "news", "news": "news", "finance": "news", "realestate": "general", "tech": "general", "search": "general"}
                 try:
-                    search_results = await search_web(
-                        query,
-                        search_depth="advanced",
-                        max_results=8,
-                        topic=topic_map.get(vertical, "general")
-                    )
-                    sources = search_results.get("results", [])
+                    sources = await multi_search(query, vertical, max_results=8)
                 except Exception as e:
                     print(f"[WS] Search error: {e}")
                 
@@ -2649,6 +2763,123 @@ def _demo_usage():
         "by_tier": {}, "by_model": {}, "by_action": {},
     }
 
+
+
+# ─── Dashboard API ──────────────────────────────────────────────────────────────
+
+@app.get("/api/dashboard/trending")
+async def dashboard_trending():
+    """Get live trending topics across all verticals for dashboard."""
+    verticals = ["sports", "news", "tech", "finance", "realestate"]
+    trending = {}
+
+    if TAVILY_API_KEY:
+        queries = {
+            "sports": "sports scores results highlights today",
+            "news": "breaking news top stories today",
+            "tech": "technology AI product launches today",
+            "finance": "stock market crypto financial news today",
+            "realestate": "housing market real estate news today",
+        }
+        tasks = {v: search_web(q, search_depth="basic", max_results=3, topic="news")
+                 for v, q in queries.items()}
+
+        for v in verticals:
+            try:
+                result = await tasks[v]
+                trending[v] = [
+                    {"title": r["title"], "url": r.get("url", ""), "domain": r.get("domain", "")}
+                    for r in result.get("results", [])[:3]
+                ]
+            except Exception:
+                trending[v] = []
+    else:
+        for v in verticals:
+            trending[v] = []
+
+    return {"trending": trending, "updated_at": datetime.now().isoformat()}
+
+
+@app.post("/api/dashboard/preferences")
+async def save_preferences(request: Request, user=Depends(get_current_user)):
+    """Save user dashboard preferences (topics, verticals, etc.)."""
+    if not user:
+        return JSONResponse({"error": "Authentication required"}, status_code=401)
+    body = await request.json()
+    # Store in Supabase if available
+    if supabase_admin:
+        try:
+            supabase_admin.table("user_preferences").upsert({
+                "user_id": user["id"],
+                "preferences": body,
+                "updated_at": datetime.now().isoformat()
+            }).execute()
+            return {"status": "saved"}
+        except Exception as e:
+            print(f"Save preferences error: {e}")
+    return {"status": "saved_locally"}
+
+
+@app.get("/api/dashboard/preferences")
+async def get_preferences(user=Depends(get_current_user)):
+    """Get user dashboard preferences."""
+    if not user:
+        return {"preferences": {"verticals": ["sports", "news", "tech", "finance", "realestate"],
+                                "theme": "dark", "notifications": True}}
+    if supabase_admin:
+        try:
+            result = supabase_admin.table("user_preferences").select("preferences").eq("user_id", user["id"]).execute()
+            if result.data:
+                return {"preferences": result.data[0]["preferences"]}
+        except Exception:
+            pass
+    return {"preferences": {"verticals": ["sports", "news", "tech", "finance", "realestate"],
+                            "theme": "dark", "notifications": True}}
+
+
+@app.post("/api/dashboard/saved-searches")
+async def save_search(request: Request, user=Depends(get_current_user)):
+    """Save a search to user's dashboard."""
+    if not user:
+        return JSONResponse({"error": "Authentication required"}, status_code=401)
+    body = await request.json()
+    search_data = {
+        "user_id": user["id"],
+        "query": body.get("query", ""),
+        "vertical": body.get("vertical", "search"),
+        "created_at": datetime.now().isoformat()
+    }
+    if supabase_admin:
+        try:
+            supabase_admin.table("saved_searches").insert(search_data).execute()
+            return {"status": "saved", "search": search_data}
+        except Exception as e:
+            print(f"Save search error: {e}")
+    return {"status": "saved_locally", "search": search_data}
+
+
+@app.get("/api/dashboard/saved-searches")
+async def get_saved_searches(user=Depends(get_current_user)):
+    """Get user's saved searches."""
+    if not user:
+        return {"searches": []}
+    if supabase_admin:
+        try:
+            result = supabase_admin.table("saved_searches").select("*").eq("user_id", user["id"]).order("created_at", desc=True).limit(20).execute()
+            return {"searches": result.data or []}
+        except Exception:
+            pass
+    return {"searches": []}
+
+
+@app.get("/api/voice/config")
+async def voice_config():
+    """Get ElevenLabs voice agent configuration."""
+    return {
+        "enabled": bool(ELEVENLABS_API_KEY),
+        "agent_id": os.environ.get("ELEVENLABS_AGENT_ID", ""),
+        "api_key_public": ELEVENLABS_API_KEY[:8] + "..." if ELEVENLABS_API_KEY else "",
+    }
 
 # ─── Health Check ───────────────────────────────────────────────────────────────────
 

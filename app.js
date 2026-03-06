@@ -238,7 +238,8 @@ function loadDiscover(category) {
         html += '<div class="discover-card-top"><span class="discover-card-badge">' + escapeHtml(cat) + '</span><span class="discover-card-time">' + escapeHtml(timeAgo) + '</span></div>';
         html += '<div class="discover-card-title">' + escapeHtml(topic.title) + '</div>';
         html += '<div class="discover-card-summary">' + escapeHtml(topic.summary || '') + '</div>';
-        html += '<div class="discover-card-sources"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>' + sourcesCount + ' sources</div>';
+        var sourceInfo = sourcesCount ? sourcesCount + ' sources' : (topic.domain ? escapeHtml(topic.domain) : 'Live');
+        html += '<div class="discover-card-sources"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>' + sourceInfo + '</div>';
         html += '</div>';
       });
       grid.innerHTML = heroHtml + html;
@@ -2416,24 +2417,128 @@ function initDashboard() {
   var hour = new Date().getHours();
   var greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
   var greetingEl = document.getElementById('dashGreeting');
-  if (greetingEl) greetingEl.textContent = greeting + ', Cap';
+  if (greetingEl) {
+    var name = 'there';
+    try {
+      var userEl = document.getElementById('topbarUserName');
+      if (userEl && userEl.textContent.trim()) name = userEl.textContent.trim().split(' ')[0];
+    } catch(e) {}
+    greetingEl.textContent = greeting + ', ' + name;
+  }
 
-  // Populate stats from session data if available
-  var searches = (window._sessionData && window._sessionData.totalSearches) || 0;
-  var saved = (window._sessionData && window._sessionData.savedItems) || 0;
-  var alerts = (window._sessionData && window._sessionData.activeAlerts) || 0;
-  var compute = (window._sessionData && window._sessionData.computeMinutes) || 0;
-
+  // Session search count from chatHistory
+  var searches = chatHistory.filter(function(m) { return m.role === 'user'; }).length;
   var el;
   el = document.getElementById('dashTotalSearches'); if (el) el.textContent = searches;
-  el = document.getElementById('dashSavedItems'); if (el) el.textContent = saved;
-  el = document.getElementById('dashActiveAlerts'); if (el) el.textContent = alerts;
-  el = document.getElementById('dashComputeUsed'); if (el) el.textContent = compute + ' min';
+  el = document.getElementById('dashSavedItems'); if (el) el.textContent = '0';
+  el = document.getElementById('dashActiveAlerts'); if (el) el.textContent = '0';
+  el = document.getElementById('dashComputeUsed'); if (el) el.textContent = '0 min';
 
   // Update avatar
   var avatarEl = document.getElementById('dashAvatar');
   if (avatarEl) {
-    var userEl = document.getElementById('topbarUserAvatar');
-    if (userEl) avatarEl.textContent = userEl.textContent || 'C';
+    var userAv = document.getElementById('topbarUserAvatar');
+    if (userAv) avatarEl.textContent = userAv.textContent || 'S';
   }
+
+  // Fetch live trending data
+  fetchDashboardTrending();
+
+  // Fetch saved searches from API if logged in
+  fetchSavedSearches();
+
+  // Load usage data
+  fetchUsageStats();
+}
+
+function fetchDashboardTrending() {
+  fetch(API + '/api/dashboard/trending')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      var trending = data.trending || {};
+      // Build a "Live Feed" section above saved searches
+      var feedEl = document.getElementById('dashActivityFeed');
+      if (!feedEl) return;
+      var html = '';
+      var colors = { sports: 'var(--accent-amber)', news: 'var(--accent-blue)', tech: 'var(--accent-purple)', finance: 'var(--accent-green)', realestate: 'var(--accent-gold)' };
+      var labels = { sports: 'Sports', news: 'News', tech: 'Tech', finance: 'Finance', realestate: 'Real Estate' };
+      var verticals = ['sports', 'news', 'tech', 'finance', 'realestate'];
+      for (var v = 0; v < verticals.length; v++) {
+        var vert = verticals[v];
+        var items = trending[vert] || [];
+        for (var i = 0; i < items.length; i++) {
+          html += '<div class="dash-activity-item" style="cursor:pointer" onclick="switchVertical(\'' + vert + '\',null)">';
+          html += '<div class="dash-activity-dot" style="background:' + (colors[vert] || 'var(--accent-blue)') + '"></div>';
+          html += '<div class="dash-activity-content">';
+          html += '<div class="dash-activity-text">';
+          if (items[i].url) {
+            html += '<a href="' + escapeAttr(items[i].url) + '" target="_blank" rel="noopener" style="color:var(--text-primary);text-decoration:none">' + escapeHtml(items[i].title) + '</a>';
+          } else {
+            html += escapeHtml(items[i].title);
+          }
+          html += '</div>';
+          html += '<div class="dash-activity-time"><strong style="color:' + (colors[vert] || 'var(--accent-blue)') + '">' + labels[vert] + '</strong>' + (items[i].domain ? ' • ' + escapeHtml(items[i].domain) : '') + '</div>';
+          html += '</div></div>';
+        }
+      }
+      if (html) feedEl.innerHTML = html;
+    })
+    .catch(function(e) { console.log('Dashboard trending fetch error:', e); });
+}
+
+function fetchSavedSearches() {
+  var headers = authHeaders();
+  if (!headers.Authorization) return;
+  fetch(API + '/api/dashboard/saved-searches', { headers: headers })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      var searches = data.searches || [];
+      var el = document.getElementById('dashSavedItems');
+      if (el) el.textContent = searches.length;
+      if (searches.length > 0) {
+        var grid = document.getElementById('dashSavedGrid');
+        if (!grid) return;
+        var colors = { sports: '--accent-amber', news: '--accent-blue', tech: '--accent-purple', finance: '--accent-green', realestate: '--accent-gold', search: '--accent-blue' };
+        var html = '';
+        for (var i = 0; i < Math.min(searches.length, 6); i++) {
+          var s = searches[i];
+          var c = colors[s.vertical] || '--accent-blue';
+          html += '<div class="dash-saved-card">';
+          html += '<div class="dash-saved-top">';
+          html += '<span class="dash-saved-title">' + escapeHtml(s.query) + '</span>';
+          html += '<span class="dash-vertical-badge" style="background:var(' + c + '-dim);color:var(' + c + ')">' + escapeHtml(s.vertical) + '</span>';
+          html += '</div>';
+          html += '<div class="dash-saved-meta">' + (s.created_at || '') + '</div>';
+          html += '<button class="dash-rerun-btn" onclick="switchVertical(\'' + escapeAttr(s.vertical) + '\',null);setTimeout(function(){document.getElementById(\'searchInput\').value=\'' + escapeAttr(s.query).replace(/'/g, '') + '\';},200)">';
+          html += '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" width="12" height="12"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>';
+          html += ' Re-run</button></div>';
+        }
+        grid.innerHTML = html;
+      }
+    })
+    .catch(function(e) { console.log('Saved searches error:', e); });
+}
+
+function fetchUsageStats() {
+  var headers = authHeaders();
+  if (!headers.Authorization) return;
+  fetch(API + '/api/auth/usage', { headers: headers })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      var el = document.getElementById('dashComputeUsed');
+      if (el && data.total_minutes) el.textContent = Math.round(data.total_minutes) + ' min';
+      el = document.getElementById('dashTotalSearches');
+      if (el && data.total_queries) el.textContent = data.total_queries;
+    })
+    .catch(function(e) {});
+}
+
+function saveCurrentSearch(query, vertical) {
+  var headers = authHeaders();
+  if (!headers.Authorization) return;
+  fetch(API + '/api/dashboard/saved-searches', {
+    method: 'POST',
+    headers: Object.assign({ 'Content-Type': 'application/json' }, headers),
+    body: JSON.stringify({ query: query, vertical: vertical })
+  }).catch(function(e) {});
 }
