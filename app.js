@@ -22,7 +22,9 @@ var views = {
   domains: document.getElementById('domainsView'),
   launchpad: document.getElementById('launchpadView'),
   connectors: document.getElementById('connectorsView'),
-  bizplan: document.getElementById('bizplanView')
+  bizplan: document.getElementById('bizplanView'),
+  voice: document.getElementById('voiceView'),
+  dashboard: document.getElementById('dashboardView')
 };
 
 /* ============================================
@@ -46,6 +48,12 @@ function setView(view) {
   if (view === 'studio') {
     setTimeout(function() { loadStudioModels(); renderStudioControls(); renderStudioGallery(); loadStudioGallery(); }, 50);
   }
+  if (view === 'voice') {
+    // Initialize voice view
+  }
+  if (view === 'dashboard') {
+    setTimeout(initDashboard, 50);
+  }
 
   // Update sidebar active for non-vertical views
   document.querySelectorAll('.nav-item[data-view]').forEach(function(item) {
@@ -61,7 +69,7 @@ function setView(view) {
     document.getElementById('topbarBreadcrumb').innerHTML = '<span>' + (verticalNames[currentVertical] || 'Search') + '</span>';
   } else {
     document.querySelectorAll('.nav-item[data-vertical]').forEach(function(i) { i.classList.remove('active'); });
-    var breadcrumbMap = { pricing:'Pricing', welcome:'Welcome', account:'Account', studio:'Studio', domains:'Domains & SSL', launchpad:'Launch Pad', connectors:'Integrations', bizplan:'Business Plan' };
+    var breadcrumbMap = { pricing:'Pricing', welcome:'Welcome', account:'Account', studio:'Studio', domains:'Domains & SSL', launchpad:'Launch Pad', connectors:'Integrations', bizplan:'Business Plan', voice:'Voice AI', dashboard:'Dashboard' };
     document.getElementById('topbarBreadcrumb').innerHTML = '<span>' + (breadcrumbMap[view] || view) + '</span>';
   }
 
@@ -2325,4 +2333,107 @@ function showToast(message, type) {
     toast.classList.remove('toast-visible');
     setTimeout(function() { toast.remove(); }, 300);
   }, 3000);
+}
+
+/* ============================================
+   VOICE AI
+   ============================================ */
+var voiceState = { active: false, transcript: '', agentId: null };
+
+function toggleVoice() {
+  var orb = document.getElementById('voiceOrb');
+  var label = document.getElementById('voiceCtaLabel');
+  var statusDot = document.getElementById('voiceStatusDot');
+  var statusText = document.getElementById('voiceStatusText');
+  var waveform = document.getElementById('voiceWaveform');
+
+  if (!voiceState.active) {
+    voiceState.active = true;
+    if (orb) orb.classList.add('active');
+    if (label) label.textContent = 'Listening...';
+    if (statusDot) { statusDot.style.background = 'var(--accent-green)'; }
+    if (statusText) statusText.textContent = 'Connected';
+    if (waveform) waveform.classList.add('active');
+    animateWaveform(true);
+    appendVoiceTranscript('system', 'SAL Voice connected. Speak now...');
+  } else {
+    voiceState.active = false;
+    if (orb) orb.classList.remove('active');
+    if (label) label.textContent = 'Tap to Talk to SAL';
+    if (statusDot) { statusDot.style.background = ''; }
+    if (statusText) statusText.textContent = 'Ready';
+    if (waveform) waveform.classList.remove('active');
+    animateWaveform(false);
+  }
+}
+
+function animateWaveform(active) {
+  var bars = document.querySelectorAll('.wbar');
+  bars.forEach(function(bar, i) {
+    if (active) {
+      var delay = (i * 0.05) + 's';
+      var height = (Math.random() * 28 + 4) + 'px';
+      bar.style.animationDelay = delay;
+      bar.style.height = height;
+      bar.classList.add('active');
+    } else {
+      bar.style.height = '4px';
+      bar.classList.remove('active');
+    }
+  });
+}
+
+function appendVoiceTranscript(role, text) {
+  var container = document.getElementById('voiceTranscript');
+  if (!container) return;
+  var empty = container.querySelector('.voice-transcript-empty');
+  if (empty) empty.remove();
+
+  var item = document.createElement('div');
+  item.className = 'voice-transcript-item voice-transcript-' + role;
+  item.innerHTML = '<span class="vt-role">' + (role === 'system' ? 'SAL' : role === 'user' ? 'You' : 'SAL') + '</span>' +
+    '<span class="vt-text">' + text + '</span>';
+  container.appendChild(item);
+  container.scrollTop = container.scrollHeight;
+}
+
+function sendVoiceText() {
+  var input = document.getElementById('voiceTextInput');
+  if (!input || !input.value.trim()) return;
+  var text = input.value.trim();
+  input.value = '';
+  appendVoiceTranscript('user', text);
+  setTimeout(function() {
+    appendVoiceTranscript('sal', 'Processing your request: "' + text + '"...');
+  }, 600);
+}
+
+/* ============================================
+   DASHBOARD
+   ============================================ */
+function initDashboard() {
+  // Set greeting based on time of day
+  var hour = new Date().getHours();
+  var greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
+  var greetingEl = document.getElementById('dashGreeting');
+  if (greetingEl) greetingEl.textContent = greeting + ', Cap';
+
+  // Populate stats from session data if available
+  var searches = (window._sessionData && window._sessionData.totalSearches) || 0;
+  var saved = (window._sessionData && window._sessionData.savedItems) || 0;
+  var alerts = (window._sessionData && window._sessionData.activeAlerts) || 0;
+  var compute = (window._sessionData && window._sessionData.computeMinutes) || 0;
+
+  var el;
+  el = document.getElementById('dashTotalSearches'); if (el) el.textContent = searches;
+  el = document.getElementById('dashSavedItems'); if (el) el.textContent = saved;
+  el = document.getElementById('dashActiveAlerts'); if (el) el.textContent = alerts;
+  el = document.getElementById('dashComputeUsed'); if (el) el.textContent = compute + ' min';
+
+  // Update avatar
+  var avatarEl = document.getElementById('dashAvatar');
+  if (avatarEl) {
+    var userEl = document.getElementById('topbarUserAvatar');
+    if (userEl) avatarEl.textContent = userEl.textContent || 'C';
+  }
 }
