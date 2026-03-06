@@ -405,7 +405,7 @@ async def chat(request: Request):
                     {"role": m["role"], "content": m["content"]} for m in messages
                 ]
                 stream = xai_client.chat.completions.create(
-                    model="grok-3-latest",
+                    model="grok-4-latest",
                     messages=xai_messages,
                     max_tokens=4096,
                     stream=True,
@@ -516,7 +516,7 @@ async def websocket_chat(websocket: WebSocket):
                         {"role": m["role"], "content": m["content"]} for m in messages
                     ]
                     stream = xai_client.chat.completions.create(
-                        model="grok-3-latest",
+                        model="grok-4-latest",
                         messages=xai_messages,
                         max_tokens=4096,
                         stream=True,
