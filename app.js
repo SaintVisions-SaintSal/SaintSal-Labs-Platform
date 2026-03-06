@@ -71,9 +71,17 @@ function handleHash() {
   if (!views[view]) view = 'chat';
   setView(view);
   if (view === 'chat') {
-    loadDiscover(currentVertical);
-    loadTickerBanner(currentVertical);
-    loadEngagement(currentVertical);
+    if (currentVertical === 'realestate' && typeof renderRealEstatePanel === 'function') {
+      var grid = document.getElementById('discoverGrid');
+      var engagement = document.getElementById('engagementSection');
+      if (engagement) engagement.style.display = 'none';
+      if (grid) grid.innerHTML = renderRealEstatePanel();
+      loadTickerBanner(currentVertical);
+    } else {
+      loadDiscover(currentVertical);
+      loadTickerBanner(currentVertical);
+      loadEngagement(currentVertical);
+    }
   }
   if (view === 'welcome') renderWelcome();
   if (view === 'launchpad') { loadPackagePricing(_lpState.state); loadFilings(); }
@@ -112,14 +120,22 @@ function switchVertical(vertical, el) {
     window.location.hash = 'chat';
   }
 
-  // Load discover feed
-  loadDiscover(vertical);
-
-  // Load ticker banner for this vertical
-  loadTickerBanner(vertical);
-
-  // Load engagement content
-  loadEngagement(vertical);
+  // Real Estate gets a dedicated panel instead of the generic discover feed
+  if (vertical === 'realestate' && typeof renderRealEstatePanel === 'function') {
+    var grid = document.getElementById('discoverGrid');
+    var engagement = document.getElementById('engagementSection');
+    if (engagement) engagement.style.display = 'none';
+    if (grid) grid.innerHTML = renderRealEstatePanel();
+    // Load ticker for RE (still shows market data)
+    loadTickerBanner(vertical);
+  } else {
+    // Load discover feed
+    loadDiscover(vertical);
+    // Load engagement content
+    loadEngagement(vertical);
+    // Load ticker banner for this vertical
+    loadTickerBanner(vertical);
+  }
 
   // Reset chat history for new vertical
   chatHistory = [];
