@@ -1463,6 +1463,115 @@ ul, ol { list-style: none; }
 }
 
 /* ═══════════════════════════════════════════════════════════════
+   STITCH DESIGN MODE — Preview & Screen Cards
+   ═══════════════════════════════════════════════════════════════ */
+.stitch-refresh-btn {
+  display: flex; align-items: center; justify-content: center;
+  width: 32px; height: 32px; border-radius: var(--radius-md);
+  background: var(--bg-surface-2); border: 1px solid var(--border-color);
+  color: var(--text-secondary); cursor: pointer; transition: all 0.15s;
+}
+.stitch-refresh-btn:hover { color: var(--accent-gold); border-color: var(--accent-gold); }
+.stitch-result { padding: 16px; }
+.stitch-result-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 16px; padding-bottom: 12px;
+  border-bottom: 1px solid var(--border-color);
+}
+.stitch-result-title {
+  display: flex; align-items: center; gap: 8px;
+  font-size: var(--text-md); font-weight: 600; color: var(--text-primary);
+}
+.stitch-open-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 14px; border-radius: var(--radius-md);
+  background: var(--accent-gold); color: #000;
+  font-size: var(--text-xs); font-weight: 600;
+  text-decoration: none; transition: all 0.15s;
+}
+.stitch-open-btn:hover { filter: brightness(1.15); }
+.stitch-preview-img {
+  border-radius: var(--radius-lg); overflow: hidden;
+  margin-bottom: 16px; background: var(--bg-surface-2);
+  border: 1px solid var(--border-color);
+}
+.stitch-preview-img img {
+  width: 100%; display: block;
+}
+.stitch-raw-result {
+  padding: 12px; border-radius: var(--radius-md);
+  background: var(--bg-surface-2); color: var(--text-secondary);
+  font-size: var(--text-xs); white-space: pre-wrap;
+  max-height: 200px; overflow-y: auto;
+}
+.stitch-screens-header {
+  font-size: var(--text-sm); font-weight: 600; color: var(--text-primary);
+  margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.04em;
+}
+.stitch-screens-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 10px;
+}
+.stitch-screen-card {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  padding: 20px 12px; border-radius: var(--radius-lg);
+  background: var(--bg-surface-2); border: 1px solid var(--border-color);
+  cursor: pointer; transition: all 0.15s; gap: 8px;
+}
+.stitch-screen-card:hover {
+  border-color: var(--accent-gold);
+  background: rgba(212,160,23,0.06);
+}
+.stitch-screen-icon { color: var(--text-muted); }
+.stitch-screen-card:hover .stitch-screen-icon { color: var(--accent-gold); }
+.stitch-screen-name {
+  font-size: var(--text-xs); color: var(--text-secondary);
+  text-align: center; white-space: nowrap; overflow: hidden;
+  text-overflow: ellipsis; max-width: 100%;
+}
+.stitch-screen-detail { padding: 0; }
+.stitch-screen-detail-header {
+  display: flex; align-items: center; gap: 10px;
+  padding: 12px 16px; border-bottom: 1px solid var(--border-color);
+  font-size: var(--text-sm); font-weight: 600; color: var(--text-primary);
+}
+.stitch-back-btn {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 4px 10px; border-radius: var(--radius-md);
+  background: var(--bg-surface-2); border: 1px solid var(--border-color);
+  color: var(--text-secondary); font-size: var(--text-xs); cursor: pointer;
+  transition: all 0.15s;
+}
+.stitch-back-btn:hover { color: var(--text-primary); border-color: var(--text-secondary); }
+.stitch-code-section { padding: 16px; }
+.stitch-code-header {
+  font-size: var(--text-xs); font-weight: 600; color: var(--text-secondary);
+  text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 8px;
+}
+.stitch-code {
+  background: var(--bg-base); border: 1px solid var(--border-color);
+  border-radius: var(--radius-md); padding: 14px;
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  font-size: 11px; line-height: 1.5; color: var(--text-secondary);
+  overflow-x: auto; max-height: 400px;
+  white-space: pre; margin: 0;
+}
+.stitch-loading {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  padding: 60px 20px; color: var(--text-muted); font-size: var(--text-sm); gap: 12px;
+}
+.stitch-spinner {
+  width: 24px; height: 24px; border: 2px solid var(--border-color);
+  border-top-color: var(--accent-gold); border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.stitch-error {
+  padding: 32px 20px; text-align: center;
+  color: var(--error, #ef4444); font-size: var(--text-sm);
+}
+
+/* ═══════════════════════════════════════════════════════════════
    SOCIAL COMPOSER MODAL
    ═══════════════════════════════════════════════════════════════ */
 .social-composer-modal {

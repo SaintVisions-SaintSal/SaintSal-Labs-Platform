@@ -1569,6 +1569,10 @@ STUDIO_MODELS = {
         {"id": "elevenlabs_pro",   "name": "ElevenLabs Pro", "description": "HD voice synthesis",                     "provider": "ElevenLabs","speed": "~5s",  "tier": "pro",     "cost_per_min": 0.25, "credits": 5},
         {"id": "elevenlabs_ultra",  "name": "ElevenLabs Ultra","description": "Ultra-realistic voice cloning",         "provider": "ElevenLabs","speed": "~8s",  "tier": "max_pro", "cost_per_min": 1.00, "credits": 10},
     ],
+    "design": [
+        {"id": "stitch_flash",       "name": "Stitch Flash",           "description": "Fast UI design generation (Gemini Flash)", "provider": "Google Stitch", "speed": "~15s", "tier": "pro",     "cost_per_min": 0.25, "credits": 5},
+        {"id": "stitch_pro",         "name": "Stitch Pro",             "description": "Premium UI design (Gemini 3 Pro)",         "provider": "Google Stitch", "speed": "~30s", "tier": "max",     "cost_per_min": 0.75, "credits": 10},
+    ],
     "chat": [
         {"id": "claude_haiku",       "name": "Claude 3.5 Haiku",       "description": "Fast everyday tasks",             "provider": "Anthropic",  "speed": "~1s",  "tier": "mini",    "cost_per_min": 0.05, "credits": 1},
         {"id": "gemini_flash",       "name": "Gemini 2.5 Flash",       "description": "Lightning fast",                  "provider": "Google",     "speed": "~1s",  "tier": "mini",    "cost_per_min": 0.05, "credits": 1},
@@ -1584,7 +1588,138 @@ STUDIO_VOICES = {
     "elevenlabs": ["rachel", "adam", "alice", "brian", "charlie", "charlotte", "chris", "daniel", "emily", "george", "james", "lily", "sam", "sarah"],
 }
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# GOOGLE STITCH — AI UI Design via MCP (Model Context Protocol)
+# ═══════════════════════════════════════════════════════════════════════════════
 
+STITCH_API_KEY = os.environ.get("STITCH_API_KEY", "AQ.Ab8RN6KWP2VrGlNboo262W7tcL5gVDZgBegwOr3Y2Oxyju3tZA")
+STITCH_MCP_URL = "https://stitch.googleapis.com/mcp"
+STITCH_MODEL_MAP = {"stitch_flash": "GEMINI_3_FLASH", "stitch_pro": "GEMINI_3_PRO"}
+
+
+async def stitch_call(method: str, arguments: dict):
+    """Make a JSON-RPC call to the Stitch MCP server."""
+    payload = {
+        "jsonrpc": "2.0",
+        "id": str(uuid.uuid4()),
+        "method": "tools/call",
+        "params": {"name": method, "arguments": arguments},
+    }
+    async with httpx.AsyncClient(timeout=60.0) as http:
+        resp = await http.post(
+            STITCH_MCP_URL,
+            json=payload,
+            headers={"X-Goog-Api-Key": STITCH_API_KEY, "Accept": "application/json", "Content-Type": "application/json"},
+        )
+        data = resp.json()
+        if "error" in data:
+            return {"error": data["error"].get("message", str(data["error"]))}
+        result = data.get("result", {})
+        # MCP returns content as array of {type, text} — extract and parse
+        content_list = result.get("content", [])
+        for c in content_list:
+            if c.get("type") == "text":
+                try:
+                    return json.loads(c["text"])
+                except (json.JSONDecodeError, TypeError):
+                    return {"raw": c["text"]}
+            if c.get("type") == "image":
+                return {"image": c.get("data", ""), "mimeType": c.get("mimeType", "image/png")}
+        # Structured content fallback
+        if result.get("structuredContent"):
+            return result["structuredContent"]
+        return result
+
+
+@app.get("/api/stitch/projects")
+async def stitch_list_projects():
+    """List all Stitch design projects."""
+    if not STITCH_API_KEY:
+        return JSONResponse({"error": "Stitch API key not configured"}, status_code=503)
+    data = await stitch_call("list_projects", {"filter": "owned"})
+    return {"projects": data.get("projects", []) if isinstance(data, dict) else [], "api_live": True}
+
+
+@app.post("/api/stitch/projects")
+async def stitch_create_project(request: Request):
+    """Create a new Stitch design project."""
+    body = await request.json()
+    title = body.get("title", "SaintSal Design")
+    data = await stitch_call("create_project", {"title": title})
+    return {"project": data, "api_live": True}
+
+
+@app.get("/api/stitch/projects/{project_id}")
+async def stitch_get_project(project_id: str):
+    """Get details of a Stitch project."""
+    data = await stitch_call("get_project", {"name": f"projects/{project_id}"})
+    return {"project": data, "api_live": True}
+
+
+@app.get("/api/stitch/projects/{project_id}/screens")
+async def stitch_list_screens(project_id: str):
+    """List all screens in a Stitch project."""
+    data = await stitch_call("list_screens", {"project_id": project_id})
+    return {"screens": data.get("screens", []) if isinstance(data, dict) else [], "api_live": True}
+
+
+@app.get("/api/stitch/projects/{project_id}/screens/{screen_id}")
+async def stitch_get_screen(project_id: str, screen_id: str):
+    """Get a specific screen with code/image."""
+    data = await stitch_call("get_screen", {"project_id": project_id, "screen_id": screen_id})
+    return {"screen": data, "api_live": True}
+
+
+@app.post("/api/stitch/generate")
+async def stitch_generate_screen(request: Request):
+    """Generate a UI design from a text prompt using Stitch."""
+    body = await request.json()
+    project_id = body.get("project_id", "")
+    prompt = body.get("prompt", "")
+    model = body.get("model", "stitch_pro")
+    model_id = STITCH_MODEL_MAP.get(model, "GEMINI_3_PRO")
+
+    if not prompt:
+        return JSONResponse({"error": "Prompt is required"}, status_code=400)
+
+    # Auto-create project if none provided
+    if not project_id:
+        proj = await stitch_call("create_project", {"title": prompt[:50]})
+        if isinstance(proj, dict) and proj.get("name"):
+            project_id = proj["name"].replace("projects/", "")
+        else:
+            return JSONResponse({"error": "Failed to create Stitch project", "detail": str(proj)}, status_code=500)
+
+    # Generate the screen
+    data = await stitch_call("generate_screen_from_text", {
+        "project_id": project_id,
+        "prompt": prompt,
+        "model_id": model_id,
+    })
+
+    # The response may include screen info — fetch screens to get the latest
+    screens_data = await stitch_call("list_screens", {"project_id": project_id})
+    screens = screens_data.get("screens", []) if isinstance(screens_data, dict) else []
+
+    return {
+        "project_id": project_id,
+        "generation_result": data,
+        "screens": screens,
+        "stitch_url": f"https://stitch.withgoogle.com/project/{project_id}",
+        "api_live": True,
+    }
+
+
+@app.get("/api/stitch/status")
+async def stitch_status():
+    """Check Stitch API connectivity."""
+    if not STITCH_API_KEY:
+        return {"connected": False, "error": "No API key"}
+    try:
+        data = await stitch_call("list_projects", {"filter": "owned"})
+        return {"connected": True, "projects_count": len(data.get("projects", []) if isinstance(data, dict) else [])}
+    except Exception as e:
+        return {"connected": False, "error": str(e)}
 
 
 # ============================================================================
@@ -1626,6 +1761,7 @@ MODEL_COSTS = {
     "sonar_pro":         {"name": "Perplexity Sonar Pro",  "provider": "Perplexity", "category": "search","tier": "pro",     "our_cost": 0.030,  "charge": 0.25, "credits": 5,  "min_plan": "starter", "speed": "~3s",  "quality": "Pro"},
     "nano_banana_2":     {"name": "NanoBanana v2",        "provider": "SaintSal",   "category": "image", "tier": "pro",     "our_cost": 0.020,  "charge": 0.25, "credits": 5,  "min_plan": "starter", "speed": "~10s", "quality": "Pro"},
     "elevenlabs_pro":    {"name": "ElevenLabs Pro TTS",   "provider": "ElevenLabs", "category": "audio", "tier": "pro",     "our_cost": 0.030,  "charge": 0.25, "credits": 5,  "min_plan": "starter", "speed": "~5s",  "quality": "Pro"},
+    "stitch_flash":      {"name": "Stitch Flash",         "provider": "Google Stitch", "category": "design", "tier": "pro",  "our_cost": 0.025,  "charge": 0.25, "credits": 5,  "min_plan": "starter", "speed": "~15s", "quality": "Pro"},
     # ═══ MAX TIER ($0.75/min) ═══
     "claude_opus":       {"name": "Claude 3 Opus",        "provider": "Anthropic",  "category": "chat",  "tier": "max",     "our_cost": 0.225,  "charge": 0.75, "credits": 10, "min_plan": "pro",     "speed": "~5s",  "quality": "Ultra"},
     "gpt45":             {"name": "GPT-4.5",              "provider": "OpenAI",     "category": "chat",  "tier": "max",     "our_cost": 0.300,  "charge": 0.75, "credits": 10, "min_plan": "pro",     "speed": "~5s",  "quality": "Ultra"},
@@ -1636,6 +1772,7 @@ MODEL_COSTS = {
     "sora_2":            {"name": "Sora 2",               "provider": "OpenAI",     "category": "video", "tier": "max",     "our_cost": 0.200,  "charge": 0.75, "credits": 20, "min_plan": "pro",     "speed": "~60s", "quality": "Ultra"},
     "veo_3_1":           {"name": "Veo 3.1",              "provider": "Google",     "category": "video", "tier": "max",     "our_cost": 0.150,  "charge": 0.75, "credits": 18, "min_plan": "pro",     "speed": "~45s", "quality": "Ultra"},
     "assemblyai":        {"name": "AssemblyAI",           "provider": "AssemblyAI", "category": "transcription", "tier": "max", "our_cost": 0.010, "charge": 0.75, "credits": 3, "min_plan": "pro", "speed": "~RT", "quality": "Ultra"},
+    "stitch_pro":        {"name": "Stitch Pro",           "provider": "Google Stitch", "category": "design", "tier": "max",  "our_cost": 0.080,  "charge": 0.75, "credits": 10, "min_plan": "pro",     "speed": "~30s", "quality": "Ultra"},
     # ═══ MAX PRO TIER ($1.00/min) ═══
     "o3_mini":               {"name": "o3-mini",                  "provider": "OpenAI",     "category": "chat",  "tier": "max_pro", "our_cost": 0.165,  "charge": 1.00, "credits": 15, "min_plan": "teams",   "speed": "~8s",  "quality": "Flagship"},
     "claude_sonnet_think":   {"name": "Claude Sonnet (Thinking)", "provider": "Anthropic",  "category": "chat",  "tier": "max_pro", "our_cost": 0.0675, "charge": 1.00, "credits": 12, "min_plan": "teams",   "speed": "~10s", "quality": "Flagship"},

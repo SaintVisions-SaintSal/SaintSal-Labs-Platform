@@ -1051,6 +1051,10 @@ var studioState = {
   viewMode: 'chat', // chat, preview, split
   sidebarOpen: true,
   messages: [],
+  // Stitch Design state
+  designProjects: [],
+  selectedProjectId: '',
+  designProjectsLoaded: false,
   // Tier → model mapping (fetched from server)
   tierModels: { mini: [], pro: [], max: [], max_pro: [] },
   tierPricing: {
@@ -1160,6 +1164,8 @@ function studioSwitchMode(mode) {
   var modeCategory = mode === 'code' ? 'chat' : mode;
   var models = (studioState.tierModels[studioState.selectedTier] || []).filter(function(m) { return m.category === modeCategory; });
   if (models.length > 0) selectStudioModel(models[0].id);
+  // Load Stitch projects on first Design switch
+  if (mode === 'design' && !studioState.designProjectsLoaded) loadStitchProjects();
 }
 
 function studioToggleView(view) {
@@ -1203,6 +1209,21 @@ function renderStudioControls() {
     html += '<div class="studio-control-row" style="margin-bottom:8px;">';
     html += '<select id="studioVoice" class="studio-select" style="flex:1;"><option value="kore">Kore</option><option value="charon">Charon</option><option value="fenrir">Fenrir</option><option value="aoede">Aoede</option><option value="puck">Puck</option><option value="zephyr">Zephyr</option></select>';
     html += '</div>';
+  } else if (mode === 'design') {
+    html += '<div class="studio-control-row stitch-controls" style="margin-bottom:8px;gap:6px;">';
+    html += '<select id="studioDesignProject" class="studio-select" style="flex:2;" onchange="studioState.selectedProjectId=this.value">';
+    html += '<option value="">New Project (auto-create)</option>';
+    studioState.designProjects.forEach(function(p) {
+      var pid = (p.name || '').replace('projects/', '');
+      var sel = pid === studioState.selectedProjectId ? ' selected' : '';
+      html += '<option value="' + escapeAttr(pid) + '"' + sel + '>' + escapeHtml(p.displayName || p.title || pid) + '</option>';
+    });
+    html += '</select>';
+    html += '<button class="stitch-refresh-btn" onclick="loadStitchProjects()" title="Refresh projects">';
+    html += '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>';
+    html += '</button>';
+    html += '</div>';
+    html += '<div class="stitch-hint" style="font-size:11px;color:var(--text-muted);margin-bottom:4px;">Describe a UI — Stitch generates interactive designs with code</div>';
   }
   controls.innerHTML = html;
 }
@@ -1245,6 +1266,49 @@ async function studioGenerate() {
   studioAddMessage('user', prompt);
 
   var mode = studioState.mode;
+
+  // ── DESIGN MODE → Stitch API ──
+  if (mode === 'design') {
+    try {
+      studioAddMessage('assistant', 'Generating UI design via Google Stitch...', { model: studioState.selectedModel, tier: studioState.selectedTier });
+      var designPayload = { prompt: prompt, model: studioState.selectedModel };
+      if (studioState.selectedProjectId) designPayload.project_id = studioState.selectedProjectId;
+      var resp = await fetch(API + '/api/stitch/generate', {
+        method: 'POST',
+        headers: Object.assign({ 'Content-Type': 'application/json' }, authHeaders()),
+        body: JSON.stringify(designPayload),
+      });
+      var data = await resp.json();
+      if (data.error) {
+        studioAddMessage('assistant', 'Stitch Error: ' + (typeof data.error === 'string' ? data.error : JSON.stringify(data.error)), { model: studioState.selectedModel, tier: studioState.selectedTier });
+      } else {
+        // Update selected project
+        if (data.project_id) studioState.selectedProjectId = data.project_id;
+        // Model info for metering badge
+        var modelInfo = null;
+        Object.keys(studioState.tierModels).forEach(function(t) {
+          studioState.tierModels[t].forEach(function(m) { if (m.id === studioState.selectedModel) modelInfo = m; });
+        });
+        var screenCount = (data.screens || []).length;
+        studioAddMessage('assistant', 'Design generated — ' + screenCount + ' screen' + (screenCount !== 1 ? 's' : '') + ' in project', {
+          model: modelInfo ? modelInfo.name : studioState.selectedModel,
+          tier: studioState.selectedTier,
+          cost: modelInfo ? modelInfo.cost_per_min / 60 : 0,
+        });
+        showStitchResult(data);
+        if (studioState.viewMode === 'chat') studioToggleView('split');
+        // Refresh project list
+        loadStitchProjects();
+      }
+    } catch (e) {
+      studioAddMessage('assistant', 'Design generation failed: ' + (e.message || 'Network error'), { model: studioState.selectedModel, tier: studioState.selectedTier });
+    }
+    studioState.generating = false;
+    if (btn) btn.disabled = false;
+    return;
+  }
+
+  // ── STANDARD MODES (image/video/audio/code) ──
   var payload = { prompt: prompt };
   payload.model = studioState.selectedModel;
   var aspectSel = document.getElementById('studioAspect');
@@ -1360,6 +1424,115 @@ function previewGalleryItem(id) {
   var item = studioState.gallery.find(function(i) { return i.id === id; });
   if (!item) return;
   if (item.type === 'image' && item.data) showStudioResult('<div class="studio-result-media"><img src="' + item.data + '" class="studio-result-img"></div>');
+}
+
+/* ============================================
+   STITCH DESIGN — Project & Screen Management
+   ============================================ */
+async function loadStitchProjects() {
+  try {
+    var resp = await fetch(API + '/api/stitch/projects', { headers: authHeaders() });
+    var data = await resp.json();
+    studioState.designProjects = data.projects || [];
+    studioState.designProjectsLoaded = true;
+    // Re-render controls if in design mode
+    if (studioState.mode === 'design') renderStudioControls();
+  } catch(e) {
+    console.warn('Failed to load Stitch projects:', e);
+  }
+}
+
+function showStitchResult(data) {
+  var html = '<div class="stitch-result">';
+  // Project header
+  html += '<div class="stitch-result-header">';
+  html += '<div class="stitch-result-title">';
+  html += '<svg viewBox="0 0 24 24" fill="none" stroke="var(--accent-gold)" stroke-width="2" width="18" height="18"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="4" rx="1"/><rect x="14" y="10" width="7" height="11" rx="1"/><rect x="3" y="13" width="7" height="8" rx="1"/></svg>';
+  html += '<span>Stitch Design</span>';
+  html += '</div>';
+  if (data.stitch_url) {
+    html += '<a href="' + escapeAttr(data.stitch_url) + '" target="_blank" rel="noopener" class="stitch-open-btn">';
+    html += '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>';
+    html += ' Open in Stitch';
+    html += '</a>';
+  }
+  html += '</div>';
+
+  // Generation result info
+  var genResult = data.generation_result || {};
+  if (genResult.image) {
+    html += '<div class="stitch-preview-img"><img src="data:' + (genResult.mimeType || 'image/png') + ';base64,' + genResult.image + '" alt="Generated design"></div>';
+  } else if (genResult.raw) {
+    html += '<div class="stitch-raw-result">' + escapeHtml(genResult.raw).substring(0, 500) + '</div>';
+  }
+
+  // Screen list
+  var screens = data.screens || [];
+  if (screens.length > 0) {
+    html += '<div class="stitch-screens-header">Screens (' + screens.length + ')</div>';
+    html += '<div class="stitch-screens-grid">';
+    screens.forEach(function(s) {
+      var screenName = s.displayName || s.name || 'Screen';
+      var screenId = (s.name || '').split('/').pop();
+      html += '<div class="stitch-screen-card" onclick="loadStitchScreen(\'' + escapeAttr(data.project_id) + '\',\'' + escapeAttr(screenId) + '\')">';
+      html += '<div class="stitch-screen-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="24" height="24"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></div>';
+      html += '<div class="stitch-screen-name">' + escapeHtml(screenName) + '</div>';
+      html += '</div>';
+    });
+    html += '</div>';
+  }
+
+  html += '</div>';
+  showStudioResult(html);
+}
+
+async function loadStitchScreen(projectId, screenId) {
+  if (!projectId || !screenId) return;
+  try {
+    showStudioResult('<div class="stitch-loading"><div class="stitch-spinner"></div>Loading screen...</div>');
+    var resp = await fetch(API + '/api/stitch/projects/' + projectId + '/screens/' + screenId, { headers: authHeaders() });
+    var data = await resp.json();
+    var screen = data.screen || {};
+    var html = '<div class="stitch-screen-detail">';
+    html += '<div class="stitch-screen-detail-header">';
+    html += '<button class="stitch-back-btn" onclick="showStitchProjectScreens(\'' + escapeAttr(projectId) + '\')">';
+    html += '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg> Back';
+    html += '</button>';
+    html += '<span>' + escapeHtml(screen.displayName || screen.name || 'Screen') + '</span>';
+    html += '</div>';
+    // Show image if available
+    if (screen.image) {
+      html += '<div class="stitch-preview-img"><img src="data:' + (screen.mimeType || 'image/png') + ';base64,' + screen.image + '" alt="Screen design"></div>';
+    }
+    // Show code if available  
+    if (screen.code || screen.html) {
+      html += '<div class="stitch-code-section">';
+      html += '<div class="stitch-code-header">Generated Code</div>';
+      html += '<pre class="stitch-code"><code>' + escapeHtml(screen.code || screen.html || JSON.stringify(screen, null, 2)) + '</code></pre>';
+      html += '</div>';
+    }
+    // Fallback: show raw JSON
+    if (!screen.image && !screen.code && !screen.html) {
+      html += '<pre class="stitch-code"><code>' + escapeHtml(JSON.stringify(screen, null, 2)) + '</code></pre>';
+    }
+    html += '</div>';
+    showStudioResult(html);
+  } catch(e) {
+    showStudioResult('<div class="stitch-error">Failed to load screen: ' + escapeHtml(e.message || 'Unknown error') + '</div>');
+  }
+}
+
+async function showStitchProjectScreens(projectId) {
+  if (!projectId) return;
+  try {
+    showStudioResult('<div class="stitch-loading"><div class="stitch-spinner"></div>Loading screens...</div>');
+    var resp = await fetch(API + '/api/stitch/projects/' + projectId + '/screens', { headers: authHeaders() });
+    var data = await resp.json();
+    var fakeResult = { project_id: projectId, screens: data.screens || [], stitch_url: 'https://stitch.withgoogle.com/project/' + projectId };
+    showStitchResult(fakeResult);
+  } catch(e) {
+    showStudioResult('<div class="stitch-error">Failed to load project screens</div>');
+  }
 }
 
 /* ============================================
