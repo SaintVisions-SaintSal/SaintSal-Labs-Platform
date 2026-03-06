@@ -1020,21 +1020,149 @@ function escapeAttr(str) {
 }
 
 /* ============================================
-   STUDIO — AI Creative Engine
+   STUDIO v7 — Chat+Preview Split-Screen, Compute Tiers, Model Selector
    ============================================ */
 var studioState = {
-  mode: 'image',  // image, video, audio
+  mode: 'image',
   generating: false,
   gallery: [],
   models: {},
-  selectedModel: '',
+  selectedModel: 'claude_haiku',
+  selectedTier: 'mini',
+  viewMode: 'chat', // chat, preview, split
+  sidebarOpen: true,
+  messages: [],
+  // Tier → model mapping (fetched from server)
+  tierModels: { mini: [], pro: [], max: [], max_pro: [] },
+  tierPricing: {
+    mini:    { price_per_min: 0.05, label: 'Mini',    color: '#6B7280' },
+    pro:     { price_per_min: 0.25, label: 'Pro',     color: '#10B981' },
+    max:     { price_per_min: 0.50, label: 'Max',     color: '#8B5CF6' },
+    max_pro: { price_per_min: 1.00, label: 'Max Pro', color: '#F59E0B' },
+  },
 };
+
+// Fetch models from server on load
+async function loadStudioModels() {
+  try {
+    var resp = await fetch(API + '/api/metering/models', { headers: authHeaders() });
+    var data = await resp.json();
+    if (data.tiers) studioState.tierModels = data.tiers;
+    if (data.tier_pricing) studioState.tierPricing = data.tier_pricing;
+    renderStudioModelList();
+  } catch(e) { console.warn('Failed to load studio models:', e); }
+}
+
+function toggleStudioSidebar() {
+  var layout = document.querySelector('.studio-layout');
+  if (layout) {
+    studioState.sidebarOpen = !studioState.sidebarOpen;
+    layout.classList.toggle('sidebar-collapsed', !studioState.sidebarOpen);
+  }
+}
+
+function selectComputeTier(tier) {
+  studioState.selectedTier = tier;
+  document.querySelectorAll('.studio-tier-pill').forEach(function(p) { p.classList.remove('active'); });
+  var pill = document.querySelector('.studio-tier-pill[data-tier="' + tier + '"]');
+  if (pill) pill.classList.add('active');
+  renderStudioModelList();
+  // Auto-select first model of this tier for current mode
+  var models = (studioState.tierModels[tier] || []).filter(function(m) { return m.category === studioState.mode || studioState.mode === 'code' && m.category === 'chat'; });
+  if (models.length > 0) selectStudioModel(models[0].id);
+}
+
+function renderStudioModelList() {
+  var container = document.getElementById('studioModelList');
+  if (!container) return;
+  var tier = studioState.selectedTier;
+  var models = studioState.tierModels[tier] || [];
+  // Filter by current mode
+  var modeCategory = studioState.mode === 'code' ? 'chat' : studioState.mode;
+  var filtered = models.filter(function(m) { return m.category === modeCategory; });
+  if (filtered.length === 0) {
+    // Show all models for this tier
+    filtered = models;
+  }
+  var html = '';
+  filtered.forEach(function(m) {
+    var active = m.id === studioState.selectedModel ? ' active' : '';
+    var locked = !m.accessible ? ' locked' : '';
+    html += '<div class="studio-model-item' + active + locked + '" onclick="' + (m.accessible ? 'selectStudioModel(\'' + m.id + '\')' : '') + '">';
+    html += '<span class="model-name">' + escapeHtml(m.name) + '</span>';
+    html += '<span class="model-provider">' + escapeHtml(m.provider) + '</span>';
+    html += '<span class="model-credits">' + m.credits + ' cr</span>';
+    html += '</div>';
+  });
+  container.innerHTML = html || '<div style="color:var(--text-muted);font-size:var(--text-xs);padding:8px;">No models for this mode</div>';
+}
+
+function selectStudioModel(modelId) {
+  studioState.selectedModel = modelId;
+  // Find model info
+  var model = null;
+  Object.keys(studioState.tierModels).forEach(function(t) {
+    studioState.tierModels[t].forEach(function(m) {
+      if (m.id === modelId) model = m;
+    });
+  });
+  if (!model) return;
+  
+  // Update active state in model list
+  document.querySelectorAll('.studio-model-item').forEach(function(el) { el.classList.remove('active'); });
+  renderStudioModelList();
+  
+  // Update header
+  var header = document.getElementById('studioActiveModel');
+  if (header) {
+    var tier = studioState.selectedTier;
+    header.innerHTML = '<span class="studio-model-badge ' + tier + '">' + (studioState.tierPricing[tier] || {label:tier}).label + '</span>'
+      + '<span>' + escapeHtml(model.name) + '</span>'
+      + '<span class="studio-model-cost">$' + (model.cost_per_min || 0).toFixed(2) + '/min</span>';
+  }
+  // Update footer meta
+  var creditsInfo = document.getElementById('studioCreditsInfo');
+  if (creditsInfo) creditsInfo.textContent = model.credits + ' credit' + (model.credits > 1 ? 's' : '') + ' per request';
+  var tierBadge = document.getElementById('studioTierBadge');
+  if (tierBadge) {
+    tierBadge.className = 'studio-tier-badge ' + studioState.selectedTier;
+    tierBadge.textContent = (studioState.tierPricing[studioState.selectedTier] || {}).label + ' $' + (model.cost_per_min || 0).toFixed(2) + '/min';
+  }
+}
 
 function studioSwitchMode(mode) {
   studioState.mode = mode;
   document.querySelectorAll('.studio-mode-btn').forEach(function(b) { b.classList.remove('active'); });
-  document.querySelector('.studio-mode-btn[data-mode="' + mode + '"]').classList.add('active');
+  var btn = document.querySelector('.studio-mode-btn[data-mode="' + mode + '"]');
+  if (btn) btn.classList.add('active');
+  renderStudioModelList();
   renderStudioControls();
+  // Auto-select first model of current tier for this mode
+  var modeCategory = mode === 'code' ? 'chat' : mode;
+  var models = (studioState.tierModels[studioState.selectedTier] || []).filter(function(m) { return m.category === modeCategory; });
+  if (models.length > 0) selectStudioModel(models[0].id);
+}
+
+function studioToggleView(view) {
+  studioState.viewMode = view;
+  document.querySelectorAll('.studio-view-btn').forEach(function(b) { b.classList.remove('active'); });
+  var btn = document.querySelector('.studio-view-btn[data-view="' + view + '"]');
+  if (btn) btn.classList.add('active');
+  
+  var chat = document.getElementById('studioChatPanel');
+  var preview = document.getElementById('studioPreviewPanel');
+  var content = document.getElementById('studioContent');
+  if (!chat || !preview || !content) return;
+  
+  content.classList.remove('split-view');
+  if (view === 'chat') {
+    chat.style.display = 'flex'; preview.style.display = 'none';
+  } else if (view === 'preview') {
+    chat.style.display = 'none'; preview.style.display = 'flex';
+  } else if (view === 'split') {
+    chat.style.display = 'flex'; preview.style.display = 'flex';
+    content.classList.add('split-view');
+  }
 }
 
 function renderStudioControls() {
@@ -1042,70 +1170,64 @@ function renderStudioControls() {
   if (!controls) return;
   var mode = studioState.mode;
   var html = '';
-
   if (mode === 'image') {
-    html += '<div class="studio-control-group">';
-    html += '<label class="studio-label">Prompt</label>';
-    html += '<textarea id="studioPrompt" class="studio-prompt-input" rows="3" placeholder="Describe the image you want to create..."></textarea>';
+    html += '<div class="studio-control-row" style="margin-bottom:8px;">';
+    html += '<select id="studioAspect" class="studio-select" style="flex:1;"><option value="1:1">1:1 Square</option><option value="16:9">16:9</option><option value="9:16">9:16</option><option value="4:3">4:3</option></select>';
+    html += '<select id="studioStyle" class="studio-select" style="flex:1;"><option value="">No Style</option><option value="photorealistic">Photorealistic</option><option value="cinematic">Cinematic</option><option value="anime">Anime</option><option value="watercolor">Watercolor</option><option value="3d render">3D Render</option><option value="pixel art">Pixel Art</option></select>';
     html += '</div>';
-    html += '<div class="studio-control-row">';
-    html += '<div class="studio-control-group half"><label class="studio-label">Model</label>';
-    html += '<select id="studioModel" class="studio-select"><option value="nano_banana_2">NanoBanana v2 (Fast)</option><option value="nano_banana_pro">NanoBanana Pro (Premium)</option><option value="replicate_flux">Replicate FLUX (Ultra)</option><option value="grok_aurora">Grok Aurora</option></select></div>';
-    html += '<div class="studio-control-group half"><label class="studio-label">Aspect Ratio</label>';
-    html += '<select id="studioAspect" class="studio-select"><option value="1:1">1:1 Square</option><option value="16:9">16:9 Landscape</option><option value="9:16">9:16 Portrait</option><option value="4:3">4:3 Standard</option><option value="3:4">3:4 Tall</option></select></div>';
-    html += '</div>';
-    html += '<div class="studio-control-group"><label class="studio-label">Style (optional)</label>';
-    html += '<select id="studioStyle" class="studio-select"><option value="">None</option><option value="photorealistic">Photorealistic</option><option value="cinematic">Cinematic</option><option value="anime">Anime</option><option value="watercolor">Watercolor</option><option value="oil painting">Oil Painting</option><option value="3d render">3D Render</option><option value="pixel art">Pixel Art</option><option value="comic book">Comic Book</option><option value="neon cyberpunk">Neon Cyberpunk</option></select></div>';
   } else if (mode === 'video') {
-    html += '<div class="studio-control-group">';
-    html += '<label class="studio-label">Prompt</label>';
-    html += '<textarea id="studioPrompt" class="studio-prompt-input" rows="3" placeholder="Describe the video scene, action, and camera movement..."></textarea>';
-    html += '</div>';
-    html += '<div class="studio-control-row">';
-    html += '<div class="studio-control-group half"><label class="studio-label">Model</label>';
-    html += '<select id="studioModel" class="studio-select"><option value="veo_3_1_fast">Veo 3.1 Fast (~25s)</option><option value="sora_2">Sora 2 (~60s)</option><option value="veo_3_1">Veo 3.1 (~45s)</option><option value="sora_2_pro">Sora 2 Pro (~90s)</option><option value="runway_gen4">Runway Gen-4 (~30s)</option><option value="replicate_video">Replicate Video</option></select></div>';
-    html += '<div class="studio-control-group quarter"><label class="studio-label">Duration</label>';
-    html += '<select id="studioDuration" class="studio-select"><option value="4">4s</option><option value="8" selected>8s</option><option value="12">12s</option></select></div>';
-    html += '<div class="studio-control-group quarter"><label class="studio-label">Ratio</label>';
-    html += '<select id="studioAspect" class="studio-select"><option value="16:9">16:9</option><option value="9:16">9:16</option></select></div>';
+    html += '<div class="studio-control-row" style="margin-bottom:8px;">';
+    html += '<select id="studioDuration" class="studio-select" style="flex:1;"><option value="4">4s</option><option value="8" selected>8s</option><option value="12">12s</option></select>';
+    html += '<select id="studioAspect" class="studio-select" style="flex:1;"><option value="16:9">16:9</option><option value="9:16">9:16</option></select>';
     html += '</div>';
   } else if (mode === 'audio') {
-    html += '<div class="studio-control-group">';
-    html += '<label class="studio-label">Text</label>';
-    html += '<textarea id="studioPrompt" class="studio-prompt-input" rows="3" placeholder="Enter text to convert to speech..."></textarea>';
-    html += '</div>';
-    html += '<div class="studio-control-row">';
-    html += '<div class="studio-control-group half"><label class="studio-label">Voice</label>';
-    html += '<select id="studioVoice" class="studio-select"><option value="kore">Kore (Warm)</option><option value="charon">Charon (Deep)</option><option value="fenrir">Fenrir (Bold)</option><option value="aoede">Aoede (Soft)</option><option value="puck">Puck (Playful)</option><option value="zephyr">Zephyr (Calm)</option><option value="leda">Leda (Clear)</option><option value="orus">Orus (Authoritative)</option></select></div>';
-    html += '<div class="studio-control-group half"><label class="studio-label">Model</label>';
-    html += '<select id="studioModel" class="studio-select"><option value="gemini_2_5_pro_tts">Gemini TTS</option><option value="elevenlabs_tts_v3">ElevenLabs v3</option></select></div>';
+    html += '<div class="studio-control-row" style="margin-bottom:8px;">';
+    html += '<select id="studioVoice" class="studio-select" style="flex:1;"><option value="kore">Kore</option><option value="charon">Charon</option><option value="fenrir">Fenrir</option><option value="aoede">Aoede</option><option value="puck">Puck</option><option value="zephyr">Zephyr</option></select>';
     html += '</div>';
   }
-
-  html += '<button class="studio-gen-btn" onclick="studioGenerate()" id="studioGenBtn">';
-  html += '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>';
-  html += '<span>Generate ' + mode.charAt(0).toUpperCase() + mode.slice(1) + '</span></button>';
-  html += '<div id="studioCreditCost" class="studio-credit-cost"></div>';
-
   controls.innerHTML = html;
-  var ms = document.getElementById('studioModel');
-  if (ms) { ms.addEventListener('change', showCreditCost); showCreditCost(); }
+}
+
+// Add message to Studio chat
+function studioAddMessage(role, content, meta) {
+  studioState.messages.push({ role: role, content: content, meta: meta || {} });
+  var container = document.getElementById('studioMessages');
+  if (!container) return;
+  // Remove welcome if present
+  var welcome = container.querySelector('.studio-welcome');
+  if (welcome) welcome.remove();
+  
+  var msg = document.createElement('div');
+  msg.className = 'studio-msg ' + role;
+  var metaHtml = '';
+  if (meta && meta.model) {
+    metaHtml = '<div class="studio-msg-meta"><span>' + escapeHtml(meta.model) + '</span>';
+    if (meta.tier) metaHtml += '<span class="studio-model-badge ' + meta.tier + '">' + meta.tier + '</span>';
+    if (meta.cost) metaHtml += '<span>$' + meta.cost.toFixed(4) + '</span>';
+    metaHtml += '</div>';
+  }
+  msg.innerHTML = metaHtml + '<div>' + escapeHtml(content) + '</div>';
+  container.appendChild(msg);
+  container.scrollTop = container.scrollHeight;
 }
 
 async function studioGenerate() {
   if (studioState.generating) return;
-  var prompt = document.getElementById('studioPrompt');
-  if (!prompt || !prompt.value.trim()) return;
+  var promptEl = document.getElementById('studioPrompt');
+  if (!promptEl || !promptEl.value.trim()) return;
+  var prompt = promptEl.value.trim();
+  promptEl.value = '';
 
   studioState.generating = true;
-  var btn = document.getElementById('studioGenBtn');
-  btn.innerHTML = '<div class="btn-spinner"></div><span>Generating...</span>';
-  btn.classList.add('generating');
+  var btn = document.getElementById('studioGenerateBtn');
+  if (btn) btn.disabled = true;
+
+  // Add user message to chat
+  studioAddMessage('user', prompt);
 
   var mode = studioState.mode;
-  var payload = { prompt: prompt.value.trim() };
-  var modelSel = document.getElementById('studioModel');
-  if (modelSel) payload.model = modelSel.value;
+  var payload = { prompt: prompt };
+  payload.model = studioState.selectedModel;
   var aspectSel = document.getElementById('studioAspect');
   if (aspectSel) payload.aspect_ratio = aspectSel.value;
   var styleSel = document.getElementById('studioStyle');
@@ -1114,46 +1236,60 @@ async function studioGenerate() {
   if (durSel) payload.duration = parseInt(durSel.value);
   var voiceSel = document.getElementById('studioVoice');
   if (voiceSel) payload.voice = voiceSel.value;
-  if (mode === 'audio') payload.text = payload.prompt;
+  if (mode === 'audio') payload.text = prompt;
+
+  var apiMode = mode === 'code' ? 'image' : mode;
 
   try {
-    var resp = await fetch(API + '/api/studio/generate/' + mode, {
+    var resp = await fetch(API + '/api/studio/generate/' + apiMode, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: Object.assign({ 'Content-Type': 'application/json' }, authHeaders()),
       body: JSON.stringify(payload),
     });
     var data = await resp.json();
 
     if (data.error) {
-      showStudioResult('<div class="studio-error">' + escapeHtml(data.error) + '</div>');
+      studioAddMessage('assistant', 'Error: ' + data.error, { model: studioState.selectedModel, tier: studioState.selectedTier });
     } else {
+      // Add assistant message
+      var modelInfo = null;
+      Object.keys(studioState.tierModels).forEach(function(t) {
+        studioState.tierModels[t].forEach(function(m) { if (m.id === studioState.selectedModel) modelInfo = m; });
+      });
+      studioAddMessage('assistant', 'Generated ' + mode + ': ' + (data.prompt || prompt).substring(0, 60), {
+        model: modelInfo ? modelInfo.name : studioState.selectedModel,
+        tier: studioState.selectedTier,
+        cost: modelInfo ? modelInfo.cost_per_min / 60 : 0,
+      });
+
+      // Show in preview
       var resultHtml = '';
       if (mode === 'image' && data.data) {
-        resultHtml = '<div class="studio-result-media"><img src="' + data.data + '" alt="Generated image" class="studio-result-img"></div>';
+        resultHtml = '<img src="' + data.data + '" alt="Generated image" style="max-width:100%;border-radius:8px;">';
       } else if (mode === 'video' && data.data) {
-        resultHtml = '<div class="studio-result-media"><video src="' + data.data + '" controls autoplay class="studio-result-video"></video></div>';
+        resultHtml = '<video src="' + data.data + '" controls autoplay style="max-width:100%;border-radius:8px;"></video>';
       } else if (mode === 'audio' && data.data) {
-        resultHtml = '<div class="studio-result-media"><audio src="' + data.data + '" controls autoplay class="studio-result-audio"></audio></div>';
+        resultHtml = '<audio src="' + data.data + '" controls autoplay style="width:100%;"></audio>';
       }
-      resultHtml += '<div class="studio-result-meta">';
-      resultHtml += '<span class="studio-meta-model">' + escapeHtml(data.model || '') + '</span>';
-      resultHtml += '<span class="studio-meta-size">' + formatBytes(data.size_bytes || 0) + '</span>';
-      resultHtml += '</div>';
-      resultHtml += '<div class="studio-result-actions">';
-      resultHtml += '<button class="studio-action-btn" onclick="downloadStudioMedia(\'' + escapeAttr(data.url || '') + '\',\'' + escapeAttr(data.filename || '') + '\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Download</button>';
-      resultHtml += '<button class="studio-action-btn gold" onclick="openSocialComposer(\'' + escapeAttr(data.id || '') + '\',\'' + mode + '\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg> Post to Social</button>';
+      resultHtml += '<div style="display:flex;gap:8px;margin-top:12px;">';
+      if (data.url) {
+        resultHtml += '<button class="studio-action-btn" onclick="downloadStudioMedia(\'' + escapeAttr(data.url) + '\',\'' + escapeAttr(data.filename || '') + '\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Download</button>';
+      }
       resultHtml += '</div>';
       showStudioResult(resultHtml);
+      
+      // Switch to preview or split if in chat-only
+      if (studioState.viewMode === 'chat') studioToggleView('split');
+      
       studioState.gallery.unshift(data);
       renderStudioGallery();
     }
   } catch (e) {
-    showStudioResult('<div class="studio-error">Generation failed. Please try again.</div>');
+    studioAddMessage('assistant', 'Generation failed. Please try again.', { model: studioState.selectedModel, tier: studioState.selectedTier });
   }
 
   studioState.generating = false;
-  btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg><span>Generate ' + mode.charAt(0).toUpperCase() + mode.slice(1) + '</span>';
-  btn.classList.remove('generating');
+  if (btn) btn.disabled = false;
 }
 
 function showStudioResult(html) {
@@ -1429,7 +1565,7 @@ var _origHandleHash = handleHash;
 handleHash = function() {
   _origHandleHash();
   if (currentView === 'connectors') renderConnectorsView();
-  if (currentView === 'studio') { renderStudioControls(); renderStudioGallery(); loadStudioGallery(); }
+  if (currentView === 'studio') { loadStudioModels(); renderStudioControls(); renderStudioGallery(); loadStudioGallery(); }
 };
 
 function loadStudioGallery() {
@@ -1688,6 +1824,20 @@ function updateAuthUI(loggedIn) {
     if (creditsUsedEl) creditsUsedEl.textContent = used + ' credits used';
     if (creditsTotalEl) creditsTotalEl.textContent = limit + ' total';
     if (usageBarEl) usageBarEl.style.width = pct + '%';
+
+    // Compute tier info
+    var computeTierEl = document.getElementById('accountComputeTier');
+    var walletEl = document.getElementById('accountWalletBalance');
+    var monthSpendEl = document.getElementById('accountMonthSpend');
+    var computeMinEl = document.getElementById('accountComputeMinutes');
+    var cTier = currentUser.compute_tier || 'mini';
+    if (computeTierEl) {
+      computeTierEl.textContent = cTier.replace('_', ' ');
+      computeTierEl.className = 'compute-tier-badge ' + cTier;
+    }
+    if (walletEl) walletEl.textContent = '$' + (parseFloat(currentUser.wallet_balance) || 0).toFixed(2);
+    if (monthSpendEl) monthSpendEl.textContent = '$' + (parseFloat(currentUser.current_month_spend) || 0).toFixed(2);
+    if (computeMinEl) computeMinEl.textContent = (parseFloat(currentUser.total_compute_minutes) || 0).toFixed(1) + ' min';
   }
 }
 

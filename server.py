@@ -1482,25 +1482,32 @@ async def deal_analysis(purchase_price: float, monthly_rent: float, down_payment
 # STUDIO — AI Creative Engine (Image, Video, Audio Generation)
 # ═══════════════════════════════════════════════════════════════════════════════
 
-# Available AI models for generation
+# Available AI models for Studio — now includes compute tier info
 STUDIO_MODELS = {
     "image": [
-        {"id": "nano_banana_2", "name": "NanoBanana v2", "description": "Fast, high-quality image generation", "provider": "SaintSal AI", "speed": "~10s"},
-        {"id": "nano_banana_pro", "name": "NanoBanana Pro", "description": "Premium quality, photorealistic output", "provider": "SaintSal AI", "speed": "~15s"},
-        {"id": "replicate_flux", "name": "Replicate FLUX", "description": "Ultra high-resolution image synthesis", "provider": "Replicate", "speed": "~12s"},
-        {"id": "grok_aurora", "name": "Grok Aurora", "description": "xAI native image generation", "provider": "xAI", "speed": "~10s"},
+        {"id": "nano_banana_2",  "name": "NanoBanana v2",  "description": "Fast, high-quality image generation",     "provider": "SaintSal",  "speed": "~10s", "tier": "pro",     "cost_per_min": 0.25, "credits": 5},
+        {"id": "nano_banana_pro","name": "NanoBanana Pro", "description": "Premium quality, photorealistic output",   "provider": "SaintSal",  "speed": "~15s", "tier": "max",     "cost_per_min": 0.50, "credits": 10},
+        {"id": "replicate_flux", "name": "Replicate FLUX", "description": "Ultra high-resolution image synthesis",    "provider": "Replicate", "speed": "~12s", "tier": "max",     "cost_per_min": 0.50, "credits": 15},
+        {"id": "grok_aurora",    "name": "Grok Aurora",    "description": "xAI native premium image generation",     "provider": "xAI",      "speed": "~10s", "tier": "max_pro", "cost_per_min": 1.00, "credits": 15},
     ],
     "video": [
-        {"id": "sora_2", "name": "Sora 2", "description": "Cinematic video generation, 4-12s clips", "provider": "OpenAI", "speed": "~60s"},
-        {"id": "sora_2_pro", "name": "Sora 2 Pro", "description": "Highest quality video, best for commercial use", "provider": "OpenAI", "speed": "~90s"},
-        {"id": "veo_3_1", "name": "Veo 3.1", "description": "Google's latest video model with native audio", "provider": "Google", "speed": "~45s"},
-        {"id": "veo_3_1_fast", "name": "Veo 3.1 Fast", "description": "Quick video generation with good quality", "provider": "Google", "speed": "~25s"},
-        {"id": "runway_gen4", "name": "Runway Gen-4", "description": "Runway's flagship video model, cinematic motion", "provider": "Runway", "speed": "~30s"},
-        {"id": "replicate_video", "name": "Replicate Video", "description": "Open-source video generation via Replicate", "provider": "Replicate", "speed": "~40s"},
+        {"id": "sora_2",         "name": "Sora 2",         "description": "Cinematic video generation, 4-12s clips",  "provider": "OpenAI",    "speed": "~60s", "tier": "max",     "cost_per_min": 0.50, "credits": 20},
+        {"id": "sora_2_pro",     "name": "Sora 2 Pro",     "description": "Highest quality, best for commercial use", "provider": "OpenAI",    "speed": "~90s", "tier": "max_pro", "cost_per_min": 1.00, "credits": 40},
+        {"id": "veo_3_1",        "name": "Veo 3.1",        "description": "Google's latest with native audio",        "provider": "Google",    "speed": "~45s", "tier": "max",     "cost_per_min": 0.50, "credits": 18},
+        {"id": "runway_gen4",    "name": "Runway Gen-4",   "description": "Runway flagship, cinematic motion",        "provider": "Runway",    "speed": "~30s", "tier": "max_pro", "cost_per_min": 1.00, "credits": 30},
     ],
     "audio": [
-        {"id": "gemini_2_5_pro_tts", "name": "Gemini TTS", "description": "Natural multi-voice text-to-speech", "provider": "Google", "speed": "~5s"},
-        {"id": "elevenlabs_tts_v3", "name": "ElevenLabs v3", "description": "Ultra-realistic voice cloning and TTS", "provider": "ElevenLabs", "speed": "~8s"},
+        {"id": "elevenlabs_basic", "name": "ElevenLabs Basic","description": "Fast text-to-speech",                   "provider": "ElevenLabs","speed": "~3s",  "tier": "mini",    "cost_per_min": 0.05, "credits": 2},
+        {"id": "elevenlabs_pro",   "name": "ElevenLabs Pro", "description": "HD voice synthesis",                     "provider": "ElevenLabs","speed": "~5s",  "tier": "pro",     "cost_per_min": 0.25, "credits": 5},
+        {"id": "elevenlabs_ultra",  "name": "ElevenLabs Ultra","description": "Ultra-realistic voice cloning",         "provider": "ElevenLabs","speed": "~8s",  "tier": "max_pro", "cost_per_min": 1.00, "credits": 10},
+    ],
+    "chat": [
+        {"id": "claude_haiku",       "name": "Claude 3.5 Haiku",       "description": "Fast everyday tasks",             "provider": "Anthropic",  "speed": "~1s",  "tier": "mini",    "cost_per_min": 0.05, "credits": 1},
+        {"id": "gemini_flash",       "name": "Gemini 2.5 Flash",       "description": "Lightning fast",                  "provider": "Google",     "speed": "~1s",  "tier": "mini",    "cost_per_min": 0.05, "credits": 1},
+        {"id": "claude_sonnet",      "name": "Claude 3.7 Sonnet",      "description": "Best speed + quality balance",    "provider": "Anthropic",  "speed": "~2s",  "tier": "pro",     "cost_per_min": 0.25, "credits": 3},
+        {"id": "gpt4o",              "name": "GPT-4o",                 "description": "OpenAI flagship multimodal",      "provider": "OpenAI",     "speed": "~2s",  "tier": "pro",     "cost_per_min": 0.25, "credits": 3},
+        {"id": "claude_opus",        "name": "Claude 3 Opus",          "description": "Maximum reasoning power",         "provider": "Anthropic",  "speed": "~5s",  "tier": "max",     "cost_per_min": 0.50, "credits": 10},
+        {"id": "o3_mini",            "name": "o3-mini",                "description": "Advanced reasoning engine",       "provider": "OpenAI",     "speed": "~8s",  "tier": "max_pro", "cost_per_min": 1.00, "credits": 15},
     ],
 }
 
@@ -1513,103 +1520,276 @@ STUDIO_VOICES = {
 
 
 # ============================================================================
-# METERING & BILLING — Credit tracking, usage analytics, cost transparency
+# METERING & BILLING — Mini/Pro/Max/MaxPro Per-Minute Compute Tiers
+# ============================================================================
+# Stripe Metered Price IDs:
+#   Mini ($0.05/min):     price_1T5bkVL47U80vDLAHHAjXmJh
+#   Pro ($0.25/min):      price_1T5bkWL47U80vDLA4EI3dylp
+#   Max ($0.50/min):      price_1T5bkXL47U80vDLAdF4S8y4T
+#   Max Pro ($1.00/min):  price_1T5bkYL47U80vDLA5v8o0c2o
 # ============================================================================
 
-# Model cost configuration (cost to us vs what we charge)
-MODEL_COSTS = {
-    # Chat models (per 1K tokens)
-    "claude_haiku_4_5":   {"cost": 0.00025, "price": 0.001,  "credits": 1,  "min_tier": "free",    "unit": "1K tokens"},
-    "claude_sonnet_4_6":  {"cost": 0.003,   "price": 0.012,  "credits": 3,  "min_tier": "starter", "unit": "1K tokens"},
-    "claude_opus_4_6":    {"cost": 0.015,   "price": 0.06,   "credits": 10, "min_tier": "pro",     "unit": "1K tokens"},
-    "grok_4_1":           {"cost": 0.005,   "price": 0.02,   "credits": 5,  "min_tier": "pro",     "unit": "1K tokens"},
-    "gemini_3_pro":       {"cost": 0.00125, "price": 0.005,  "credits": 2,  "min_tier": "starter", "unit": "1K tokens"},
-    "gemini_3_flash":     {"cost": 0.000188,"price": 0.00075,"credits": 1,  "min_tier": "free",    "unit": "1K tokens"},
-    "sonar_pro":          {"cost": 0.003,   "price": 0.015,  "credits": 5,  "min_tier": "starter", "unit": "request"},
-    # Image models (per image)
-    "nano_banana_2":      {"cost": 0.02,  "price": 0.08,  "credits": 5,  "min_tier": "free",    "unit": "image"},
-    "nano_banana_pro":    {"cost": 0.04,  "price": 0.15,  "credits": 10, "min_tier": "starter", "unit": "image"},
-    "replicate_flux":     {"cost": 0.05,  "price": 0.20,  "credits": 15, "min_tier": "pro",     "unit": "image"},
-    "grok_aurora":        {"cost": 0.03,  "price": 0.12,  "credits": 8,  "min_tier": "starter", "unit": "image"},
-    # Video models (per second of output)
-    "sora_2":             {"cost": 0.10,  "price": 0.40,  "credits": 20, "min_tier": "pro",     "unit": "second"},
-    "sora_2_pro":         {"cost": 0.20,  "price": 0.80,  "credits": 40, "min_tier": "teams",   "unit": "second"},
-    "veo_3_1":            {"cost": 0.08,  "price": 0.35,  "credits": 18, "min_tier": "pro",     "unit": "second"},
-    "veo_3_1_fast":       {"cost": 0.05,  "price": 0.20,  "credits": 12, "min_tier": "starter", "unit": "second"},
-    "runway_gen4":        {"cost": 0.15,  "price": 0.60,  "credits": 30, "min_tier": "pro",     "unit": "second"},
-    "replicate_video":    {"cost": 0.06,  "price": 0.25,  "credits": 15, "min_tier": "starter", "unit": "second"},
-    # Audio models (per second of output)
-    "gemini_2_5_pro_tts": {"cost": 0.005, "price": 0.02,  "credits": 2,  "min_tier": "free",    "unit": "second"},
-    "elevenlabs_tts_v3":  {"cost": 0.01,  "price": 0.04,  "credits": 5,  "min_tier": "starter", "unit": "second"},
+STRIPE_SECRET = os.environ.get("STRIPE_SECRET_KEY", "")
+
+# Compute tier definitions
+COMPUTE_TIERS = {
+    "mini":     {"price_per_min": 0.05, "label": "Mini",     "stripe_price_id": "price_1T5bkVL47U80vDLAHHAjXmJh", "color": "#6B7280"},
+    "pro":      {"price_per_min": 0.25, "label": "Pro",      "stripe_price_id": "price_1T5bkWL47U80vDLA4EI3dylp", "color": "#10B981"},
+    "max":      {"price_per_min": 0.50, "label": "Max",      "stripe_price_id": "price_1T5bkXL47U80vDLAdF4S8y4T", "color": "#8B5CF6"},
+    "max_pro":  {"price_per_min": 1.00, "label": "Max Pro",  "stripe_price_id": "price_1T5bkYL47U80vDLA5v8o0c2o", "color": "#F59E0B"},
 }
 
-# Plan tier configuration
-PLAN_TIERS = {
-    "free":       {"credits": 100,   "price_monthly": 0,    "models": ["claude_haiku_4_5", "gemini_3_flash", "nano_banana_2", "gemini_2_5_pro_tts"]},
-    "starter":    {"credits": 500,   "price_monthly": 27,   "models": "all_basic"},
-    "pro":        {"credits": 2000,  "price_monthly": 97,   "models": "all"},
-    "teams":      {"credits": 5000,  "price_monthly": 297,  "models": "all_premium"},
-    "enterprise": {"credits": -1,    "price_monthly": 497,  "models": "unlimited"},
+# Model → compute tier mapping with full cost data
+MODEL_COSTS = {
+    # ═══ MINI TIER ($0.05/min) ═══
+    "claude_haiku":      {"name": "Claude 3.5 Haiku",     "provider": "Anthropic",  "category": "chat",  "tier": "mini",    "our_cost": 0.008,  "charge": 0.05, "credits": 1,  "min_plan": "free",    "speed": "~1s",  "quality": "Fast"},
+    "gpt4o_mini":        {"name": "GPT-4o Mini",          "provider": "OpenAI",     "category": "chat",  "tier": "mini",    "our_cost": 0.010,  "charge": 0.05, "credits": 1,  "min_plan": "free",    "speed": "~1s",  "quality": "Fast"},
+    "gemini_flash":      {"name": "Gemini 2.5 Flash",     "provider": "Google",     "category": "chat",  "tier": "mini",    "our_cost": 0.005,  "charge": 0.05, "credits": 1,  "min_plan": "free",    "speed": "~1s",  "quality": "Fast"},
+    "llama_scout":       {"name": "Llama 4 Scout",        "provider": "Meta",       "category": "chat",  "tier": "mini",    "our_cost": 0.007,  "charge": 0.05, "credits": 1,  "min_plan": "free",    "speed": "~1s",  "quality": "Fast"},
+    "mistral_small":     {"name": "Mistral Small",        "provider": "Mistral",    "category": "chat",  "tier": "mini",    "our_cost": 0.006,  "charge": 0.05, "credits": 1,  "min_plan": "free",    "speed": "~1s",  "quality": "Fast"},
+    "elevenlabs_basic":  {"name": "ElevenLabs Basic TTS", "provider": "ElevenLabs", "category": "audio", "tier": "mini",    "our_cost": 0.010,  "charge": 0.05, "credits": 2,  "min_plan": "free",    "speed": "~3s",  "quality": "Fast"},
+    # ═══ PRO TIER ($0.25/min) ═══
+    "claude_sonnet":     {"name": "Claude 3.7 Sonnet",    "provider": "Anthropic",  "category": "chat",  "tier": "pro",     "our_cost": 0.045,  "charge": 0.25, "credits": 3,  "min_plan": "starter", "speed": "~2s",  "quality": "Pro"},
+    "gpt4o":             {"name": "GPT-4o",               "provider": "OpenAI",     "category": "chat",  "tier": "pro",     "our_cost": 0.0375, "charge": 0.25, "credits": 3,  "min_plan": "starter", "speed": "~2s",  "quality": "Pro"},
+    "gemini_pro":        {"name": "Gemini 2.5 Pro",       "provider": "Google",     "category": "chat",  "tier": "pro",     "our_cost": 0.030,  "charge": 0.25, "credits": 3,  "min_plan": "starter", "speed": "~2s",  "quality": "Pro"},
+    "llama_maverick":    {"name": "Llama 4 Maverick",     "provider": "Meta",       "category": "chat",  "tier": "pro",     "our_cost": 0.040,  "charge": 0.25, "credits": 3,  "min_plan": "starter", "speed": "~2s",  "quality": "Pro"},
+    "deepseek_v3":       {"name": "DeepSeek V3",          "provider": "DeepSeek",   "category": "chat",  "tier": "pro",     "our_cost": 0.020,  "charge": 0.25, "credits": 2,  "min_plan": "starter", "speed": "~2s",  "quality": "Pro"},
+    "grok_2":            {"name": "Grok 2",               "provider": "xAI",        "category": "chat",  "tier": "pro",     "our_cost": 0.035,  "charge": 0.25, "credits": 3,  "min_plan": "starter", "speed": "~2s",  "quality": "Pro"},
+    "sonar_pro":         {"name": "Perplexity Sonar Pro",  "provider": "Perplexity", "category": "search","tier": "pro",     "our_cost": 0.030,  "charge": 0.25, "credits": 5,  "min_plan": "starter", "speed": "~3s",  "quality": "Pro"},
+    "nano_banana_2":     {"name": "NanoBanana v2",        "provider": "SaintSal",   "category": "image", "tier": "pro",     "our_cost": 0.020,  "charge": 0.25, "credits": 5,  "min_plan": "starter", "speed": "~10s", "quality": "Pro"},
+    "elevenlabs_pro":    {"name": "ElevenLabs Pro TTS",   "provider": "ElevenLabs", "category": "audio", "tier": "pro",     "our_cost": 0.030,  "charge": 0.25, "credits": 5,  "min_plan": "starter", "speed": "~5s",  "quality": "Pro"},
+    # ═══ MAX TIER ($0.50/min) ═══
+    "claude_opus":       {"name": "Claude 3 Opus",        "provider": "Anthropic",  "category": "chat",  "tier": "max",     "our_cost": 0.225,  "charge": 0.50, "credits": 10, "min_plan": "pro",     "speed": "~5s",  "quality": "Ultra"},
+    "gpt45":             {"name": "GPT-4.5",              "provider": "OpenAI",     "category": "chat",  "tier": "max",     "our_cost": 0.300,  "charge": 0.50, "credits": 10, "min_plan": "pro",     "speed": "~5s",  "quality": "Ultra"},
+    "gemini_ultra":      {"name": "Gemini Ultra",         "provider": "Google",     "category": "chat",  "tier": "max",     "our_cost": 0.150,  "charge": 0.50, "credits": 8,  "min_plan": "pro",     "speed": "~4s",  "quality": "Ultra"},
+    "grok3":             {"name": "Grok 3",               "provider": "xAI",        "category": "chat",  "tier": "max",     "our_cost": 0.180,  "charge": 0.50, "credits": 8,  "min_plan": "pro",     "speed": "~4s",  "quality": "Ultra"},
+    "nano_banana_pro":   {"name": "NanoBanana Pro",       "provider": "SaintSal",   "category": "image", "tier": "max",     "our_cost": 0.080,  "charge": 0.50, "credits": 10, "min_plan": "pro",     "speed": "~15s", "quality": "Ultra"},
+    "replicate_flux":    {"name": "Replicate FLUX",       "provider": "Replicate",  "category": "image", "tier": "max",     "our_cost": 0.100,  "charge": 0.50, "credits": 15, "min_plan": "pro",     "speed": "~12s", "quality": "Ultra"},
+    "sora_2":            {"name": "Sora 2",               "provider": "OpenAI",     "category": "video", "tier": "max",     "our_cost": 0.200,  "charge": 0.50, "credits": 20, "min_plan": "pro",     "speed": "~60s", "quality": "Ultra"},
+    "veo_3_1":           {"name": "Veo 3.1",              "provider": "Google",     "category": "video", "tier": "max",     "our_cost": 0.150,  "charge": 0.50, "credits": 18, "min_plan": "pro",     "speed": "~45s", "quality": "Ultra"},
+    "assemblyai":        {"name": "AssemblyAI",           "provider": "AssemblyAI", "category": "transcription", "tier": "max", "our_cost": 0.010, "charge": 0.50, "credits": 3, "min_plan": "pro", "speed": "~RT", "quality": "Ultra"},
+    # ═══ MAX PRO TIER ($1.00/min) ═══
+    "o3_mini":               {"name": "o3-mini",                  "provider": "OpenAI",     "category": "chat",  "tier": "max_pro", "our_cost": 0.165,  "charge": 1.00, "credits": 15, "min_plan": "teams",   "speed": "~8s",  "quality": "Flagship"},
+    "claude_sonnet_think":   {"name": "Claude Sonnet (Thinking)", "provider": "Anthropic",  "category": "chat",  "tier": "max_pro", "our_cost": 0.0675, "charge": 1.00, "credits": 12, "min_plan": "teams",   "speed": "~10s", "quality": "Flagship"},
+    "gemini_think":          {"name": "Gemini Flash Thinking",    "provider": "Google",     "category": "chat",  "tier": "max_pro", "our_cost": 0.045,  "charge": 1.00, "credits": 10, "min_plan": "teams",   "speed": "~8s",  "quality": "Flagship"},
+    "deepseek_r1":           {"name": "DeepSeek R1",              "provider": "DeepSeek",   "category": "chat",  "tier": "max_pro", "our_cost": 0.055,  "charge": 1.00, "credits": 12, "min_plan": "teams",   "speed": "~10s", "quality": "Flagship"},
+    "qwen_qwq":              {"name": "Qwen QWQ-32B",             "provider": "Alibaba",    "category": "chat",  "tier": "max_pro", "our_cost": 0.030,  "charge": 1.00, "credits": 8,  "min_plan": "teams",   "speed": "~6s",  "quality": "Flagship"},
+    "sora_2_pro":            {"name": "Sora 2 Pro",               "provider": "OpenAI",     "category": "video", "tier": "max_pro", "our_cost": 0.400,  "charge": 1.00, "credits": 40, "min_plan": "teams",   "speed": "~90s", "quality": "Flagship"},
+    "runway_gen4":           {"name": "Runway Gen-4",             "provider": "Runway",     "category": "video", "tier": "max_pro", "our_cost": 0.300,  "charge": 1.00, "credits": 30, "min_plan": "teams",   "speed": "~30s", "quality": "Flagship"},
+    "grok_aurora":           {"name": "Grok Aurora",              "provider": "xAI",        "category": "image", "tier": "max_pro", "our_cost": 0.060,  "charge": 1.00, "credits": 15, "min_plan": "teams",   "speed": "~10s", "quality": "Flagship"},
+    "elevenlabs_ultra":      {"name": "ElevenLabs Ultra",         "provider": "ElevenLabs", "category": "audio", "tier": "max_pro", "our_cost": 0.050,  "charge": 1.00, "credits": 10, "min_plan": "teams",   "speed": "~8s",  "quality": "Flagship"},
 }
+
+# Plan tier → credit limits and compute access
+PLAN_TIERS = {
+    "free":       {"credits": 100,   "price_monthly": 0,    "compute_access": ["mini"],                          "label": "Free"},
+    "starter":    {"credits": 500,   "price_monthly": 27,   "compute_access": ["mini", "pro"],                   "label": "Starter"},
+    "pro":        {"credits": 2000,  "price_monthly": 97,   "compute_access": ["mini", "pro", "max"],             "label": "Pro"},
+    "teams":      {"credits": 5000,  "price_monthly": 297,  "compute_access": ["mini", "pro", "max", "max_pro"],  "label": "Teams"},
+    "enterprise": {"credits": -1,    "price_monthly": 497,  "compute_access": ["mini", "pro", "max", "max_pro"],  "label": "Enterprise"},
+}
+
+# Plan tier hierarchy for comparison
+TIER_HIERARCHY = ["free", "starter", "pro", "teams", "enterprise"]
+
+def user_can_access_model(user_tier: str, model_id: str) -> bool:
+    """Check if user's plan tier allows access to a model."""
+    model = MODEL_COSTS.get(model_id)
+    if not model:
+        return False
+    user_level = TIER_HIERARCHY.index(user_tier) if user_tier in TIER_HIERARCHY else 0
+    required_level = TIER_HIERARCHY.index(model["min_plan"]) if model["min_plan"] in TIER_HIERARCHY else 0
+    return user_level >= required_level
+
+
+async def meter_usage(user_id: str, model_id: str, action_type: str, duration_minutes: float = 1.0, input_tokens: int = 0, output_tokens: int = 0):
+    """Record usage in Supabase and report to Stripe metered billing."""
+    model = MODEL_COSTS.get(model_id)
+    if not model or not supabase_admin:
+        return {"success": False, "error": "metering_unavailable"}
+    
+    tier_info = COMPUTE_TIERS.get(model["tier"], COMPUTE_TIERS["mini"])
+    our_cost = model["our_cost"] * duration_minutes
+    charged = model["charge"] * duration_minutes
+    margin = ((charged - our_cost) / our_cost * 100) if our_cost > 0 else 0
+    
+    try:
+        # Call Supabase meter_compute RPC
+        result = supabase_admin.rpc("meter_compute", {
+            "p_user_id": user_id,
+            "p_model_id": model_id,
+            "p_action_type": action_type,
+            "p_duration_minutes": duration_minutes,
+            "p_input_tokens": input_tokens,
+            "p_output_tokens": output_tokens,
+            "p_metadata": json.dumps({"provider": model["provider"], "category": model["category"]})
+        }).execute()
+        
+        if result.data and isinstance(result.data, dict) and result.data.get("success"):
+            # Report to Stripe metered billing (async, non-blocking)
+            if STRIPE_SECRET and result.data.get("stripe_price_id"):
+                try:
+                    async with httpx.AsyncClient() as hc:
+                        # Stripe expects quantity in whole units — report minutes * 100 for cent precision
+                        quantity = max(1, int(duration_minutes * 100))
+                        await hc.post(
+                            "https://api.stripe.com/v1/subscription_items/usage_records",
+                            headers={"Authorization": f"Bearer {STRIPE_SECRET}"},
+                            data={"quantity": quantity, "action": "increment"},
+                        )
+                except Exception as stripe_err:
+                    print(f"[Metering] Stripe reporting error (non-fatal): {stripe_err}")
+            
+            return result.data
+        else:
+            return result.data if result.data else {"success": False, "error": "rpc_failed"}
+    except Exception as e:
+        print(f"[Metering] Supabase error: {e}")
+        # Fallback: still allow the request but log the error
+        return {"success": True, "metering_error": str(e), "credits_remaining": 999, "tier": "fallback"}
 
 
 @app.get("/api/metering/pricing")
 async def get_model_pricing():
-    """Get all model pricing info for transparency display."""
+    """Get all model pricing with compute tier info for transparency display."""
     pricing = []
-    for model_id, costs in MODEL_COSTS.items():
-        margin = ((costs["price"] - costs["cost"]) / costs["cost"] * 100) if costs["cost"] > 0 else 0
+    for model_id, m in MODEL_COSTS.items():
+        margin = ((m["charge"] - m["our_cost"]) / m["our_cost"] * 100) if m["our_cost"] > 0 else 0
         pricing.append({
             "model_id": model_id,
-            "credits_per_use": costs["credits"],
-            "price_per_unit": costs["price"],
-            "unit": costs["unit"],
-            "min_tier": costs["min_tier"],
+            "name": m["name"],
+            "provider": m["provider"],
+            "category": m["category"],
+            "compute_tier": m["tier"],
+            "cost_per_min": m["charge"],
+            "our_cost_per_min": m["our_cost"],
+            "credits_per_use": m["credits"],
+            "min_plan": m["min_plan"],
+            "speed": m["speed"],
+            "quality": m["quality"],
             "margin_pct": round(margin, 1),
         })
-    return {"pricing": pricing, "tiers": PLAN_TIERS}
+    return {"pricing": pricing, "tiers": PLAN_TIERS, "compute_tiers": COMPUTE_TIERS}
 
 
 @app.get("/api/metering/usage")
-async def get_usage_summary(user_id: str = "demo"):
-    """Get usage summary for current billing period."""
-    # In production, this queries Supabase usage_log
-    return {
-        "user_id": user_id,
-        "period": "2026-03",
-        "credits_used": 47,
-        "credits_remaining": 53,
-        "credits_limit": 100,
-        "tier": "free",
-        "usage_by_type": {
-            "chat": {"count": 32, "credits": 32},
-            "image_gen": {"count": 3, "credits": 15},
-            "search": {"count": 5, "credits": 0},
-        },
-        "cost_breakdown": {
-            "total_charged": 0.94,
-            "our_cost": 0.23,
-            "margin": 75.5,
+async def get_usage_summary(authorization: Optional[str] = Header(None)):
+    """Get real usage summary from Supabase for current billing period."""
+    user = await get_current_user(authorization)
+    if not user or not supabase_admin:
+        # Return demo data for unauthenticated users
+        return {
+            "user_id": "demo",
+            "period": datetime.now().strftime("%Y-%m"),
+            "credits_used": 0, "credits_remaining": 100, "credits_limit": 100,
+            "tier": "free", "compute_tier": "mini",
+            "total_compute_minutes": 0, "current_month_spend": 0,
+            "by_tier": {}, "by_model": {}, "by_action": {},
         }
-    }
+    
+    try:
+        # Get profile
+        profile = supabase_admin.table("profiles").select("*").eq("id", user["id"]).single().execute()
+        p = profile.data or {}
+        tier = p.get("tier", p.get("plan_tier", "free"))
+        tier_config = PLAN_TIERS.get(tier, PLAN_TIERS["free"])
+        
+        # Get compute summary from RPC (may not exist pre-migration)
+        s = {}
+        try:
+            summary = supabase_admin.rpc("get_compute_summary", {"p_user_id": user["id"]}).execute()
+            s = summary.data or {}
+        except Exception:
+            pass  # RPC not available pre-migration
+        
+        return {
+            "user_id": user["id"],
+            "period": datetime.now().strftime("%Y-%m"),
+            "credits_used": p.get("monthly_requests", 0),
+            "credits_remaining": max(0, p.get("request_limit", 100) - p.get("monthly_requests", 0)),
+            "credits_limit": p.get("request_limit", tier_config["credits"]),
+            "tier": tier,
+            "compute_tier": p.get("compute_tier", "mini"),
+            "total_compute_minutes": float(p.get("total_compute_minutes", 0)),
+            "current_month_spend": float(p.get("current_month_spend", 0)),
+            "by_tier": s.get("by_tier", {}),
+            "by_model": s.get("by_model", {}),
+            "by_action": s.get("by_action", {}),
+            "wallet_balance": float(p.get("wallet_balance", 0)),
+        }
+    except Exception as e:
+        print(f"[Metering] Usage summary error: {e}")
+        return {"user_id": user["id"], "error": str(e), "tier": "free", "credits_remaining": 100}
 
 
 @app.post("/api/metering/check")
-async def check_credits(model: str = "claude_haiku_4_5", user_id: str = "demo"):
-    """Pre-check if user has enough credits for a model call."""
-    model_info = MODEL_COSTS.get(model, MODEL_COSTS["claude_haiku_4_5"])
-    # In production, check user's actual credits from Supabase
-    demo_remaining = 53
-    credits_needed = model_info["credits"]
+async def check_credits(request: Request, authorization: Optional[str] = Header(None)):
+    """Pre-check if user has enough credits and tier access for a model call."""
+    body = await request.json()
+    model_id = body.get("model", "claude_haiku")
+    model_info = MODEL_COSTS.get(model_id, MODEL_COSTS["claude_haiku"])
+    
+    user = await get_current_user(authorization)
+    if not user or not supabase_admin:
+        # Demo mode
+        return {
+            "model": model_id, "compute_tier": model_info["tier"],
+            "cost_per_min": model_info["charge"], "credits_needed": model_info["credits"],
+            "credits_remaining": 100, "can_proceed": True,
+            "min_plan": model_info["min_plan"], "user_tier": "demo",
+        }
+    
+    try:
+        profile = supabase_admin.table("profiles").select("tier, request_limit, monthly_requests").eq("id", user["id"]).single().execute()
+        p = profile.data or {}
+        user_tier = p.get("tier", "free")
+        remaining = max(0, p.get("request_limit", 100) - p.get("monthly_requests", 0))
+        
+        can_access = user_can_access_model(user_tier, model_id)
+        has_credits = remaining >= model_info["credits"] or user_tier == "enterprise"
+        
+        return {
+            "model": model_id, "compute_tier": model_info["tier"],
+            "cost_per_min": model_info["charge"], "credits_needed": model_info["credits"],
+            "credits_remaining": remaining, "can_proceed": can_access and has_credits,
+            "tier_access": can_access, "has_credits": has_credits,
+            "min_plan": model_info["min_plan"], "user_tier": user_tier,
+        }
+    except Exception as e:
+        return {"model": model_id, "can_proceed": True, "error": str(e)}
+
+
+@app.get("/api/metering/models")
+async def get_models_by_tier(authorization: Optional[str] = Header(None)):
+    """Get all models grouped by compute tier, with user access flags."""
+    user = await get_current_user(authorization)
+    user_tier = "free"
+    if user and supabase_admin:
+        try:
+            p = supabase_admin.table("profiles").select("tier").eq("id", user["id"]).single().execute()
+            user_tier = (p.data or {}).get("tier", "free")
+        except Exception:
+            pass
+    
+    tiers = {"mini": [], "pro": [], "max": [], "max_pro": []}
+    for model_id, m in MODEL_COSTS.items():
+        tiers[m["tier"]].append({
+            "id": model_id,
+            "name": m["name"],
+            "provider": m["provider"],
+            "category": m["category"],
+            "cost_per_min": m["charge"],
+            "credits": m["credits"],
+            "speed": m["speed"],
+            "quality": m["quality"],
+            "accessible": user_can_access_model(user_tier, model_id),
+            "min_plan": m["min_plan"],
+        })
     
     return {
-        "model": model,
-        "credits_needed": credits_needed,
-        "credits_remaining": demo_remaining,
-        "can_proceed": demo_remaining >= credits_needed,
-        "min_tier": model_info["min_tier"],
-        "price_per_unit": model_info["price"],
-        "unit": model_info["unit"],
+        "user_tier": user_tier,
+        "tiers": tiers,
+        "tier_pricing": COMPUTE_TIERS,
     }
 
 
@@ -2113,8 +2293,11 @@ async def auth_login(data: AuthLogin):
                     "email": result.user.email,
                     "full_name": profile.get("full_name", "") if profile else "",
                     "plan_tier": profile.get("tier", "free") if profile else "free",
-                    "credits_remaining": (profile.get("request_limit", 100) - profile.get("monthly_requests", 0)) if profile else 100,
+                    "compute_tier": profile.get("compute_tier", "mini") if profile else "mini",
+                    "credits_remaining": max(0, (profile.get("request_limit", 100) - profile.get("monthly_requests", 0))) if profile else 100,
                     "credits_limit": profile.get("request_limit", 100) if profile else 100,
+                    "wallet_balance": float(profile.get("wallet_balance", 0)) if profile else 0,
+                    "total_compute_minutes": float(profile.get("total_compute_minutes", 0)) if profile else 0,
                     "avatar_url": profile.get("avatar_url", "") if profile else "",
                 },
                 "session": {
@@ -2189,15 +2372,22 @@ async def auth_profile(user=Depends(get_current_user)):
     try:
         result = supabase_admin.table("profiles").select("*").eq("id", user["id"]).single().execute()
         profile = result.data
+        tier = profile.get("tier", "free")
+        tier_config = PLAN_TIERS.get(tier, PLAN_TIERS["free"])
         return {
             "user": {
                 "id": profile["id"],
                 "email": profile["email"],
                 "full_name": profile.get("full_name", ""),
                 "avatar_url": profile.get("avatar_url", ""),
-                "plan_tier": profile.get("tier", "free"),
-                "credits_remaining": profile.get("request_limit", 100) - profile.get("monthly_requests", 0),
+                "plan_tier": tier,
+                "compute_tier": profile.get("compute_tier", "mini"),
+                "credits_remaining": max(0, profile.get("request_limit", 100) - profile.get("monthly_requests", 0)),
                 "credits_limit": profile.get("request_limit", 100),
+                "wallet_balance": float(profile.get("wallet_balance", 0)),
+                "total_compute_minutes": float(profile.get("total_compute_minutes", 0)),
+                "current_month_spend": float(profile.get("current_month_spend", 0)),
+                "compute_access": tier_config.get("compute_access", ["mini"]),
                 "onboarding_complete": profile.get("onboarding_complete", False),
                 "stripe_customer_id": profile.get("stripe_customer_id"),
             }
@@ -2222,25 +2412,20 @@ async def auth_usage(user=Depends(get_current_user)):
 
 
 async def deduct_user_credits(user_id: str, credits: int, action_type: str, model: str, provider: str, metadata: dict = None):
-    """Deduct credits from a user's balance and log the usage. Returns result dict."""
-    if not supabase_admin:
-        # Supabase not configured — allow operations in demo mode
-        return {"success": True, "credits_used": credits, "credits_remaining": 999, "tier": "demo"}
+    """Deduct credits using the new metering system. Wraps meter_usage for backward compatibility."""
+    model_info = MODEL_COSTS.get(model)
+    if model_info:
+        return await meter_usage(user_id, model, action_type, duration_minutes=1.0)
     
-    model_info = MODEL_COSTS.get(model, {})
-    model_cost = model_info.get("cost", 0)
-    charged = model_info.get("price", 0)
+    if not supabase_admin:
+        return {"success": True, "credits_used": credits, "credits_remaining": 999, "tier": "demo"}
     
     try:
         result = supabase_admin.rpc("deduct_credits", {
             "p_user_id": user_id,
             "p_credits": credits,
-            "p_action_type": action_type,
             "p_model": model,
-            "p_provider": provider,
-            "p_model_cost": model_cost,
-            "p_charged": charged,
-            "p_metadata": metadata or {}
+            "p_description": action_type
         }).execute()
         return result.data
     except Exception as e:
@@ -2253,20 +2438,10 @@ def _demo_usage():
     return {
         "user_id": "demo",
         "period": datetime.now().strftime("%Y-%m"),
-        "credits_used": 47,
-        "credits_remaining": 53,
-        "credits_limit": 100,
-        "tier": "free",
-        "usage_by_type": {
-            "chat": {"count": 32, "credits": 32},
-            "image_gen": {"count": 3, "credits": 15},
-            "search": {"count": 5, "credits": 0},
-        },
-        "cost_breakdown": {
-            "total_charged": 0.94,
-            "our_cost": 0.23,
-            "margin": 75.5,
-        }
+        "credits_used": 0, "credits_remaining": 100, "credits_limit": 100,
+        "tier": "free", "compute_tier": "mini",
+        "total_compute_minutes": 0, "current_month_spend": 0,
+        "by_tier": {}, "by_model": {}, "by_action": {},
     }
 
 
@@ -2277,7 +2452,7 @@ async def health():
     return {
         "status": "ok",
         "service": "SaintSal.ai",
-        "version": "6.0-supabase-auth",
+        "version": "7.0-metering-overhaul",
         "integrations": {
             "supabase": {"public": supabase is not None, "admin": supabase_admin is not None, "url": SUPABASE_URL},
             "godaddy": {"configured": bool(GODADDY_API_KEY), "base": GODADDY_BASE},
