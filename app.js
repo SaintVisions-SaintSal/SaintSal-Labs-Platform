@@ -55,6 +55,11 @@ function setView(view) {
   if (view === 'dashboard') {
     setTimeout(initDashboard, 50);
   }
+  if (view === 'account') {
+    // Sync __salUser from currentUser so renderAccountProfile can read it
+    window.__salUser = currentUser || null;
+    setTimeout(renderAccountProfile, 50);
+  }
 
   // Update sidebar active for non-vertical views
   document.querySelectorAll('.nav-item[data-view]').forEach(function(item) {
@@ -139,12 +144,12 @@ function switchVertical(vertical, el) {
   }
 
   // Real Estate gets a dedicated panel instead of the generic discover feed
+  var grid = document.getElementById('discoverGrid');
+  var engagement = document.getElementById('engagementSection');
   if (vertical === 'medical' && typeof renderMedicalPanel === 'function') {
       if (grid) grid.innerHTML = renderMedicalPanel();
       if (engagement) engagement.style.display = 'none';
-    } else if (vertical === 'realestate' && typeof renderRealEstatePanel === 'function') {
-    var grid = document.getElementById('discoverGrid');
-    var engagement = document.getElementById('engagementSection');
+  } else if (vertical === 'realestate' && typeof renderRealEstatePanel === 'function') {
     if (engagement) engagement.style.display = 'none';
     if (grid) grid.innerHTML = renderRealEstatePanel();
     // Load ticker for RE (still shows market data)
@@ -496,6 +501,34 @@ function connectWebSocket() {
   }
 }
 
+
+// ─── AI Model Fallback ──────────────────────────────────────────────────
+var AI_FALLBACK_CHAIN = ['grok-4', 'claude-sonnet-4-6', 'gpt-4o', 'gemini-2.0-flash'];
+var currentModelIndex = 0;
+
+function retryWithFallback(query, vertical) {
+  currentModelIndex++;
+  if (currentModelIndex >= AI_FALLBACK_CHAIN.length) {
+    currentModelIndex = 0;
+    appendSystemMessage('All AI models are temporarily unavailable. Please try again in a moment.');
+    return;
+  }
+  var fallbackModel = AI_FALLBACK_CHAIN[currentModelIndex];
+  appendSystemMessage('Switching to ' + fallbackModel + '...');
+  // Re-send with fallback model
+  sendMessage(query, vertical, fallbackModel);
+}
+
+function appendSystemMessage(msg) {
+  var chatArea = document.getElementById('chatMessages') || document.getElementById('responseArea');
+  if (chatArea) {
+    var div = document.createElement('div');
+    div.className = 'system-message';
+    div.innerHTML = '<span class="system-msg-icon">&#x26A1;</span> ' + msg;
+    chatArea.appendChild(div);
+    chatArea.scrollTop = chatArea.scrollHeight;
+  }
+}
 function sendMessage(query) {
   isStreaming = true;
   document.getElementById('sendBtn').disabled = true;
@@ -638,6 +671,11 @@ function sendMessage(query) {
     .catch(function(err) {
       console.error('Chat error:', err);
       phaseEl.style.display = 'none';
+      // On timeout or server error, try fallback model
+      if (err && err.message && (err.message.includes('timeout') || err.message.includes('500') || err.message.includes('503'))) {
+        retryWithFallback(query, currentVertical);
+        return;
+      }
       answerEl.innerHTML = '<p style="color:var(--accent-red);">Unable to reach SAL. The backend may be starting up. Please try again in a moment.</p>';
       isStreaming = false;
       document.getElementById('sendBtn').disabled = false;
@@ -2378,7 +2416,107 @@ function handleLogout() {
   fetch(API + '/api/auth/logout', { method: 'POST', headers: authHeaders() }).catch(function() {});
   clearSession();
   showToast('Signed out', 'info');
+  // Refresh account page if visible
+  if (currentView === 'account') { setTimeout(renderAccountProfile, 100); }
 }
+// ─── Account Profile Page ─────────────────────────────────────────────
+function renderAccountProfile() {
+  var user = window.__salUser || null;
+  var container = document.getElementById('mainContent') || document.getElementById('discoverGrid');
+  if (!container) return;
+  
+  if (!user) {
+    // Not logged in — show auth prompt
+    container.innerHTML = '<div class="account-guest">'
+      + '<div class="account-guest-icon"><svg viewBox="0 0 24 24" fill="none" stroke="var(--gold)" stroke-width="2" width="48" height="48"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div>'
+      + '<h2 class="account-guest-title">Welcome to SaintSal™ Labs</h2>'
+      + '<p class="account-guest-sub">Sign in to access your profile, usage history, billing, and settings.</p>'
+      + '<div class="account-guest-actions">'
+      + '<button class="btn-gold" onclick="document.getElementById('authModal').style.display='flex'">Sign In</button>'
+      + '<button class="btn-outline" onclick="document.getElementById('authModal').style.display='flex'">Create Account</button>'
+      + '</div>'
+      + '</div>';
+    return;
+  }
+  
+  // Logged in — show full profile
+  var plan = user.plan_tier || 'free';
+  var planColors = { free: '#6B7280', starter: '#10B981', pro: '#8B5CF6', teams: '#F59E0B', enterprise: '#EF4444' };
+  var planColor = planColors[plan] || '#6B7280';
+  
+  container.innerHTML = '<div class="account-profile">'
+    + '<div class="account-header">'
+    + '<div class="account-avatar">' + (user.avatar_url ? '<img src="' + user.avatar_url + '" alt="avatar">' : '<svg viewBox="0 0 24 24" fill="none" stroke="var(--gold)" stroke-width="2" width="40" height="40"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>') + '</div>'
+    + '<div class="account-info">'
+    + '<h2 class="account-name">' + (user.full_name || user.email || 'SaintSal User') + '</h2>'
+    + '<span class="account-plan-badge" style="background:' + planColor + '">' + plan.charAt(0).toUpperCase() + plan.slice(1) + ' Plan</span>'
+    + '</div>'
+    + '</div>'
+    
+    // Usage section
+    + '<div class="account-section">'
+    + '<h3 class="account-section-title">Usage This Month</h3>'
+    + '<div class="account-usage-grid">'
+    + '<div class="account-usage-card"><div class="account-usage-value">' + (user.credits_remaining || 0) + '</div><div class="account-usage-label">Credits Remaining</div></div>'
+    + '<div class="account-usage-card"><div class="account-usage-value">' + (user.messages_sent || 0) + '</div><div class="account-usage-label">Messages Sent</div></div>'
+    + '<div class="account-usage-card"><div class="account-usage-value">' + (user.studio_generations || 0) + '</div><div class="account-usage-label">Studio Generations</div></div>'
+    + '<div class="account-usage-card"><div class="account-usage-value">' + (user.compute_minutes || '0.0') + ' min</div><div class="account-usage-label">Compute Used</div></div>'
+    + '</div>'
+    + '</div>'
+    
+    // Billing section
+    + '<div class="account-section">'
+    + '<h3 class="account-section-title">Billing</h3>'
+    + '<div class="account-billing">'
+    + '<div class="account-billing-row"><span>Current Plan</span><span style="color:' + planColor + ';font-weight:600">' + plan.charAt(0).toUpperCase() + plan.slice(1) + '</span></div>'
+    + '<div class="account-billing-row"><span>Next Billing Date</span><span>' + (user.next_billing || 'N/A') + '</span></div>'
+    + '<button class="btn-gold" onclick="toggleBilling()">Manage Subscription</button>'
+    + '</div>'
+    + '</div>'
+    
+    // Settings section
+    + '<div class="account-section">'
+    + '<h3 class="account-section-title">Settings</h3>'
+    + '<div class="account-settings">'
+    + '<div class="account-setting-row"><span>Email</span><span>' + (user.email || 'Not set') + '</span></div>'
+    + '<div class="account-setting-row"><span>Theme</span><button class="btn-outline-sm" onclick="toggleTheme()">Toggle Dark/Light</button></div>'
+    + '<div class="account-setting-row"><span>Default Compute Tier</span><select class="account-select" onchange="setDefaultTier(this.value)"><option value="mini">Mini ($0.05/min)</option><option value="pro">Pro ($0.25/min)</option><option value="max">Max ($0.75/min)</option><option value="max_pro">MaxPro ($1.00/min)</option></select></div>'
+    + '</div>'
+    + '</div>'
+    
+    // Danger zone
+    + '<div class="account-section account-danger">'
+    + '<h3 class="account-section-title">Account</h3>'
+    + '<button class="btn-outline-danger" onclick="handleLogout()">Sign Out</button>'
+    + '</div>'
+    + '</div>';
+    
+  // Fetch fresh usage data
+  fetchAccountUsage();
+}
+
+function fetchAccountUsage() {
+  var token = localStorage.getItem('sal_token');
+  if (!token) return;
+  fetch('/api/auth/usage', { headers: { 'Authorization': 'Bearer ' + token } })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data && !data.error) {
+        // Update usage cards with real data
+        var cards = document.querySelectorAll('.account-usage-value');
+        if (cards[0]) cards[0].textContent = data.credits_remaining || 0;
+        if (cards[1]) cards[1].textContent = data.messages_sent || 0;
+        if (cards[2]) cards[2].textContent = data.studio_generations || 0;
+        if (cards[3]) cards[3].textContent = (data.compute_minutes || '0.0') + ' min';
+      }
+    })
+    .catch(function() {});
+}
+
+function setDefaultTier(tier) {
+  localStorage.setItem('sal_default_tier', tier);
+}
+
 
 // ─── Toast Notifications ────────────────────────────────────────────────────
 
@@ -2877,3 +3015,100 @@ async function builderPublish(target) {
     if (typeof showToast === 'function') showToast('ZIP download preparing...', 'info');
   }
 }
+
+// mobile-bottom-nav:upgrade_mobile
+// ─── Mobile Bottom Navigation ─────────────────────────────────────────
+function mobileNav(view, btn) {
+  // Update active state
+  document.querySelectorAll('.mobile-nav-item').forEach(function(i) { i.classList.remove('active'); });
+  if (btn) btn.classList.add('active');
+  
+  // Close more menu if open
+  closeMobileMore();
+  
+  // Navigate
+  if (view === 'chat') {
+    navigate('chat');
+  } else if (view === 'studio') {
+    navigate('studio');
+  } else if (view === 'dashboard') {
+    navigate('dashboard');
+  } else if (view === 'account') {
+    navigate('account');
+    if (typeof renderAccountProfile === 'function') renderAccountProfile();
+  }
+}
+
+function toggleMobileMore() {
+  var menu = document.getElementById('mobileNavMoreMenu');
+  if (menu) menu.classList.toggle('show');
+}
+
+function closeMobileMore() {
+  var menu = document.getElementById('mobileNavMoreMenu');
+  if (menu) menu.classList.remove('show');
+}
+
+// Close more menu when clicking outside
+document.addEventListener('click', function(e) {
+  var menu = document.getElementById('mobileNavMoreMenu');
+  var moreBtn = document.querySelector('.mobile-nav-item:last-child');
+  if (menu && menu.classList.contains('show') && !menu.contains(e.target) && (!moreBtn || !moreBtn.contains(e.target))) {
+    closeMobileMore();
+  }
+});
+
+// ─── Onboarding Tour ──────────────────────────────────────────────────
+function showOnboardingTour() {
+  if (localStorage.getItem('sal_onboarding_done')) return;
+  
+  var overlay = document.createElement('div');
+  overlay.className = 'onboard-overlay';
+  overlay.id = 'onboardOverlay';
+  
+  var steps = [
+    { title: 'Welcome to SaintSal™ Labs', desc: 'The AI platform that searches, builds, creates, and deploys — all from one place. Let us show you around.', icon: '🤖' },
+    { title: '7 Intelligence Verticals', desc: 'Search across specialized domains — Finance, Real Estate, Medical, Sports, News, Tech, and general AI search. Each vertical has its own expert AI context.', icon: '🔍' },
+    { title: 'SAL Studio', desc: 'Your full-stack creative suite. Generate images, video, audio, code, UI designs, and publish directly to the web — all with metered AI compute.', icon: '🎨' },
+    { title: 'Medical Intelligence', desc: 'ICD-10 code lookup, NPI registry search, drug interactions, and clinical decision tools — powered by SaintAthena.', icon: '🏥' },
+    { title: '88 Connectors', desc: 'Connect your entire stack — Slack, GitHub, Google, Stripe, Salesforce, and 83 more. OAuth and API key flows built in.', icon: '🔗' },
+    { title: 'You're Ready', desc: 'Start with a search, explore the Studio, or dive into any vertical. SaintSal™ Labs adapts to how you work. Go build something great.', icon: '🚀' }
+  ];
+  
+  var currentStep = 0;
+  
+  function renderStep() {
+    var s = steps[currentStep];
+    var isLast = currentStep === steps.length - 1;
+    var isFirst = currentStep === 0;
+    overlay.innerHTML = '<div class="onboard-card">'
+      + '<div class="onboard-progress">'
+      + steps.map(function(_, i) { return '<div class="onboard-dot' + (i === currentStep ? ' active' : i < currentStep ? ' done' : '') + '"></div>'; }).join('')
+      + '</div>'
+      + '<div class="onboard-icon">' + s.icon + '</div>'
+      + '<h2 class="onboard-title">' + s.title + '</h2>'
+      + '<p class="onboard-desc">' + s.desc + '</p>'
+      + '<div class="onboard-actions">'
+      + (isFirst ? '' : '<button class="onboard-btn-back" onclick="onboardPrev()">Back</button>')
+      + '<button class="onboard-btn-next" onclick="' + (isLast ? 'onboardDone()' : 'onboardNext()') + '">' + (isLast ? 'Get Started' : 'Next') + '</button>'
+      + '</div>'
+      + '<button class="onboard-skip" onclick="onboardDone()">Skip tour</button>'
+      + '</div>';
+  }
+  
+  window.onboardNext = function() { if (currentStep < steps.length - 1) { currentStep++; renderStep(); } };
+  window.onboardPrev = function() { if (currentStep > 0) { currentStep--; renderStep(); } };
+  window.onboardDone = function() {
+    localStorage.setItem('sal_onboarding_done', '1');
+    var el = document.getElementById('onboardOverlay');
+    if (el) { el.classList.add('fade-out'); setTimeout(function() { el.remove(); }, 300); }
+  };
+  
+  renderStep();
+  document.body.appendChild(overlay);
+}
+
+// Show onboarding on first load
+document.addEventListener('DOMContentLoaded', function() {
+  setTimeout(showOnboardingTour, 1000);
+});

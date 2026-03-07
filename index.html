@@ -30,6 +30,40 @@
 <link rel="shortcut icon" href="favicon.ico">
 <link rel="apple-touch-icon" href="saintsal-icon.png">
 <meta name="description" content="SaintSal™ — AI Search & Chat powered by HACP™ Human-AI Connection Protocol. Responsible Intelligence.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://saintsallabs.com">
+<meta property="og:title" content="SaintSal™ Labs — Responsible Intelligence">
+<meta property="og:description" content="The AI platform that searches, builds, creates, and deploys — all from one place. 53 models, 88 connectors, 7 verticals. US Patent #10,290,222.">
+<meta property="og:image" content="https://saintsallabs.com/og-image.png">
+<meta property="og:site_name" content="SaintSal™ Labs">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="SaintSal™ Labs — Responsible Intelligence">
+<meta name="twitter:description" content="The AI platform that searches, builds, creates, and deploys — all from one place. 53 models, 88 connectors, 7 verticals.">
+<meta name="twitter:image" content="https://saintsallabs.com/og-image.png">
+<link rel="canonical" href="https://saintsallabs.com">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "SaintSal Labs",
+  "alternateName": "SaintSal™ Labs",
+  "applicationCategory": "BusinessApplication",
+  "operatingSystem": "Web",
+  "url": "https://saintsallabs.com",
+  "description": "AI platform with 53 models, 88 connectors, 7 intelligence verticals. Search, build, create, and deploy from one place.",
+  "author": {
+    "@type": "Organization",
+    "name": "SaintVision Technologies LLC",
+    "url": "https://saintsallabs.com"
+  },
+  "offers": {
+    "@type": "AggregateOffer",
+    "lowPrice": "0",
+    "highPrice": "497",
+    "priceCurrency": "USD"
+  }
+}
+</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
@@ -1225,5 +1259,70 @@ window.addEventListener('DOMContentLoaded', function() {
   }, 100);
 });
 </script>
+<!-- mobile-bottom-nav:upgrade_mobile -->
+<!-- Mobile Bottom Navigation -->
+<nav class="mobile-bottom-nav" id="mobileBottomNav">
+  <div class="mobile-nav-items">
+    <button class="mobile-nav-item active" data-view="chat" onclick="mobileNav('chat', this)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+      Search
+    </button>
+    <button class="mobile-nav-item" data-view="studio" onclick="mobileNav('studio', this)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/></svg>
+      Studio
+    </button>
+    <button class="mobile-nav-item" data-view="dashboard" onclick="mobileNav('dashboard', this)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+      Home
+    </button>
+    <button class="mobile-nav-item" data-view="account" onclick="mobileNav('account', this)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+      Account
+    </button>
+    <button class="mobile-nav-item" onclick="toggleMobileMore()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>
+      More
+    </button>
+  </div>
+</nav>
+
+<!-- Mobile More Menu -->
+<div class="mobile-nav-more-menu" id="mobileNavMoreMenu">
+  <div class="mobile-more-grid">
+    <button class="mobile-more-item" onclick="mobileNav('chat', null); switchVertical('sports'); closeMobileMore()">
+      <svg viewBox="0 0 24 24" fill="none" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><path d="m4.93 4.93 4.24 4.24"/><path d="m14.83 9.17 4.24-4.24"/><path d="m14.83 14.83 4.24 4.24"/><path d="m9.17 14.83-4.24 4.24"/><circle cx="12" cy="12" r="4"/></svg>
+      Sports
+    </button>
+    <button class="mobile-more-item" onclick="mobileNav('chat', null); switchVertical('finance'); closeMobileMore()">
+      <svg viewBox="0 0 24 24" fill="none" stroke-width="1.5"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+      Finance
+    </button>
+    <button class="mobile-more-item" onclick="mobileNav('chat', null); switchVertical('realestate'); closeMobileMore()">
+      <svg viewBox="0 0 24 24" fill="none" stroke-width="1.5"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+      Real Estate
+    </button>
+    <button class="mobile-more-item" onclick="mobileNav('chat', null); switchVertical('medical'); closeMobileMore()">
+      <svg viewBox="0 0 24 24" fill="none" stroke-width="1.5"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+      Medical
+    </button>
+    <button class="mobile-more-item" onclick="mobileNav('chat', null); switchVertical('news'); closeMobileMore()">
+      <svg viewBox="0 0 24 24" fill="none" stroke-width="1.5"><path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 1-2 2zm0 0a2 2 0 0 1-2-2v-9c0-1.1.9-2 2-2h2"/></svg>
+      News
+    </button>
+    <button class="mobile-more-item" onclick="mobileNav('chat', null); switchVertical('tech'); closeMobileMore()">
+      <svg viewBox="0 0 24 24" fill="none" stroke-width="1.5"><path d="m16 18 6-6-6-6"/><path d="m8 6-6 6 6 6"/></svg>
+      Tech
+    </button>
+    <button class="mobile-more-item" onclick="navigate('connectors'); closeMobileMore()">
+      <svg viewBox="0 0 24 24" fill="none" stroke-width="1.5"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+      Connectors
+    </button>
+    <button class="mobile-more-item" onclick="navigate('pricing'); closeMobileMore()">
+      <svg viewBox="0 0 24 24" fill="none" stroke-width="1.5"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>
+      Pricing
+    </button>
+  </div>
+</div>
+
 </body>
 </html>
