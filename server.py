@@ -1711,33 +1711,51 @@ async def deal_analysis(purchase_price: float, monthly_rent: float, down_payment
 # Available AI models for Studio — now includes compute tier info
 STUDIO_MODELS = {
     "image": [
-        {"id": "nano_banana_2",  "name": "NanoBanana v2",  "description": "Fast, high-quality image generation",     "provider": "SaintSal",  "speed": "~10s", "tier": "pro",     "cost_per_min": 0.25, "credits": 5},
-        {"id": "nano_banana_pro","name": "NanoBanana Pro", "description": "Premium quality, photorealistic output",   "provider": "SaintSal",  "speed": "~15s", "tier": "max",     "cost_per_min": 0.75, "credits": 10},
-        {"id": "replicate_flux", "name": "Replicate FLUX", "description": "Ultra high-resolution image synthesis",    "provider": "Replicate", "speed": "~12s", "tier": "max",     "cost_per_min": 0.75, "credits": 15},
-        {"id": "grok_aurora",    "name": "Grok Aurora",    "description": "xAI native premium image generation",     "provider": "xAI",      "speed": "~10s", "tier": "max_pro", "cost_per_min": 1.00, "credits": 15},
+        {"id": "nano_banana_2",       "name": "NanoBanana v2",       "description": "Fast, high-quality image generation",       "provider": "SaintSal",   "speed": "~10s", "tier": "pro",     "cost_per_min": 0.25, "credits": 5},
+        {"id": "dalle_3",             "name": "DALL-E 3",            "description": "OpenAI photorealistic generation",         "provider": "OpenAI",     "speed": "~12s", "tier": "pro",     "cost_per_min": 0.25, "credits": 5},
+        {"id": "stable_diffusion_xl", "name": "Stable Diffusion XL", "description": "Open-source, versatile styles",            "provider": "Stability",  "speed": "~8s",  "tier": "pro",     "cost_per_min": 0.25, "credits": 4},
+        {"id": "replicate_flux",      "name": "FLUX Pro",            "description": "Ultra high-res, photorealistic",            "provider": "Replicate",  "speed": "~12s", "tier": "max",     "cost_per_min": 0.75, "credits": 15},
+        {"id": "nano_banana_pro",     "name": "NanoBanana Pro",      "description": "Premium quality, best for commercial",      "provider": "SaintSal",   "speed": "~15s", "tier": "max",     "cost_per_min": 0.75, "credits": 10},
+        {"id": "stable_diffusion_3",  "name": "Stable Diffusion 3.5","description": "Latest SD model, stunning detail",          "provider": "Stability",  "speed": "~10s", "tier": "max",     "cost_per_min": 0.75, "credits": 12},
+        {"id": "ideogram_v3",         "name": "Ideogram v3",         "description": "Best text-in-image rendering",              "provider": "Ideogram",   "speed": "~8s",  "tier": "max",     "cost_per_min": 0.75, "credits": 10},
+        {"id": "grok_aurora",         "name": "Grok Aurora",         "description": "xAI native flagship image generation",      "provider": "xAI",        "speed": "~10s", "tier": "max_pro", "cost_per_min": 1.00, "credits": 15},
+        {"id": "replicate_flux_ultra","name": "FLUX Ultra",          "description": "Highest resolution, maximum quality",       "provider": "Replicate",  "speed": "~15s", "tier": "max_pro", "cost_per_min": 1.00, "credits": 20},
+        {"id": "dalle_4",             "name": "DALL-E 4",            "description": "OpenAI next-gen, photorealistic cinema",    "provider": "OpenAI",     "speed": "~12s", "tier": "max_pro", "cost_per_min": 1.00, "credits": 18},
     ],
     "video": [
-        {"id": "sora_2",         "name": "Sora 2",         "description": "Cinematic video generation, 4-12s clips",  "provider": "OpenAI",    "speed": "~60s", "tier": "max",     "cost_per_min": 0.75, "credits": 20},
-        {"id": "sora_2_pro",     "name": "Sora 2 Pro",     "description": "Highest quality, best for commercial use", "provider": "OpenAI",    "speed": "~90s", "tier": "max_pro", "cost_per_min": 1.00, "credits": 40},
-        {"id": "veo_3_1",        "name": "Veo 3.1",        "description": "Google's latest with native audio",        "provider": "Google",    "speed": "~45s", "tier": "max",     "cost_per_min": 0.75, "credits": 18},
-        {"id": "runway_gen4",    "name": "Runway Gen-4",   "description": "Runway flagship, cinematic motion",        "provider": "Runway",    "speed": "~30s", "tier": "max_pro", "cost_per_min": 1.00, "credits": 30},
+        {"id": "sora_2",          "name": "Sora 2",            "description": "Cinematic video generation, 4-12s clips",  "provider": "OpenAI",  "speed": "~60s", "tier": "max",     "cost_per_min": 0.75, "credits": 20},
+        {"id": "veo_3_1",         "name": "Veo 3.1",           "description": "Google's latest with native audio",        "provider": "Google",  "speed": "~45s", "tier": "max",     "cost_per_min": 0.75, "credits": 18},
+        {"id": "runway_gen3",     "name": "Runway Gen-3 Alpha","description": "Runway motion quality, great for cuts",    "provider": "Runway",  "speed": "~30s", "tier": "max",     "cost_per_min": 0.75, "credits": 15},
+        {"id": "sora_2_pro",      "name": "Sora 2 Pro",        "description": "Highest quality, best for commercial use", "provider": "OpenAI",  "speed": "~90s", "tier": "max_pro", "cost_per_min": 1.00, "credits": 40},
+        {"id": "runway_gen4",     "name": "Runway Gen-4",      "description": "Runway flagship, cinematic motion",        "provider": "Runway",  "speed": "~30s", "tier": "max_pro", "cost_per_min": 1.00, "credits": 30},
+        {"id": "veo_3_1_fast",    "name": "Veo 3.1 Fast",      "description": "Google fastest premium video",             "provider": "Google",  "speed": "~20s", "tier": "max_pro", "cost_per_min": 1.00, "credits": 25},
     ],
     "audio": [
-        {"id": "elevenlabs_basic", "name": "ElevenLabs Basic","description": "Fast text-to-speech",                   "provider": "ElevenLabs","speed": "~3s",  "tier": "mini",    "cost_per_min": 0.05, "credits": 2},
-        {"id": "elevenlabs_pro",   "name": "ElevenLabs Pro", "description": "HD voice synthesis",                     "provider": "ElevenLabs","speed": "~5s",  "tier": "pro",     "cost_per_min": 0.25, "credits": 5},
-        {"id": "elevenlabs_ultra",  "name": "ElevenLabs Ultra","description": "Ultra-realistic voice cloning",         "provider": "ElevenLabs","speed": "~8s",  "tier": "max_pro", "cost_per_min": 1.00, "credits": 10},
+        {"id": "elevenlabs_basic", "name": "ElevenLabs Basic",   "description": "Fast text-to-speech",              "provider": "ElevenLabs", "speed": "~3s",  "tier": "mini",    "cost_per_min": 0.05, "credits": 2},
+        {"id": "gemini_tts",       "name": "Gemini TTS",         "description": "Google native TTS, natural voices","provider": "Google",      "speed": "~2s",  "tier": "mini",    "cost_per_min": 0.05, "credits": 2},
+        {"id": "elevenlabs_pro",   "name": "ElevenLabs Pro",     "description": "HD voice synthesis, clone ready",   "provider": "ElevenLabs", "speed": "~5s",  "tier": "pro",     "cost_per_min": 0.25, "credits": 5},
+        {"id": "elevenlabs_hd",    "name": "ElevenLabs HD",      "description": "Studio-grade voice output",         "provider": "ElevenLabs", "speed": "~6s",  "tier": "max",     "cost_per_min": 0.75, "credits": 8},
+        {"id": "elevenlabs_ultra", "name": "ElevenLabs Ultra",   "description": "Ultra-realistic voice cloning",     "provider": "ElevenLabs", "speed": "~8s",  "tier": "max_pro", "cost_per_min": 1.00, "credits": 10},
     ],
     "design": [
-        {"id": "stitch_flash",       "name": "Stitch Flash",           "description": "Fast UI design generation (Gemini Flash)", "provider": "Google Stitch", "speed": "~15s", "tier": "pro",     "cost_per_min": 0.25, "credits": 5},
-        {"id": "stitch_pro",         "name": "Stitch Pro",             "description": "Premium UI design (Gemini 3 Pro)",         "provider": "Google Stitch", "speed": "~30s", "tier": "max",     "cost_per_min": 0.75, "credits": 10},
+        {"id": "stitch_flash",  "name": "Stitch Flash",  "description": "Fast UI design generation (Gemini Flash)", "provider": "Google Stitch", "speed": "~15s", "tier": "pro",     "cost_per_min": 0.25, "credits": 5},
+        {"id": "stitch_pro",    "name": "Stitch Pro",    "description": "Premium UI design (Gemini 3 Pro)",         "provider": "Google Stitch", "speed": "~30s", "tier": "max",     "cost_per_min": 0.75, "credits": 10},
+        {"id": "stitch_ultra",  "name": "Stitch Ultra",  "description": "Flagship design with full code export",    "provider": "Google Stitch", "speed": "~20s", "tier": "max_pro", "cost_per_min": 1.00, "credits": 15},
     ],
     "chat": [
-        {"id": "claude_haiku",       "name": "Claude 3.5 Haiku",       "description": "Fast everyday tasks",             "provider": "Anthropic",  "speed": "~1s",  "tier": "mini",    "cost_per_min": 0.05, "credits": 1},
-        {"id": "gemini_flash",       "name": "Gemini 2.5 Flash",       "description": "Lightning fast",                  "provider": "Google",     "speed": "~1s",  "tier": "mini",    "cost_per_min": 0.05, "credits": 1},
-        {"id": "claude_sonnet",      "name": "Claude 3.7 Sonnet",      "description": "Best speed + quality balance",    "provider": "Anthropic",  "speed": "~2s",  "tier": "pro",     "cost_per_min": 0.25, "credits": 3},
-        {"id": "gpt4o",              "name": "GPT-4o",                 "description": "OpenAI flagship multimodal",      "provider": "OpenAI",     "speed": "~2s",  "tier": "pro",     "cost_per_min": 0.25, "credits": 3},
-        {"id": "claude_opus",        "name": "Claude 3 Opus",          "description": "Maximum reasoning power",         "provider": "Anthropic",  "speed": "~5s",  "tier": "max",     "cost_per_min": 0.75, "credits": 10},
-        {"id": "o3_mini",            "name": "o3-mini",                "description": "Advanced reasoning engine",       "provider": "OpenAI",     "speed": "~8s",  "tier": "max_pro", "cost_per_min": 1.00, "credits": 15},
+        {"id": "claude_haiku",        "name": "Claude 3.5 Haiku",        "description": "Fast everyday tasks",                "provider": "Anthropic",  "speed": "~1s",  "tier": "mini",    "cost_per_min": 0.05, "credits": 1},
+        {"id": "gemini_flash",        "name": "Gemini 2.5 Flash",        "description": "Lightning fast",                     "provider": "Google",     "speed": "~1s",  "tier": "mini",    "cost_per_min": 0.05, "credits": 1},
+        {"id": "grok_mini",           "name": "Grok Mini",               "description": "xAI fast reasoning",                 "provider": "xAI",        "speed": "~1s",  "tier": "mini",    "cost_per_min": 0.05, "credits": 1},
+        {"id": "claude_sonnet",       "name": "Claude Sonnet 4",         "description": "Best speed + quality balance",       "provider": "Anthropic",  "speed": "~2s",  "tier": "pro",     "cost_per_min": 0.25, "credits": 3},
+        {"id": "gpt4o",               "name": "GPT-4o",                  "description": "OpenAI flagship multimodal",         "provider": "OpenAI",     "speed": "~2s",  "tier": "pro",     "cost_per_min": 0.25, "credits": 3},
+        {"id": "grok_2",              "name": "Grok 2",                  "description": "xAI production reasoning",           "provider": "xAI",        "speed": "~2s",  "tier": "pro",     "cost_per_min": 0.25, "credits": 3},
+        {"id": "claude_sonnet_think", "name": "Claude Sonnet (Thinking)","description": "Extended reasoning with chain of thought", "provider": "Anthropic", "speed": "~6s", "tier": "max", "cost_per_min": 0.75, "credits": 8},
+        {"id": "grok3",               "name": "Grok 3",                  "description": "xAI heavy reasoning",                "provider": "xAI",        "speed": "~4s",  "tier": "max",     "cost_per_min": 0.75, "credits": 8},
+        {"id": "deepseek_r1",         "name": "DeepSeek R1",             "description": "Deep reasoning specialist",           "provider": "DeepSeek",   "speed": "~8s",  "tier": "max",     "cost_per_min": 0.75, "credits": 8},
+        {"id": "claude_opus",         "name": "Claude Opus 4",           "description": "Maximum reasoning power",             "provider": "Anthropic",  "speed": "~8s",  "tier": "max_pro", "cost_per_min": 1.00, "credits": 15},
+        {"id": "grok4",               "name": "Grok-4",                  "description": "xAI absolute best",                  "provider": "xAI",        "speed": "~5s",  "tier": "max_pro", "cost_per_min": 1.00, "credits": 15},
+        {"id": "o3",                  "name": "o3",                      "description": "OpenAI flagship reasoning",           "provider": "OpenAI",     "speed": "~15s", "tier": "max_pro", "cost_per_min": 1.00, "credits": 20},
+        {"id": "llama_behemoth",      "name": "Llama 4 Behemoth",        "description": "Meta largest, most capable",          "provider": "Meta",       "speed": "~8s",  "tier": "max_pro", "cost_per_min": 1.00, "credits": 12},
     ],
 }
 
@@ -1902,46 +1920,130 @@ COMPUTE_TIERS = {
 
 # Model → compute tier mapping with full cost data
 MODEL_COSTS = {
-    # ═══ MINI TIER ($0.05/min) ═══
-    "claude_haiku":      {"name": "Claude 3.5 Haiku",     "provider": "Anthropic",  "category": "chat",  "tier": "mini",    "our_cost": 0.008,  "charge": 0.05, "credits": 1,  "min_plan": "free",    "speed": "~1s",  "quality": "Fast"},
-    "gpt4o_mini":        {"name": "GPT-4o Mini",          "provider": "OpenAI",     "category": "chat",  "tier": "mini",    "our_cost": 0.010,  "charge": 0.05, "credits": 1,  "min_plan": "free",    "speed": "~1s",  "quality": "Fast"},
-    "gemini_flash":      {"name": "Gemini 2.5 Flash",     "provider": "Google",     "category": "chat",  "tier": "mini",    "our_cost": 0.005,  "charge": 0.05, "credits": 1,  "min_plan": "free",    "speed": "~1s",  "quality": "Fast"},
-    "llama_scout":       {"name": "Llama 4 Scout",        "provider": "Meta",       "category": "chat",  "tier": "mini",    "our_cost": 0.007,  "charge": 0.05, "credits": 1,  "min_plan": "free",    "speed": "~1s",  "quality": "Fast"},
-    "mistral_small":     {"name": "Mistral Small",        "provider": "Mistral",    "category": "chat",  "tier": "mini",    "our_cost": 0.006,  "charge": 0.05, "credits": 1,  "min_plan": "free",    "speed": "~1s",  "quality": "Fast"},
-    "elevenlabs_basic":  {"name": "ElevenLabs Basic TTS", "provider": "ElevenLabs", "category": "audio", "tier": "mini",    "our_cost": 0.010,  "charge": 0.05, "credits": 2,  "min_plan": "free",    "speed": "~3s",  "quality": "Fast"},
-    # ═══ PRO TIER ($0.25/min) ═══
-    "claude_sonnet":     {"name": "Claude 3.7 Sonnet",    "provider": "Anthropic",  "category": "chat",  "tier": "pro",     "our_cost": 0.045,  "charge": 0.25, "credits": 3,  "min_plan": "starter", "speed": "~2s",  "quality": "Pro"},
-    "gpt4o":             {"name": "GPT-4o",               "provider": "OpenAI",     "category": "chat",  "tier": "pro",     "our_cost": 0.0375, "charge": 0.25, "credits": 3,  "min_plan": "starter", "speed": "~2s",  "quality": "Pro"},
-    "gemini_pro":        {"name": "Gemini 2.5 Pro",       "provider": "Google",     "category": "chat",  "tier": "pro",     "our_cost": 0.030,  "charge": 0.25, "credits": 3,  "min_plan": "starter", "speed": "~2s",  "quality": "Pro"},
-    "llama_maverick":    {"name": "Llama 4 Maverick",     "provider": "Meta",       "category": "chat",  "tier": "pro",     "our_cost": 0.040,  "charge": 0.25, "credits": 3,  "min_plan": "starter", "speed": "~2s",  "quality": "Pro"},
-    "deepseek_v3":       {"name": "DeepSeek V3",          "provider": "DeepSeek",   "category": "chat",  "tier": "pro",     "our_cost": 0.020,  "charge": 0.25, "credits": 2,  "min_plan": "starter", "speed": "~2s",  "quality": "Pro"},
-    "grok_2":            {"name": "Grok 2",               "provider": "xAI",        "category": "chat",  "tier": "pro",     "our_cost": 0.035,  "charge": 0.25, "credits": 3,  "min_plan": "starter", "speed": "~2s",  "quality": "Pro"},
-    "sonar_pro":         {"name": "Perplexity Sonar Pro",  "provider": "Perplexity", "category": "search","tier": "pro",     "our_cost": 0.030,  "charge": 0.25, "credits": 5,  "min_plan": "starter", "speed": "~3s",  "quality": "Pro"},
-    "nano_banana_2":     {"name": "NanoBanana v2",        "provider": "SaintSal",   "category": "image", "tier": "pro",     "our_cost": 0.020,  "charge": 0.25, "credits": 5,  "min_plan": "starter", "speed": "~10s", "quality": "Pro"},
-    "elevenlabs_pro":    {"name": "ElevenLabs Pro TTS",   "provider": "ElevenLabs", "category": "audio", "tier": "pro",     "our_cost": 0.030,  "charge": 0.25, "credits": 5,  "min_plan": "starter", "speed": "~5s",  "quality": "Pro"},
-    "stitch_flash":      {"name": "Stitch Flash",         "provider": "Google Stitch", "category": "design", "tier": "pro",  "our_cost": 0.025,  "charge": 0.25, "credits": 5,  "min_plan": "starter", "speed": "~15s", "quality": "Pro"},
-    # ═══ MAX TIER ($0.75/min) ═══
-    "claude_opus":       {"name": "Claude 3 Opus",        "provider": "Anthropic",  "category": "chat",  "tier": "max",     "our_cost": 0.225,  "charge": 0.75, "credits": 10, "min_plan": "pro",     "speed": "~5s",  "quality": "Ultra"},
-    "gpt45":             {"name": "GPT-4.5",              "provider": "OpenAI",     "category": "chat",  "tier": "max",     "our_cost": 0.300,  "charge": 0.75, "credits": 10, "min_plan": "pro",     "speed": "~5s",  "quality": "Ultra"},
-    "gemini_ultra":      {"name": "Gemini Ultra",         "provider": "Google",     "category": "chat",  "tier": "max",     "our_cost": 0.150,  "charge": 0.75, "credits": 8,  "min_plan": "pro",     "speed": "~4s",  "quality": "Ultra"},
-    "grok3":             {"name": "Grok 3",               "provider": "xAI",        "category": "chat",  "tier": "max",     "our_cost": 0.180,  "charge": 0.75, "credits": 8,  "min_plan": "pro",     "speed": "~4s",  "quality": "Ultra"},
-    "nano_banana_pro":   {"name": "NanoBanana Pro",       "provider": "SaintSal",   "category": "image", "tier": "max",     "our_cost": 0.080,  "charge": 0.75, "credits": 10, "min_plan": "pro",     "speed": "~15s", "quality": "Ultra"},
-    "replicate_flux":    {"name": "Replicate FLUX",       "provider": "Replicate",  "category": "image", "tier": "max",     "our_cost": 0.100,  "charge": 0.75, "credits": 15, "min_plan": "pro",     "speed": "~12s", "quality": "Ultra"},
-    "sora_2":            {"name": "Sora 2",               "provider": "OpenAI",     "category": "video", "tier": "max",     "our_cost": 0.200,  "charge": 0.75, "credits": 20, "min_plan": "pro",     "speed": "~60s", "quality": "Ultra"},
-    "veo_3_1":           {"name": "Veo 3.1",              "provider": "Google",     "category": "video", "tier": "max",     "our_cost": 0.150,  "charge": 0.75, "credits": 18, "min_plan": "pro",     "speed": "~45s", "quality": "Ultra"},
-    "assemblyai":        {"name": "AssemblyAI",           "provider": "AssemblyAI", "category": "transcription", "tier": "max", "our_cost": 0.010, "charge": 0.75, "credits": 3, "min_plan": "pro", "speed": "~RT", "quality": "Ultra"},
-    "stitch_pro":        {"name": "Stitch Pro",           "provider": "Google Stitch", "category": "design", "tier": "max",  "our_cost": 0.080,  "charge": 0.75, "credits": 10, "min_plan": "pro",     "speed": "~30s", "quality": "Ultra"},
-    # ═══ MAX PRO TIER ($1.00/min) ═══
-    "o3_mini":               {"name": "o3-mini",                  "provider": "OpenAI",     "category": "chat",  "tier": "max_pro", "our_cost": 0.165,  "charge": 1.00, "credits": 15, "min_plan": "teams",   "speed": "~8s",  "quality": "Flagship"},
-    "claude_sonnet_think":   {"name": "Claude Sonnet (Thinking)", "provider": "Anthropic",  "category": "chat",  "tier": "max_pro", "our_cost": 0.0675, "charge": 1.00, "credits": 12, "min_plan": "teams",   "speed": "~10s", "quality": "Flagship"},
-    "gemini_think":          {"name": "Gemini Flash Thinking",    "provider": "Google",     "category": "chat",  "tier": "max_pro", "our_cost": 0.045,  "charge": 1.00, "credits": 10, "min_plan": "teams",   "speed": "~8s",  "quality": "Flagship"},
-    "deepseek_r1":           {"name": "DeepSeek R1",              "provider": "DeepSeek",   "category": "chat",  "tier": "max_pro", "our_cost": 0.055,  "charge": 1.00, "credits": 12, "min_plan": "teams",   "speed": "~10s", "quality": "Flagship"},
-    "qwen_qwq":              {"name": "Qwen QWQ-32B",             "provider": "Alibaba",    "category": "chat",  "tier": "max_pro", "our_cost": 0.030,  "charge": 1.00, "credits": 8,  "min_plan": "teams",   "speed": "~6s",  "quality": "Flagship"},
-    "sora_2_pro":            {"name": "Sora 2 Pro",               "provider": "OpenAI",     "category": "video", "tier": "max_pro", "our_cost": 0.400,  "charge": 1.00, "credits": 40, "min_plan": "teams",   "speed": "~90s", "quality": "Flagship"},
-    "runway_gen4":           {"name": "Runway Gen-4",             "provider": "Runway",     "category": "video", "tier": "max_pro", "our_cost": 0.300,  "charge": 1.00, "credits": 30, "min_plan": "teams",   "speed": "~30s", "quality": "Flagship"},
-    "grok_aurora":           {"name": "Grok Aurora",              "provider": "xAI",        "category": "image", "tier": "max_pro", "our_cost": 0.060,  "charge": 1.00, "credits": 15, "min_plan": "teams",   "speed": "~10s", "quality": "Flagship"},
-    "elevenlabs_ultra":      {"name": "ElevenLabs Ultra",         "provider": "ElevenLabs", "category": "audio", "tier": "max_pro", "our_cost": 0.050,  "charge": 1.00, "credits": 10, "min_plan": "teams",   "speed": "~8s",  "quality": "Flagship"},
+    # ═══ MINI TIER ($0.05/min) — Fast, affordable, everyday tasks ═══
+    "claude_haiku":         {"name": "Claude 3.5 Haiku",        "provider": "Anthropic",     "category": "chat",    "tier": "mini",    "our_cost": 0.008,  "charge": 0.05, "credits": 1,  "min_plan": "free",    "speed": "~1s",   "quality": "Fast"},
+    "gpt4o_mini":           {"name": "GPT-4o Mini",             "provider": "OpenAI",        "category": "chat",    "tier": "mini",    "our_cost": 0.010,  "charge": 0.05, "credits": 1,  "min_plan": "free",    "speed": "~1s",   "quality": "Fast"},
+    "gemini_flash":         {"name": "Gemini 2.5 Flash",        "provider": "Google",        "category": "chat",    "tier": "mini",    "our_cost": 0.005,  "charge": 0.05, "credits": 1,  "min_plan": "free",    "speed": "~1s",   "quality": "Fast"},
+    "llama_scout":          {"name": "Llama 4 Scout",           "provider": "Meta",          "category": "chat",    "tier": "mini",    "our_cost": 0.007,  "charge": 0.05, "credits": 1,  "min_plan": "free",    "speed": "~1s",   "quality": "Fast"},
+    "mistral_small":        {"name": "Mistral Small",           "provider": "Mistral",       "category": "chat",    "tier": "mini",    "our_cost": 0.006,  "charge": 0.05, "credits": 1,  "min_plan": "free",    "speed": "~1s",   "quality": "Fast"},
+    "grok_mini":            {"name": "Grok Mini",               "provider": "xAI",           "category": "chat",    "tier": "mini",    "our_cost": 0.008,  "charge": 0.05, "credits": 1,  "min_plan": "free",    "speed": "~1s",   "quality": "Fast"},
+    "elevenlabs_basic":     {"name": "ElevenLabs Basic TTS",    "provider": "ElevenLabs",    "category": "audio",   "tier": "mini",    "our_cost": 0.010,  "charge": 0.05, "credits": 2,  "min_plan": "free",    "speed": "~3s",   "quality": "Fast"},
+    "gemini_tts":           {"name": "Gemini TTS",              "provider": "Google",        "category": "audio",   "tier": "mini",    "our_cost": 0.008,  "charge": 0.05, "credits": 2,  "min_plan": "free",    "speed": "~2s",   "quality": "Fast"},
+
+    # ═══ PRO TIER ($0.25/min) — Production-grade, best balance ═══
+    "claude_sonnet":        {"name": "Claude Sonnet 4",         "provider": "Anthropic",     "category": "chat",    "tier": "pro",     "our_cost": 0.045,  "charge": 0.25, "credits": 3,  "min_plan": "starter", "speed": "~2s",   "quality": "Pro"},
+    "gpt4o":                {"name": "GPT-4o",                  "provider": "OpenAI",        "category": "chat",    "tier": "pro",     "our_cost": 0.038,  "charge": 0.25, "credits": 3,  "min_plan": "starter", "speed": "~2s",   "quality": "Pro"},
+    "gemini_pro":           {"name": "Gemini 2.5 Pro",          "provider": "Google",        "category": "chat",    "tier": "pro",     "our_cost": 0.030,  "charge": 0.25, "credits": 3,  "min_plan": "starter", "speed": "~2s",   "quality": "Pro"},
+    "grok_2":               {"name": "Grok 2",                  "provider": "xAI",           "category": "chat",    "tier": "pro",     "our_cost": 0.035,  "charge": 0.25, "credits": 3,  "min_plan": "starter", "speed": "~2s",   "quality": "Pro"},
+    "llama_maverick":       {"name": "Llama 4 Maverick",        "provider": "Meta",          "category": "chat",    "tier": "pro",     "our_cost": 0.040,  "charge": 0.25, "credits": 3,  "min_plan": "starter", "speed": "~2s",   "quality": "Pro"},
+    "deepseek_v3":          {"name": "DeepSeek V3",             "provider": "DeepSeek",      "category": "chat",    "tier": "pro",     "our_cost": 0.020,  "charge": 0.25, "credits": 2,  "min_plan": "starter", "speed": "~2s",   "quality": "Pro"},
+    "sonar_pro":            {"name": "Perplexity Sonar Pro",    "provider": "Perplexity",    "category": "search",  "tier": "pro",     "our_cost": 0.030,  "charge": 0.25, "credits": 5,  "min_plan": "starter", "speed": "~3s",   "quality": "Pro"},
+    "nano_banana_2":        {"name": "NanoBanana v2",           "provider": "SaintSal",      "category": "image",   "tier": "pro",     "our_cost": 0.020,  "charge": 0.25, "credits": 5,  "min_plan": "starter", "speed": "~10s",  "quality": "Pro"},
+    "dalle_3":              {"name": "DALL-E 3",                "provider": "OpenAI",        "category": "image",   "tier": "pro",     "our_cost": 0.040,  "charge": 0.25, "credits": 5,  "min_plan": "starter", "speed": "~12s",  "quality": "Pro"},
+    "stable_diffusion_xl":  {"name": "Stable Diffusion XL",     "provider": "Stability",     "category": "image",   "tier": "pro",     "our_cost": 0.015,  "charge": 0.25, "credits": 4,  "min_plan": "starter", "speed": "~8s",   "quality": "Pro"},
+    "elevenlabs_pro":       {"name": "ElevenLabs Pro TTS",      "provider": "ElevenLabs",    "category": "audio",   "tier": "pro",     "our_cost": 0.030,  "charge": 0.25, "credits": 5,  "min_plan": "starter", "speed": "~5s",   "quality": "Pro"},
+    "stitch_flash":         {"name": "Stitch Flash",            "provider": "Google Stitch", "category": "design",  "tier": "pro",     "our_cost": 0.025,  "charge": 0.25, "credits": 5,  "min_plan": "starter", "speed": "~15s",  "quality": "Pro"},
+
+    # ═══ MAX TIER ($0.75/min) — Power users, heavy builds, premium output ═══
+    "claude_sonnet_think":  {"name": "Claude Sonnet (Thinking)","provider": "Anthropic",     "category": "chat",    "tier": "max",     "our_cost": 0.068,  "charge": 0.75, "credits": 8,  "min_plan": "pro",     "speed": "~6s",   "quality": "Ultra"},
+    "gpt4o_plus":           {"name": "GPT-4o (Extended)",       "provider": "OpenAI",        "category": "chat",    "tier": "max",     "our_cost": 0.080,  "charge": 0.75, "credits": 8,  "min_plan": "pro",     "speed": "~3s",   "quality": "Ultra"},
+    "gemini_ultra":         {"name": "Gemini Ultra",            "provider": "Google",        "category": "chat",    "tier": "max",     "our_cost": 0.150,  "charge": 0.75, "credits": 8,  "min_plan": "pro",     "speed": "~4s",   "quality": "Ultra"},
+    "grok3":                {"name": "Grok 3",                  "provider": "xAI",           "category": "chat",    "tier": "max",     "our_cost": 0.180,  "charge": 0.75, "credits": 8,  "min_plan": "pro",     "speed": "~4s",   "quality": "Ultra"},
+    "deepseek_r1":          {"name": "DeepSeek R1",             "provider": "DeepSeek",      "category": "chat",    "tier": "max",     "our_cost": 0.055,  "charge": 0.75, "credits": 8,  "min_plan": "pro",     "speed": "~8s",   "quality": "Ultra"},
+    "qwen_qwq":             {"name": "Qwen QWQ-32B",            "provider": "Alibaba",       "category": "chat",    "tier": "max",     "our_cost": 0.030,  "charge": 0.75, "credits": 6,  "min_plan": "pro",     "speed": "~5s",   "quality": "Ultra"},
+    "replicate_flux":       {"name": "FLUX Pro",                "provider": "Replicate",     "category": "image",   "tier": "max",     "our_cost": 0.100,  "charge": 0.75, "credits": 15, "min_plan": "pro",     "speed": "~12s",  "quality": "Ultra"},
+    "nano_banana_pro":      {"name": "NanoBanana Pro",          "provider": "SaintSal",      "category": "image",   "tier": "max",     "our_cost": 0.080,  "charge": 0.75, "credits": 10, "min_plan": "pro",     "speed": "~15s",  "quality": "Ultra"},
+    "stable_diffusion_3":   {"name": "Stable Diffusion 3.5",    "provider": "Stability",     "category": "image",   "tier": "max",     "our_cost": 0.060,  "charge": 0.75, "credits": 12, "min_plan": "pro",     "speed": "~10s",  "quality": "Ultra"},
+    "ideogram_v3":          {"name": "Ideogram v3",             "provider": "Ideogram",      "category": "image",   "tier": "max",     "our_cost": 0.050,  "charge": 0.75, "credits": 10, "min_plan": "pro",     "speed": "~8s",   "quality": "Ultra"},
+    "sora_2":               {"name": "Sora 2",                  "provider": "OpenAI",        "category": "video",   "tier": "max",     "our_cost": 0.200,  "charge": 0.75, "credits": 20, "min_plan": "pro",     "speed": "~60s",  "quality": "Ultra"},
+    "veo_3_1":              {"name": "Veo 3.1",                 "provider": "Google",        "category": "video",   "tier": "max",     "our_cost": 0.150,  "charge": 0.75, "credits": 18, "min_plan": "pro",     "speed": "~45s",  "quality": "Ultra"},
+    "runway_gen3":          {"name": "Runway Gen-3 Alpha",      "provider": "Runway",        "category": "video",   "tier": "max",     "our_cost": 0.180,  "charge": 0.75, "credits": 15, "min_plan": "pro",     "speed": "~30s",  "quality": "Ultra"},
+    "elevenlabs_hd":        {"name": "ElevenLabs HD",           "provider": "ElevenLabs",    "category": "audio",   "tier": "max",     "our_cost": 0.040,  "charge": 0.75, "credits": 8,  "min_plan": "pro",     "speed": "~6s",   "quality": "Ultra"},
+    "assemblyai":           {"name": "AssemblyAI",              "provider": "AssemblyAI",    "category": "transcription", "tier": "max", "our_cost": 0.010, "charge": 0.75, "credits": 3, "min_plan": "pro", "speed": "~RT", "quality": "Ultra"},
+    "stitch_pro":           {"name": "Stitch Pro",              "provider": "Google Stitch", "category": "design",  "tier": "max",     "our_cost": 0.080,  "charge": 0.75, "credits": 10, "min_plan": "pro",     "speed": "~30s",  "quality": "Ultra"},
+
+    # ═══ MAX PRO TIER ($1.00/min) — Best of the best, flagship everything ═══
+    "claude_opus":          {"name": "Claude Opus 4",           "provider": "Anthropic",     "category": "chat",    "tier": "max_pro", "our_cost": 0.225,  "charge": 1.00, "credits": 15, "min_plan": "teams",   "speed": "~8s",   "quality": "Flagship"},
+    "o3_mini":              {"name": "o3-mini",                 "provider": "OpenAI",        "category": "chat",    "tier": "max_pro", "our_cost": 0.165,  "charge": 1.00, "credits": 15, "min_plan": "teams",   "speed": "~8s",   "quality": "Flagship"},
+    "o3":                   {"name": "o3",                      "provider": "OpenAI",        "category": "chat",    "tier": "max_pro", "our_cost": 0.400,  "charge": 1.00, "credits": 20, "min_plan": "teams",   "speed": "~15s",  "quality": "Flagship"},
+    "grok4":                {"name": "Grok-4",                  "provider": "xAI",           "category": "chat",    "tier": "max_pro", "our_cost": 0.200,  "charge": 1.00, "credits": 15, "min_plan": "teams",   "speed": "~5s",   "quality": "Flagship"},
+    "gemini_think":         {"name": "Gemini Pro (Thinking)",   "provider": "Google",        "category": "chat",    "tier": "max_pro", "our_cost": 0.120,  "charge": 1.00, "credits": 12, "min_plan": "teams",   "speed": "~10s",  "quality": "Flagship"},
+    "llama_behemoth":       {"name": "Llama 4 Behemoth",        "provider": "Meta",          "category": "chat",    "tier": "max_pro", "our_cost": 0.150,  "charge": 1.00, "credits": 12, "min_plan": "teams",   "speed": "~8s",   "quality": "Flagship"},
+    "grok_aurora":          {"name": "Grok Aurora",             "provider": "xAI",           "category": "image",   "tier": "max_pro", "our_cost": 0.060,  "charge": 1.00, "credits": 15, "min_plan": "teams",   "speed": "~10s",  "quality": "Flagship"},
+    "replicate_flux_ultra": {"name": "FLUX Ultra",              "provider": "Replicate",     "category": "image",   "tier": "max_pro", "our_cost": 0.150,  "charge": 1.00, "credits": 20, "min_plan": "teams",   "speed": "~15s",  "quality": "Flagship"},
+    "dalle_4":              {"name": "DALL-E 4",                "provider": "OpenAI",        "category": "image",   "tier": "max_pro", "our_cost": 0.120,  "charge": 1.00, "credits": 18, "min_plan": "teams",   "speed": "~12s",  "quality": "Flagship"},
+    "sora_2_pro":           {"name": "Sora 2 Pro",              "provider": "OpenAI",        "category": "video",   "tier": "max_pro", "our_cost": 0.400,  "charge": 1.00, "credits": 40, "min_plan": "teams",   "speed": "~90s",  "quality": "Flagship"},
+    "runway_gen4":          {"name": "Runway Gen-4",            "provider": "Runway",        "category": "video",   "tier": "max_pro", "our_cost": 0.300,  "charge": 1.00, "credits": 30, "min_plan": "teams",   "speed": "~30s",  "quality": "Flagship"},
+    "veo_3_1_fast":         {"name": "Veo 3.1 Fast",            "provider": "Google",        "category": "video",   "tier": "max_pro", "our_cost": 0.250,  "charge": 1.00, "credits": 25, "min_plan": "teams",   "speed": "~20s",  "quality": "Flagship"},
+    "elevenlabs_ultra":     {"name": "ElevenLabs Ultra",        "provider": "ElevenLabs",    "category": "audio",   "tier": "max_pro", "our_cost": 0.050,  "charge": 1.00, "credits": 10, "min_plan": "teams",   "speed": "~8s",   "quality": "Flagship"},
+    "stitch_ultra":         {"name": "Stitch Ultra",            "provider": "Google Stitch", "category": "design",  "tier": "max_pro", "our_cost": 0.120,  "charge": 1.00, "credits": 15, "min_plan": "teams",   "speed": "~20s",  "quality": "Flagship"},
+    "assemblyai_ultra":     {"name": "AssemblyAI Ultra",        "provider": "AssemblyAI",    "category": "transcription", "tier": "max_pro", "our_cost": 0.020, "charge": 1.00, "credits": 5, "min_plan": "teams", "speed": "~RT", "quality": "Flagship"},
 }
+
+# ═══ FALLBACK CHAINS — If a model fails, auto-cascade to the next best ═══
+# Each model maps to a list of fallbacks in priority order
+MODEL_FALLBACKS = {
+    # Chat — Max Pro fallbacks
+    "claude_opus":         ["grok4", "o3", "gemini_think", "claude_sonnet_think"],
+    "o3":                  ["claude_opus", "grok4", "gemini_think", "o3_mini"],
+    "grok4":               ["claude_opus", "o3", "grok3", "gemini_think"],
+    "gemini_think":        ["claude_opus", "grok4", "o3_mini", "deepseek_r1"],
+    "llama_behemoth":      ["claude_opus", "grok4", "o3", "llama_maverick"],
+    "o3_mini":             ["grok4", "claude_opus", "gemini_think", "claude_sonnet_think"],
+    # Chat — Max fallbacks
+    "claude_sonnet_think": ["grok3", "deepseek_r1", "gemini_ultra", "claude_sonnet"],
+    "gpt4o_plus":          ["grok3", "claude_sonnet_think", "gemini_ultra", "gpt4o"],
+    "gemini_ultra":        ["grok3", "claude_sonnet_think", "gpt4o_plus", "gemini_pro"],
+    "grok3":               ["claude_sonnet_think", "gemini_ultra", "deepseek_r1", "grok_2"],
+    "deepseek_r1":         ["claude_sonnet_think", "grok3", "qwen_qwq", "claude_sonnet"],
+    "qwen_qwq":            ["deepseek_r1", "claude_sonnet_think", "grok3", "gemini_pro"],
+    # Chat — Pro fallbacks
+    "claude_sonnet":       ["gpt4o", "grok_2", "gemini_pro", "llama_maverick"],
+    "gpt4o":               ["claude_sonnet", "grok_2", "gemini_pro", "deepseek_v3"],
+    "grok_2":              ["claude_sonnet", "gpt4o", "gemini_pro", "llama_maverick"],
+    "gemini_pro":          ["claude_sonnet", "gpt4o", "grok_2", "deepseek_v3"],
+    "llama_maverick":      ["claude_sonnet", "gpt4o", "gemini_pro", "deepseek_v3"],
+    "deepseek_v3":         ["claude_sonnet", "gpt4o", "grok_2", "gemini_pro"],
+    # Chat — Mini fallbacks
+    "claude_haiku":        ["gemini_flash", "gpt4o_mini", "grok_mini", "llama_scout"],
+    "gpt4o_mini":          ["claude_haiku", "gemini_flash", "grok_mini", "mistral_small"],
+    "gemini_flash":        ["claude_haiku", "gpt4o_mini", "grok_mini", "llama_scout"],
+    "grok_mini":           ["claude_haiku", "gemini_flash", "gpt4o_mini", "mistral_small"],
+    "llama_scout":         ["claude_haiku", "gemini_flash", "gpt4o_mini", "mistral_small"],
+    "mistral_small":       ["claude_haiku", "gemini_flash", "gpt4o_mini", "grok_mini"],
+    # Image fallbacks
+    "grok_aurora":         ["replicate_flux_ultra", "dalle_4", "replicate_flux", "nano_banana_pro"],
+    "replicate_flux_ultra":["grok_aurora", "dalle_4", "replicate_flux", "stable_diffusion_3"],
+    "dalle_4":             ["grok_aurora", "replicate_flux_ultra", "replicate_flux", "dalle_3"],
+    "replicate_flux":      ["nano_banana_pro", "stable_diffusion_3", "ideogram_v3", "dalle_3"],
+    "nano_banana_pro":     ["replicate_flux", "stable_diffusion_3", "ideogram_v3", "nano_banana_2"],
+    "stable_diffusion_3":  ["replicate_flux", "nano_banana_pro", "ideogram_v3", "dalle_3"],
+    "ideogram_v3":         ["replicate_flux", "nano_banana_pro", "stable_diffusion_3", "dalle_3"],
+    "dalle_3":             ["nano_banana_2", "stable_diffusion_xl", "nano_banana_pro"],
+    "nano_banana_2":       ["dalle_3", "stable_diffusion_xl"],
+    "stable_diffusion_xl": ["nano_banana_2", "dalle_3"],
+    # Video fallbacks
+    "sora_2_pro":          ["runway_gen4", "veo_3_1_fast", "sora_2", "veo_3_1"],
+    "runway_gen4":         ["sora_2_pro", "veo_3_1_fast", "runway_gen3", "sora_2"],
+    "veo_3_1_fast":        ["sora_2_pro", "runway_gen4", "veo_3_1", "sora_2"],
+    "sora_2":              ["veo_3_1", "runway_gen3"],
+    "veo_3_1":             ["sora_2", "runway_gen3"],
+    "runway_gen3":         ["sora_2", "veo_3_1"],
+    # Audio fallbacks
+    "elevenlabs_ultra":    ["elevenlabs_hd", "elevenlabs_pro", "elevenlabs_basic", "gemini_tts"],
+    "elevenlabs_hd":       ["elevenlabs_pro", "elevenlabs_basic", "gemini_tts"],
+    "elevenlabs_pro":      ["elevenlabs_basic", "gemini_tts"],
+    "elevenlabs_basic":    ["gemini_tts"],
+    "gemini_tts":          ["elevenlabs_basic"],
+    # Design fallbacks
+    "stitch_ultra":        ["stitch_pro", "stitch_flash"],
+    "stitch_pro":          ["stitch_flash", "stitch_ultra"],
+    "stitch_flash":        ["stitch_pro"],
+}
+
+def get_fallback_chain(model_id: str) -> list:
+    """Return the ordered fallback chain for a given model."""
+    return [model_id] + MODEL_FALLBACKS.get(model_id, [])
 
 # Plan tier → credit limits and compute access
 PLAN_TIERS = {
@@ -2153,6 +2255,7 @@ async def get_models_by_tier(authorization: Optional[str] = Header(None)):
         "user_tier": user_tier,
         "tiers": tiers,
         "tier_pricing": COMPUTE_TIERS,
+        "fallbacks": {k: v for k, v in MODEL_FALLBACKS.items()},
     }
 
 

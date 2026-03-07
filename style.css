@@ -1179,6 +1179,17 @@ ul, ol { list-style: none; }
 .studio-model-item .model-name { font-size: var(--text-sm); font-weight: 500; flex: 1; }
 .studio-model-item .model-provider { font-size: 10px; color: var(--text-muted); }
 .studio-model-item .model-credits { font-size: 10px; color: var(--text-muted); }
+.model-fallback-badge {
+  display: inline-block;
+  font-size: 9px;
+  padding: 1px 5px;
+  border-radius: 6px;
+  background: rgba(16, 185, 129, 0.12);
+  color: #10b981;
+  margin-left: 4px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
 
 /* Mode Divider */
 .studio-mode-divider {

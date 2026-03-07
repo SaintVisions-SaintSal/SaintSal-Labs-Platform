@@ -1070,6 +1070,7 @@ var studioState = {
   designProjectsLoaded: false,
   // Tier → model mapping (fetched from server)
   tierModels: { mini: [], pro: [], max: [], max_pro: [] },
+  fallbacks: {},
   tierPricing: {
     mini:    { price_per_min: 0.05, label: 'Mini',    color: '#6B7280' },
     pro:     { price_per_min: 0.25, label: 'Pro',     color: '#10B981' },
@@ -1085,6 +1086,7 @@ async function loadStudioModels() {
     var data = await resp.json();
     if (data.tiers) studioState.tierModels = data.tiers;
     if (data.tier_pricing) studioState.tierPricing = data.tier_pricing;
+    if (data.fallbacks) studioState.fallbacks = data.fallbacks;
     renderStudioModelList();
   } catch(e) { console.warn('Failed to load studio models:', e); }
 }
@@ -1124,9 +1126,10 @@ function renderStudioModelList() {
   filtered.forEach(function(m) {
     var active = m.id === studioState.selectedModel ? ' active' : '';
     var locked = !m.accessible ? ' locked' : '';
+    var fbCount = (studioState.fallbacks[m.id] || []).length;
     html += '<div class="studio-model-item' + active + locked + '" onclick="' + (m.accessible ? 'selectStudioModel(\'' + m.id + '\')' : '') + '">';
     html += '<span class="model-name">' + escapeHtml(m.name) + '</span>';
-    html += '<span class="model-provider">' + escapeHtml(m.provider) + '</span>';
+    html += '<span class="model-provider">' + escapeHtml(m.provider) + (fbCount > 0 ? ' <span class="model-fallback-badge">+' + fbCount + ' backup' + (fbCount > 1 ? 's' : '') + '</span>' : '') + '</span>';
     html += '<span class="model-credits">' + m.credits + ' cr</span>';
     html += '</div>';
   });
