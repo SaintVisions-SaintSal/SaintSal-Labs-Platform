@@ -3412,7 +3412,7 @@ async def medical_icd10(q: str = "", request: Request = None):
                         "code": item[0],
                         "description": item[1],
                         "name": item[1],
-                        "billable": not "." not in item[0] if item[0] else False,
+                        "billable": "." in item[0] if item[0] else False,
                         "category": item[0][:3] if item[0] else ""
                     })
         return JSONResponse({"results": results})
