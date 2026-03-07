@@ -10,7 +10,7 @@ var isAnnual = false;
 var sidebarOpen = false;
 
 var verticalNames = {
-  search: 'Search', sports: 'Sports', news: 'News', tech: 'Tech', finance: 'Finance', realestate: 'Real Estate'
+  search: 'Search', sports: 'Sports', news: 'News', tech: 'Tech', finance: 'Finance', realestate: 'Real Estate', medical: 'Medical'
 };
 
 var views = {
@@ -24,7 +24,8 @@ var views = {
   connectors: document.getElementById('connectorsView'),
   bizplan: document.getElementById('bizplanView'),
   voice: document.getElementById('voiceView'),
-  dashboard: document.getElementById('dashboardView')
+  dashboard: document.getElementById('dashboardView'),
+  landing: document.getElementById('landingView')
 };
 
 /* ============================================
@@ -69,7 +70,7 @@ function setView(view) {
     document.getElementById('topbarBreadcrumb').innerHTML = '<span>' + (verticalNames[currentVertical] || 'Search') + '</span>';
   } else {
     document.querySelectorAll('.nav-item[data-vertical]').forEach(function(i) { i.classList.remove('active'); });
-    var breadcrumbMap = { pricing:'Pricing', welcome:'Welcome', account:'Account', studio:'Studio', domains:'Domains & SSL', launchpad:'Launch Pad', connectors:'Integrations', bizplan:'Business Plan', voice:'Voice AI', dashboard:'Dashboard' };
+    var breadcrumbMap = { pricing:'Pricing', welcome:'Welcome', account:'Account', studio:'Studio', domains:'Domains & SSL', launchpad:'Launch Pad', connectors:'Integrations', bizplan:'Business Plan', voice:'Voice AI', dashboard:'Dashboard', landing:'Home' };
     document.getElementById('topbarBreadcrumb').innerHTML = '<span>' + (breadcrumbMap[view] || view) + '</span>';
   }
 
@@ -82,7 +83,13 @@ function handleHash() {
   if (!views[view]) view = 'chat';
   setView(view);
   if (view === 'chat') {
-    if (currentVertical === 'realestate' && typeof renderRealEstatePanel === 'function') {
+    if (currentVertical === 'medical' && typeof renderMedicalPanel === 'function') {
+      var grid = document.getElementById('discoverGrid');
+      var engagement = document.getElementById('engagementSection');
+      if (engagement) engagement.style.display = 'none';
+      if (grid) grid.innerHTML = renderMedicalPanel();
+      loadTickerBanner(currentVertical);
+    } else if (currentVertical === 'realestate' && typeof renderRealEstatePanel === 'function') {
       var grid = document.getElementById('discoverGrid');
       var engagement = document.getElementById('engagementSection');
       if (engagement) engagement.style.display = 'none';
@@ -132,7 +139,10 @@ function switchVertical(vertical, el) {
   }
 
   // Real Estate gets a dedicated panel instead of the generic discover feed
-  if (vertical === 'realestate' && typeof renderRealEstatePanel === 'function') {
+  if (vertical === 'medical' && typeof renderMedicalPanel === 'function') {
+      if (grid) grid.innerHTML = renderMedicalPanel();
+      if (engagement) engagement.style.display = 'none';
+    } else if (vertical === 'realestate' && typeof renderRealEstatePanel === 'function') {
     var grid = document.getElementById('discoverGrid');
     var engagement = document.getElementById('engagementSection');
     if (engagement) engagement.style.display = 'none';
@@ -179,7 +189,7 @@ function loadDiscover(category) {
         return;
       }
       var heroHtml = '';
-      var verticalNames = { search: 'Search', sports: 'Sports', news: 'News', tech: 'Tech', finance: 'Finance', realestate: 'Real Estate' };
+      var verticalNames = { search: 'Search', sports: 'Sports', news: 'News', tech: 'Tech', finance: 'Finance', realestate: 'Real Estate', medical: 'Medical' };
       var verticalDescs = {
         search: 'AI-powered intelligence across every domain. Ask anything.',
         sports: 'Live scores, analysis, and insider intelligence.',
@@ -1190,7 +1200,7 @@ function studioSwitchMode(mode) {
     image: 'Describe the image you want to create...',
     video: 'Describe the scene, action, and camera movement...',
     audio: 'Enter text to convert to speech...',
-    code: 'Describe the code or app you want to build...',
+    code: 'Describe the web app, PWA, or widget you want to build...',
     design: 'Describe the UI screen you want to design...'
   };
   var promptEl = document.getElementById('studioPrompt');
@@ -1202,7 +1212,7 @@ function studioSwitchMode(mode) {
     image: 'Generate images with AI. Photorealistic, cinematic, anime, pixel art — any style.',
     video: 'Create video clips from text. Cinematic scenes, product demos, animations.',
     audio: 'Convert text to natural speech. Multiple voices and styles.',
-    code: 'Build apps, scripts, and components with AI code generation.',
+    code: 'Build full-stack web apps, PWAs, widgets, and multi-page sites. Publish to GitHub, Vercel, or Render.',
     design: 'Design UI screens with Google Stitch. Describe a page and get interactive prototypes.'
   };
   if (welcomeSub) welcomeSub.textContent = welcomeTexts[mode] || 'Select a model and start creating.';
@@ -1278,7 +1288,7 @@ function studioToggleView(view) {
   } else if (view === 'preview') {
     preview.style.display = 'flex';
   } else if (view === 'project') {
-    if (project) project.style.display = 'flex';
+    if (project) { project.style.display = 'flex'; studioShowProjectPanel(); }
   }
 }
 
@@ -2599,4 +2609,271 @@ function saveCurrentSearch(query, vertical) {
     headers: Object.assign({ 'Content-Type': 'application/json' }, headers),
     body: JSON.stringify({ query: query, vertical: vertical })
   }).catch(function(e) {});
+}
+
+
+/* ============================================
+   PROFILE AVATAR UPLOAD
+   ============================================ */
+function triggerAvatarUpload() {
+  var input = document.getElementById('avatarFileInput');
+  if (input) input.click();
+}
+
+async function handleAvatarUpload(event) {
+  var file = event.target.files[0];
+  if (!file) return;
+  if (!file.type.startsWith('image/')) {
+    if (typeof showToast === 'function') showToast('Please select an image file', 'error');
+    return;
+  }
+  if (file.size > 5 * 1024 * 1024) {
+    if (typeof showToast === 'function') showToast('Image must be under 5MB', 'error');
+    return;
+  }
+
+  // Preview immediately
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    var avatarEls = document.querySelectorAll('.profile-avatar-lg, .user-avatar, .topbar-avatar');
+    avatarEls.forEach(function(el) {
+      if (el.classList.contains('profile-avatar-lg')) {
+        el.innerHTML = '<img src="' + e.target.result + '" alt="Avatar">';
+      }
+    });
+  };
+  reader.readAsDataURL(file);
+
+  // Upload to server
+  try {
+    var formData = new FormData();
+    formData.append('avatar', file);
+    var resp = await fetch(API + '/api/auth/avatar', {
+      method: 'POST',
+      headers: authHeaders(),
+      body: formData
+    });
+    var data = await resp.json();
+    if (data.error) {
+      if (typeof showToast === 'function') showToast('Upload failed: ' + data.error, 'error');
+    } else {
+      if (data.avatar_url) {
+        currentUser.avatar_url = data.avatar_url;
+        // Update all avatar displays
+        document.querySelectorAll('.profile-avatar-lg').forEach(function(el) {
+          el.innerHTML = '<img src="' + data.avatar_url + '" alt="Avatar">';
+        });
+        document.querySelectorAll('.user-avatar, .topbar-avatar').forEach(function(el) {
+          el.innerHTML = '<img src="' + data.avatar_url + '" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%">';
+        });
+      }
+      if (typeof showToast === 'function') showToast('Profile photo updated', 'success');
+    }
+  } catch(e) {
+    if (typeof showToast === 'function') showToast('Upload failed. Try again.', 'error');
+  }
+}
+
+function showEditProfileModal() {
+  if (typeof showToast === 'function') showToast('Profile editing coming soon', 'info');
+}
+
+
+/* ============================================
+   STUDIO — FULL-STACK BUILDER + PUBLISHING
+   ============================================ */
+var builderState = {
+  project: null,
+  files: {},
+  activeFile: null,
+  buildLog: [],
+  publishTarget: null
+};
+
+function studioShowProjectPanel() {
+  var panel = document.getElementById('studioProjectPanel');
+  if (!panel) return;
+  panel.style.display = 'flex';
+  panel.innerHTML = renderBuilderProjectPanel();
+}
+
+function renderBuilderProjectPanel() {
+  var html = '<div class="builder-project-panel">';
+
+  // Project header
+  html += '<div class="builder-header">';
+  html += '<div class="builder-title"><svg viewBox="0 0 24 24" fill="none" stroke="var(--accent-gold)" stroke-width="2" width="18" height="18"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg> Full-Stack Builder</div>';
+  html += '<div class="builder-subtitle">Build web apps, PWAs, widgets, and full-stack sites</div>';
+  html += '</div>';
+
+  // Quick start templates
+  html += '<div class="builder-section">';
+  html += '<div class="builder-section-title">Quick Start Templates</div>';
+  html += '<div class="builder-templates-grid">';
+
+  var templates = [
+    { id: 'landing', name: 'Landing Page', desc: 'Hero + features + CTA', icon: '🌐', color: '#3b82f6' },
+    { id: 'dashboard', name: 'Dashboard', desc: 'Charts + data tables + sidebar', icon: '📊', color: '#8b5cf6' },
+    { id: 'saas', name: 'SaaS App', desc: 'Auth + billing + dashboard', icon: '🚀', color: '#f59e0b' },
+    { id: 'portfolio', name: 'Portfolio', desc: 'Projects + about + contact', icon: '🎨', color: '#ec4899' },
+    { id: 'ecommerce', name: 'E-Commerce', desc: 'Products + cart + checkout', icon: '🛒', color: '#22c55e' },
+    { id: 'pwa', name: 'PWA', desc: 'Offline-first + installable', icon: '📱', color: '#06b6d4' },
+    { id: 'widget', name: 'Widget', desc: 'Embeddable component', icon: '🧩', color: '#a855f7' },
+    { id: 'api', name: 'API Server', desc: 'REST endpoints + auth', icon: '⚡', color: '#ef4444' }
+  ];
+
+  templates.forEach(function(t) {
+    html += '<div class="builder-template" onclick="builderStartFromTemplate(\'' + t.id + '\')">';
+    html += '<div class="builder-template-icon" style="background:' + t.color + '20;color:' + t.color + '">' + t.icon + '</div>';
+    html += '<div class="builder-template-name">' + t.name + '</div>';
+    html += '<div class="builder-template-desc">' + t.desc + '</div>';
+    html += '</div>';
+  });
+
+  html += '</div></div>';
+
+  // Publishing Pipeline
+  html += '<div class="builder-section">';
+  html += '<div class="builder-section-title">Publishing Pipeline</div>';
+  html += '<div class="builder-publish-grid">';
+
+  html += '<div class="builder-publish-card" onclick="builderPublish(\'github\')">';
+  html += '<div class="builder-publish-icon"><svg viewBox="0 0 24 24" fill="currentColor" width="24" height="24"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23A11.509 11.509 0 0112 5.803c1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576C20.566 21.797 24 17.3 24 12c0-6.627-5.373-12-12-12z"/></svg></div>';
+  html += '<div class="builder-publish-name">Push to GitHub</div>';
+  html += '<div class="builder-publish-desc">Commit and push to your repository</div>';
+  html += '</div>';
+
+  html += '<div class="builder-publish-card" onclick="builderPublish(\'vercel\')">';
+  html += '<div class="builder-publish-icon"><svg viewBox="0 0 24 24" fill="currentColor" width="24" height="24"><path d="M12 1L1 22h22L12 1z"/></svg></div>';
+  html += '<div class="builder-publish-name">Deploy to Vercel</div>';
+  html += '<div class="builder-publish-desc">Zero-config deployment for frontend</div>';
+  html += '</div>';
+
+  html += '<div class="builder-publish-card" onclick="builderPublish(\'render\')">';
+  html += '<div class="builder-publish-icon" style="font-size:24px;font-weight:900;color:var(--accent-green)">R</div>';
+  html += '<div class="builder-publish-name">Deploy to Render</div>';
+  html += '<div class="builder-publish-desc">Full-stack with backend services</div>';
+  html += '</div>';
+
+  html += '<div class="builder-publish-card" onclick="builderPublish(\'download\')">';
+  html += '<div class="builder-publish-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="24" height="24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></div>';
+  html += '<div class="builder-publish-name">Download ZIP</div>';
+  html += '<div class="builder-publish-desc">Download project as a zip file</div>';
+  html += '</div>';
+
+  html += '</div></div>';
+
+  // DNS Instructions
+  html += '<div class="builder-section">';
+  html += '<div class="builder-section-title">Custom Domain Setup</div>';
+  html += '<div class="builder-dns-info">';
+  html += '<div class="builder-dns-step"><span class="builder-dns-num">1</span><div><strong>Add CNAME record</strong><br>Point your domain to <code>cname.vercel-dns.com</code> or your Render URL</div></div>';
+  html += '<div class="builder-dns-step"><span class="builder-dns-num">2</span><div><strong>Add to platform</strong><br>Go to Domains & SSL to register your custom domain</div></div>';
+  html += '<div class="builder-dns-step"><span class="builder-dns-num">3</span><div><strong>SSL auto-provisioned</strong><br>HTTPS certificate is automatically issued within minutes</div></div>';
+  html += '</div>';
+  html += '</div>';
+
+  // Build Log
+  html += '<div class="builder-section">';
+  html += '<div class="builder-section-title">Build Log</div>';
+  html += '<div class="builder-log" id="builderLog">';
+  if (builderState.buildLog.length === 0) {
+    html += '<div class="builder-log-empty">No builds yet. Generate code or use a template to start.</div>';
+  } else {
+    builderState.buildLog.forEach(function(entry) {
+      html += '<div class="builder-log-entry ' + (entry.type || 'info') + '">';
+      html += '<span class="builder-log-time">' + entry.time + '</span>';
+      html += '<span class="builder-log-msg">' + escapeHtml(entry.message) + '</span>';
+      html += '</div>';
+    });
+  }
+  html += '</div></div>';
+
+  html += '</div>';
+  return html;
+}
+
+function builderStartFromTemplate(templateId) {
+  studioSwitchMode('code');
+  var promptEl = document.getElementById('studioPrompt');
+  var prompts = {
+    landing: 'Build a modern SaaS landing page with hero section, feature grid, pricing cards, testimonials, and footer. Dark theme with glass morphism. Responsive.',
+    dashboard: 'Build a dashboard app with sidebar navigation, data cards, charts section, and a data table. Dark theme. Include header with user avatar and notifications.',
+    saas: 'Build a full SaaS app with auth (login/signup pages), dashboard, settings page, and billing page with pricing tiers. Include sidebar navigation. Dark theme.',
+    portfolio: 'Build a developer portfolio site with hero section, projects grid with cards, about section, skills list, and contact form. Modern dark design.',
+    ecommerce: 'Build an e-commerce storefront with product grid, product detail modal, shopping cart sidebar, and checkout form. Include search and category filters.',
+    pwa: 'Build a PWA (Progressive Web App) with service worker, manifest.json, offline support, and app-like navigation. Include install prompt.',
+    widget: 'Build an embeddable chat widget that can be added to any website with a single script tag. Floating button, chat popup, and message list.',
+    api: 'Build a REST API server with Express.js. Include user auth endpoints (register/login/profile), CRUD endpoints, and middleware for auth and error handling.'
+  };
+  if (promptEl && prompts[templateId]) {
+    promptEl.value = prompts[templateId];
+    promptEl.focus();
+  }
+  // Add build log entry
+  builderAddLog('info', 'Started from template: ' + templateId);
+}
+
+function builderAddLog(type, message) {
+  var now = new Date();
+  var time = now.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+  builderState.buildLog.push({ type: type, time: time, message: message });
+  var log = document.getElementById('builderLog');
+  if (log) {
+    var entry = document.createElement('div');
+    entry.className = 'builder-log-entry ' + type;
+    entry.innerHTML = '<span class="builder-log-time">' + time + '</span><span class="builder-log-msg">' + escapeHtml(message) + '</span>';
+    var empty = log.querySelector('.builder-log-empty');
+    if (empty) empty.remove();
+    log.appendChild(entry);
+    log.scrollTop = log.scrollHeight;
+  }
+}
+
+async function builderPublish(target) {
+  builderState.publishTarget = target;
+  builderAddLog('info', 'Publishing to ' + target + '...');
+
+  if (target === 'github') {
+    try {
+      var resp = await fetch(API + '/api/studio/publish/github', {
+        method: 'POST',
+        headers: Object.assign({'Content-Type':'application/json'}, authHeaders()),
+        body: JSON.stringify({ files: builderState.files, project: builderState.project })
+      });
+      var data = await resp.json();
+      if (data.error) {
+        builderAddLog('error', 'GitHub push failed: ' + data.error);
+        if (typeof showToast === 'function') showToast('Push failed: ' + data.error, 'error');
+      } else {
+        builderAddLog('success', 'Pushed to GitHub: ' + (data.url || 'success'));
+        if (typeof showToast === 'function') showToast('Pushed to GitHub!', 'success');
+      }
+    } catch(e) {
+      builderAddLog('error', 'GitHub push failed');
+      if (typeof showToast === 'function') showToast('Push failed. Check connection.', 'error');
+    }
+  } else if (target === 'vercel' || target === 'render') {
+    try {
+      var resp = await fetch(API + '/api/studio/publish/' + target, {
+        method: 'POST',
+        headers: Object.assign({'Content-Type':'application/json'}, authHeaders()),
+        body: JSON.stringify({ files: builderState.files, project: builderState.project })
+      });
+      var data = await resp.json();
+      if (data.error) {
+        builderAddLog('error', target + ' deploy failed: ' + data.error);
+        if (typeof showToast === 'function') showToast('Deploy failed: ' + data.error, 'error');
+      } else {
+        builderAddLog('success', 'Deployed to ' + target + ': ' + (data.url || 'success'));
+        if (typeof showToast === 'function') showToast('Deployed to ' + target + '!', 'success');
+      }
+    } catch(e) {
+      builderAddLog('error', target + ' deploy failed');
+      if (typeof showToast === 'function') showToast('Deploy failed. Try again.', 'error');
+    }
+  } else if (target === 'download') {
+    builderAddLog('info', 'Preparing ZIP download...');
+    if (typeof showToast === 'function') showToast('ZIP download preparing...', 'info');
+  }
 }

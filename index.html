@@ -36,6 +36,7 @@
 <link rel="stylesheet" href="style.css">
 <link rel="stylesheet" href="connectors-domains.css">
 <link rel="stylesheet" href="realestate.css">
+    <link rel="stylesheet" href="medical.css">
 </head>
 <body>
 
@@ -84,6 +85,10 @@
       <div class="nav-item" data-vertical="realestate" onclick="switchVertical('realestate',this)">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
         Real Estate
+      </div>
+      <div class="nav-item" data-vertical="medical" onclick="switchVertical('medical',this)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+        Medical
       </div>
 
       <div class="nav-divider"></div>
@@ -174,6 +179,99 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" id="themeIcon"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
         </button>
         <div class="topbar-avatar" id="topbarUserAvatar" onclick="onUserProfileClick()">?</div>
+      </div>
+    </div>
+
+    <!-- Landing Page — Social Showcase -->
+    <div class="view landing-view" id="landingView">
+      <div class="landing-container">
+        <div class="landing-hero">
+          <div class="landing-badge">Responsible Intelligence</div>
+          <h1 class="landing-title">SaintSal™ <span class="landing-labs">LABS</span></h1>
+          <p class="landing-subtitle">The AI platform that searches, builds, creates, and deploys — all from one place. 53 models. 88 connectors. Infinite possibility.</p>
+          <div class="landing-cta-row">
+            <button class="landing-cta-primary" onclick="navigate('chat')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> Start Searching</button>
+            <button class="landing-cta-secondary" onclick="navigate('studio')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg> Open Studio</button>
+          </div>
+          <div class="landing-trust">US Patent #10,290,222 · 175+ Countries · HACP Protocol</div>
+        </div>
+        <div class="landing-section">
+          <div class="landing-section-label">Intelligence Verticals</div>
+          <div class="landing-pillars-grid">
+            <div class="landing-pillar" onclick="switchVertical('search');navigate('chat')">
+              <div class="landing-pillar-icon" style="background:rgba(212,160,23,0.12);color:var(--accent-gold)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="24" height="24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></div>
+              <div class="landing-pillar-name">Search</div>
+              <div class="landing-pillar-desc">Real-time AI search with citations</div>
+            </div>
+            <div class="landing-pillar" onclick="switchVertical('sports');navigate('chat')">
+              <div class="landing-pillar-icon" style="background:rgba(239,68,68,0.12);color:#ef4444"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="24" height="24"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></svg></div>
+              <div class="landing-pillar-name">Sports</div>
+              <div class="landing-pillar-desc">Live scores, stats, and analytics</div>
+            </div>
+            <div class="landing-pillar" onclick="switchVertical('news');navigate('chat')">
+              <div class="landing-pillar-icon" style="background:rgba(59,130,246,0.12);color:#3b82f6"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="24" height="24"><path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-2 2zm0 0a2 2 0 0 1-2-2v-9c0-1.1.9-2 2-2h2"/></svg></div>
+              <div class="landing-pillar-name">News</div>
+              <div class="landing-pillar-desc">Breaking news intelligence</div>
+            </div>
+            <div class="landing-pillar" onclick="switchVertical('tech');navigate('chat')">
+              <div class="landing-pillar-icon" style="background:rgba(168,85,247,0.12);color:#a855f7"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="24" height="24"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></div>
+              <div class="landing-pillar-name">Tech</div>
+              <div class="landing-pillar-desc">Code generation and research</div>
+            </div>
+            <div class="landing-pillar" onclick="switchVertical('finance');navigate('chat')">
+              <div class="landing-pillar-icon" style="background:rgba(34,197,94,0.12);color:#22c55e"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="24" height="24"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></div>
+              <div class="landing-pillar-name">Finance</div>
+              <div class="landing-pillar-desc">Markets, SEC filings, analysis</div>
+            </div>
+            <div class="landing-pillar" onclick="switchVertical('realestate');navigate('chat')">
+              <div class="landing-pillar-icon" style="background:rgba(245,158,11,0.12);color:#f59e0b"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="24" height="24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg></div>
+              <div class="landing-pillar-name">Real Estate</div>
+              <div class="landing-pillar-desc">Property search and deal analysis</div>
+            </div>
+            <div class="landing-pillar" onclick="switchVertical('medical');navigate('chat')">
+              <div class="landing-pillar-icon" style="background:rgba(236,72,153,0.12);color:#ec4899"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="24" height="24"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></div>
+              <div class="landing-pillar-name">Medical</div>
+              <div class="landing-pillar-desc">ICD-10, NPI, clinical tools</div>
+            </div>
+          </div>
+        </div>
+        <div class="landing-section">
+          <div class="landing-section-label">Creation Engine</div>
+          <div class="landing-studio-showcase">
+            <div class="landing-studio-hero">
+              <div class="landing-studio-title"><svg viewBox="0 0 24 24" fill="none" stroke="var(--accent-gold)" stroke-width="2" width="24" height="24"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg> SAL Studio</div>
+              <div class="landing-studio-desc">Full-stack builder. Generate images, video, audio, code, and UI designs. Publish to Vercel, Render, or GitHub in one click.</div>
+              <button class="landing-cta-gold" onclick="navigate('studio')">Launch Studio</button>
+            </div>
+            <div class="landing-studio-modes">
+              <div class="landing-mode"><div class="landing-mode-dot" style="background:#3b82f6"></div>Images</div>
+              <div class="landing-mode"><div class="landing-mode-dot" style="background:#a855f7"></div>Video</div>
+              <div class="landing-mode"><div class="landing-mode-dot" style="background:#22c55e"></div>Audio</div>
+              <div class="landing-mode"><div class="landing-mode-dot" style="background:#f59e0b"></div>Code</div>
+              <div class="landing-mode"><div class="landing-mode-dot" style="background:#ec4899"></div>Design</div>
+              <div class="landing-mode"><div class="landing-mode-dot" style="background:#06b6d4"></div>Social</div>
+            </div>
+          </div>
+        </div>
+        <div class="landing-section">
+          <div class="landing-stats-row">
+            <div class="landing-stat"><div class="landing-stat-value">53</div><div class="landing-stat-label">AI Models</div></div>
+            <div class="landing-stat"><div class="landing-stat-value">88</div><div class="landing-stat-label">Connectors</div></div>
+            <div class="landing-stat"><div class="landing-stat-value">7</div><div class="landing-stat-label">Verticals</div></div>
+            <div class="landing-stat"><div class="landing-stat-value">4</div><div class="landing-stat-label">Compute Tiers</div></div>
+          </div>
+        </div>
+        <div class="landing-footer">
+          <div class="landing-footer-brand">SaintSal™ <span class="footer-labs-green">LABS</span></div>
+          <div class="landing-footer-sub">A SaintVision Technologies Platform · Patent #10,290,222 · © 2026</div>
+          <div class="landing-footer-links">
+            <a href="#" onclick="navigate('pricing');return false">Pricing</a>
+            <span>·</span>
+            <a href="#" onclick="navigate('account');return false">Account</a>
+            <span>·</span>
+            <a href="https://www.perplexity.ai/computer" target="_blank" rel="noopener">Created with Perplexity Computer</a>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -382,7 +480,18 @@
         <div id="accountProfileSection" style="display:none">
           <div class="account-section">
             <div class="account-section-title">Profile</div>
-            <div class="profile-row"><div class="profile-avatar-lg">C</div><div class="profile-details"><div class="profile-name">Cap</div><div class="profile-email">cap@hacpglobal.ai</div></div></div>
+            <div class="profile-row">
+              <div class="profile-avatar-wrap" onclick="triggerAvatarUpload()">
+                <div class="profile-avatar-lg" id="profileAvatarDisplay">C</div>
+                <div class="profile-avatar-overlay"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg><span>Change</span></div>
+                <input type="file" id="avatarFileInput" accept="image/*" style="display:none" onchange="handleAvatarUpload(event)">
+              </div>
+              <div class="profile-details">
+                <div class="profile-name">Cap</div>
+                <div class="profile-email">cap@hacpglobal.ai</div>
+                <button class="profile-edit-btn" onclick="showEditProfileModal()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg> Edit Profile</button>
+              </div>
+            </div>
           </div>
           <div class="account-section">
             <div class="account-section-title">Current Plan</div>
@@ -1096,6 +1205,7 @@
 <script src="connectors-view.js"></script>
 <script src="domains-view.js"></script>
 <script src="realestate-view.js"></script>
+    <script src="medical-view.js"></script>
 
 
     <!-- Social Composer Modal -->

@@ -1,0 +1,259 @@
+/* ============================================
+   MEDICAL SUITE — SaintAthena Styles
+   v1.0
+   ============================================ */
+
+.med-panel { padding: 0; }
+
+/* Hero */
+.med-hero {
+  display: flex; align-items: center; gap: 20px; margin-bottom: 32px;
+  padding: 28px; background: linear-gradient(135deg, rgba(34,197,94,0.06), rgba(16,185,129,0.03));
+  border-radius: 16px;
+}
+.med-hero-icon {
+  width: 56px; height: 56px; display: flex; align-items: center; justify-content: center;
+  background: rgba(34,197,94,0.12); border-radius: 14px; flex-shrink: 0;
+}
+.med-hero-title {
+  font-size: var(--text-xl, 20px); font-weight: 800; color: var(--text-primary);
+  letter-spacing: -0.02em;
+}
+.med-hero-sub {
+  font-size: var(--text-sm, 14px); color: var(--text-secondary); margin-top: 4px;
+  line-height: 1.5; max-width: 600px;
+}
+
+/* Tabs */
+.med-tabs {
+  display: flex; gap: 8px; margin-bottom: 28px; overflow-x: auto;
+  -webkit-overflow-scrolling: touch; scrollbar-width: none; padding-bottom: 2px;
+}
+.med-tabs::-webkit-scrollbar { display: none; }
+.med-tab {
+  display: flex; align-items: center; gap: 8px; padding: 12px 20px;
+  background: var(--bg-surface-2, #1a1a1a); color: var(--text-secondary);
+  font-size: var(--text-xs, 13px); font-weight: 600; border: none; border-radius: 10px;
+  cursor: pointer; white-space: nowrap; transition: all 0.15s ease;
+}
+.med-tab:hover { background: var(--bg-surface-3, #222); color: var(--text-primary); }
+.med-tab.active { background: var(--accent-green, #22c55e); color: #000; }
+.med-tab.active svg { stroke: #000; }
+
+/* Tab Panels */
+.med-tab-panel { display: none; }
+.med-tab-panel.active { display: block; animation: fadeIn 0.2s ease; }
+
+/* Sections */
+.med-section { margin-bottom: 32px; }
+.med-section-title {
+  font-size: var(--text-lg, 18px); font-weight: 800; color: var(--text-primary);
+  margin-bottom: 4px;
+}
+.med-section-desc {
+  font-size: var(--text-sm, 14px); color: var(--text-muted); margin-bottom: 20px;
+}
+
+/* Search */
+.med-search-bar { margin-bottom: 24px; }
+.med-search-wrap {
+  display: flex; align-items: center; gap: 10px;
+  background: var(--bg-surface-2, #1a1a1a); border-radius: 12px;
+  padding: 8px 10px 8px 16px; border: 1px solid var(--border-color);
+  transition: border-color 0.15s;
+}
+.med-search-wrap:focus-within { border-color: var(--accent-green); }
+.med-search-input {
+  flex: 1; background: none; border: none; color: var(--text-primary);
+  font-size: var(--text-sm, 14px); outline: none; padding: 8px 0;
+}
+.med-search-input::placeholder { color: var(--text-faint); }
+.med-search-btn {
+  background: var(--accent-green, #22c55e); color: #000; border: none;
+  padding: 8px 20px; border-radius: 8px; font-weight: 700;
+  font-size: var(--text-sm, 14px); cursor: pointer; white-space: nowrap;
+  transition: opacity 0.15s;
+}
+.med-search-btn:hover { opacity: 0.9; }
+
+.med-search-hints {
+  display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap;
+}
+.med-hint {
+  padding: 6px 14px; background: var(--bg-surface-2); border: 1px solid var(--border-color);
+  border-radius: 20px; font-size: 12px; color: var(--text-secondary);
+  cursor: pointer; transition: all 0.15s;
+}
+.med-hint:hover { border-color: var(--accent-green); color: var(--text-primary); }
+
+.med-npi-filters {
+  display: flex; gap: 10px; margin-top: 10px;
+}
+.med-filter-select {
+  background: var(--bg-surface-2); border: 1px solid var(--border-color);
+  color: var(--text-secondary); border-radius: 8px; padding: 8px 12px;
+  font-size: var(--text-xs, 13px); cursor: pointer; outline: none;
+}
+.med-filter-select:focus { border-color: var(--accent-green); }
+
+/* Results */
+.med-results { min-height: 100px; }
+.med-results-count {
+  font-size: var(--text-xs, 13px); color: var(--text-muted); margin-bottom: 16px;
+}
+.med-loading {
+  display: flex; flex-direction: column; align-items: center; gap: 10px;
+  padding: 48px; color: var(--text-muted); font-size: var(--text-sm);
+}
+.med-spinner {
+  width: 24px; height: 24px; border: 2px solid var(--border-color);
+  border-top-color: var(--accent-green); border-radius: 50%; animation: spin 0.6s linear infinite;
+}
+.med-empty {
+  display: flex; flex-direction: column; align-items: center;
+  padding: 48px; color: var(--text-muted); font-size: var(--text-sm);
+}
+
+/* ICD-10 Code Cards */
+.med-code-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 16px;
+}
+.med-code-card {
+  background: var(--bg-surface-2); border-radius: 12px; padding: 20px;
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+.med-code-card:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0,0,0,0.2); }
+.med-code-header {
+  display: flex; align-items: center; gap: 10px; margin-bottom: 10px;
+}
+.med-code-badge {
+  padding: 4px 12px; background: rgba(34,197,94,0.15); color: var(--accent-green);
+  font-size: 13px; font-weight: 800; border-radius: 6px; font-family: monospace;
+  letter-spacing: 0.02em;
+}
+.med-billable-badge {
+  padding: 3px 8px; background: rgba(59,130,246,0.15); color: var(--accent-blue, #3b82f6);
+  font-size: 10px; font-weight: 700; border-radius: 4px; text-transform: uppercase;
+}
+.med-code-desc {
+  font-size: var(--text-sm, 14px); color: var(--text-primary); font-weight: 600;
+  line-height: 1.4; margin-bottom: 6px;
+}
+.med-code-category {
+  font-size: 12px; color: var(--text-muted); margin-bottom: 12px;
+}
+.med-code-actions { display: flex; gap: 8px; }
+
+/* NPI Cards */
+.med-npi-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 16px;
+}
+.med-npi-card {
+  background: var(--bg-surface-2); border-radius: 12px; padding: 20px;
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+.med-npi-card:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0,0,0,0.2); }
+.med-npi-header {
+  display: flex; align-items: center; gap: 12px; margin-bottom: 12px;
+}
+.med-npi-avatar {
+  width: 42px; height: 42px; border-radius: 50%; display: flex; align-items: center;
+  justify-content: center; font-size: 18px; font-weight: 800;
+  background: rgba(34,197,94,0.15); color: var(--accent-green); flex-shrink: 0;
+}
+.med-npi-info { flex: 1; min-width: 0; }
+.med-npi-name {
+  font-size: var(--text-sm, 14px); font-weight: 700; color: var(--text-primary);
+}
+.med-npi-type {
+  font-size: 11px; color: var(--text-muted);
+}
+.med-npi-number {
+  font-size: 11px; font-weight: 700; color: var(--accent-green); font-family: monospace;
+  white-space: nowrap;
+}
+.med-npi-specialty {
+  font-size: var(--text-xs, 13px); color: var(--text-secondary);
+  padding: 6px 0; border-bottom: 1px solid var(--border-color); margin-bottom: 8px;
+}
+.med-npi-addr, .med-npi-phone {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 12px; color: var(--text-muted); margin-top: 6px;
+}
+.med-npi-actions { display: flex; gap: 8px; margin-top: 12px; }
+
+/* Drug Cards */
+.med-drug-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 16px;
+}
+.med-drug-card {
+  background: var(--bg-surface-2); border-radius: 12px; padding: 20px;
+  transition: transform 0.15s;
+}
+.med-drug-card:hover { transform: translateY(-2px); }
+.med-drug-name {
+  font-size: var(--text-md, 16px); font-weight: 800; color: var(--text-primary);
+  margin-bottom: 4px;
+}
+.med-drug-generic { font-size: 13px; color: var(--accent-green); margin-bottom: 8px; }
+.med-drug-class { font-size: 12px; color: var(--text-secondary); margin-bottom: 4px; }
+.med-drug-route { font-size: 12px; color: var(--text-muted); }
+.med-drug-mfg { font-size: 11px; color: var(--text-faint); margin-top: 4px; }
+.med-drug-actions { display: flex; gap: 8px; margin-top: 12px; }
+
+/* Clinical Tools Grid */
+.med-tools-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 20px;
+}
+.med-tool-card {
+  background: var(--bg-surface-2); border-radius: 14px; padding: 24px;
+}
+.med-tool-icon {
+  width: 48px; height: 48px; border-radius: 12px; display: flex;
+  align-items: center; justify-content: center; margin-bottom: 14px;
+}
+.med-tool-name {
+  font-size: var(--text-md, 16px); font-weight: 800; color: var(--text-primary);
+  margin-bottom: 4px;
+}
+.med-tool-desc {
+  font-size: 12px; color: var(--text-muted); margin-bottom: 16px;
+}
+.med-tool-form { display: flex; flex-direction: column; gap: 8px; }
+.med-tool-row { display: flex; flex-direction: column; gap: 4px; }
+.med-tool-row label {
+  font-size: 11px; font-weight: 600; color: var(--text-secondary);
+}
+.med-tool-row input, .med-tool-row select {
+  background: var(--bg-surface-3); border: 1px solid var(--border-color);
+  color: var(--text-primary); border-radius: 8px; padding: 8px 12px;
+  font-size: var(--text-sm, 14px); outline: none;
+}
+.med-tool-row input:focus, .med-tool-row select:focus { border-color: var(--accent-green); }
+.med-tool-result {
+  margin-top: 12px; text-align: center; min-height: 40px;
+}
+
+/* Buttons */
+.med-btn-sm {
+  padding: 6px 14px; background: var(--accent-green, #22c55e); color: #000;
+  border: none; border-radius: 6px; font-size: var(--text-xs, 13px); font-weight: 700;
+  cursor: pointer; transition: opacity 0.15s; white-space: nowrap;
+  display: inline-flex; align-items: center; gap: 4px;
+}
+.med-btn-sm:hover { opacity: 0.9; }
+.med-btn-sm.outline {
+  background: transparent; color: var(--text-secondary); border: 1px solid var(--border-color);
+}
+.med-btn-sm.outline:hover { border-color: var(--accent-green); color: var(--text-primary); }
+
+/* Responsive */
+@media (max-width: 768px) {
+  .med-hero { flex-direction: column; text-align: center; padding: 20px; }
+  .med-code-grid, .med-npi-grid, .med-drug-grid, .med-tools-grid { grid-template-columns: 1fr; }
+  .med-npi-filters { flex-direction: column; }
+}
