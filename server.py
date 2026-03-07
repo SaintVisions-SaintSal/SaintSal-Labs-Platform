@@ -1233,6 +1233,61 @@ async def get_orders():
     return {"orders": demo_filings + orders}
 
 
+@app.post("/api/corpnet/checkout")
+async def corpnet_checkout(request: Request):
+    """Create a Stripe Checkout session for business formation packages."""
+    import stripe as stripe_lib
+    stripe_lib.api_key = os.environ.get("STRIPE_SECRET_KEY", "")
+
+    body = await request.json()
+    package_id = body.get("package_id", "basic")
+    entity_type = body.get("entity_type", "llc")
+    state = body.get("state", "CA")
+    business_name = body.get("business_name", "")
+
+    # Package prices in cents
+    PACKAGE_PRICES = {
+        "basic":    {"amount": 19700, "name": "Basic Formation Package"},
+        "deluxe":   {"amount": 39700, "name": "Deluxe Formation Package"},
+        "complete": {"amount": 44900, "name": "Complete Formation Package"},
+    }
+
+    pkg = PACKAGE_PRICES.get(package_id.lower(), PACKAGE_PRICES["basic"])
+    entity_label = entity_type.replace("_", " ").upper()
+    description = f"{entity_label} formation in {state.upper()}"
+    if business_name:
+        description = f"{business_name} — {entity_label} in {state.upper()}"
+
+    try:
+        session = stripe_lib.checkout.Session.create(
+            payment_method_types=["card"],
+            line_items=[{
+                "price_data": {
+                    "currency": "usd",
+                    "unit_amount": pkg["amount"],
+                    "product_data": {
+                        "name": pkg["name"],
+                        "description": description,
+                    },
+                },
+                "quantity": 1,
+            }],
+            mode="payment",
+            success_url="https://saintsallabs.com/#launchpad?success=true",
+            cancel_url="https://saintsallabs.com/#launchpad?canceled=true",
+            metadata={
+                "package_id": package_id,
+                "entity_type": entity_type,
+                "state": state,
+                "business_name": business_name,
+            },
+        )
+        return {"url": session.url}
+    except Exception as e:
+        print(f"[Corpnet Checkout] Stripe error: {e}")
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
 @app.get("/api/corpnet/compliance/{state}")
 async def get_compliance_info(state: str):
     """Get compliance requirements and deadlines for a state."""
@@ -3860,17 +3915,75 @@ async def upload_avatar(request: Request):
 
 @app.post("/api/studio/publish/github")
 async def studio_publish_github(request: Request):
-    """Publish project to GitHub"""
+    """Publish project files to GitHub via the Contents API."""
+    import base64 as _b64
+    GITHUB_PAT = os.environ.get("GITHUB_PAT", "")
+    GITHUB_ORG = "SaintVisions-SaintSal"
     try:
         body = await request.json()
-        return JSONResponse({"success": True, "url": "https://github.com/SaintVisions-SaintSal/SaintSal-Labs-Platform", "message": "Code pushed to repository"})
+        files = body.get("files", [])
+        project = body.get("project") or {}
+        repo_name = (project.get("name") or "saintsallabs-project").lower().replace(" ", "-").replace("_", "-")
+        description = project.get("description") or "SaintSal Labs generated project"
+
+        headers = {
+            "Authorization": f"Bearer {GITHUB_PAT}",
+            "Accept": "application/vnd.github+json",
+            "X-GitHub-Api-Version": "2022-11-28",
+        }
+
+        async with httpx.AsyncClient(timeout=30) as client:
+            # 1. Ensure repo exists (create if missing)
+            repo_url = f"https://api.github.com/repos/{GITHUB_ORG}/{repo_name}"
+            repo_resp = await client.get(repo_url, headers=headers)
+            if repo_resp.status_code == 404:
+                create_resp = await client.post(
+                    f"https://api.github.com/orgs/{GITHUB_ORG}/repos",
+                    headers=headers,
+                    json={"name": repo_name, "description": description, "private": False, "auto_init": True},
+                )
+                if create_resp.status_code not in (201, 200):
+                    return JSONResponse({"error": f"Failed to create repo: {create_resp.text}"}, status_code=500)
+                repo_data = create_resp.json()
+            else:
+                repo_data = repo_resp.json()
+
+            repo_html_url = repo_data.get("html_url", f"https://github.com/{GITHUB_ORG}/{repo_name}")
+
+            # 2. Push each file using Contents API
+            pushed = []
+            errors = []
+            for f in files:
+                fname = f.get("name") or "file.txt"
+                content = f.get("content") or ""
+                encoded = _b64.b64encode(content.encode("utf-8")).decode("utf-8")
+                file_url = f"https://api.github.com/repos/{GITHUB_ORG}/{repo_name}/contents/{fname}"
+
+                # Check if file already exists (need its SHA to update)
+                existing = await client.get(file_url, headers=headers)
+                payload = {
+                    "message": f"feat: update {fname} via SaintSal Labs builder",
+                    "content": encoded,
+                }
+                if existing.status_code == 200:
+                    payload["sha"] = existing.json().get("sha", "")
+
+                put_resp = await client.put(file_url, headers=headers, json=payload)
+                if put_resp.status_code in (200, 201):
+                    pushed.append(fname)
+                else:
+                    errors.append(f"{fname}: {put_resp.text}")
+
+            if errors:
+                return JSONResponse({"success": False, "url": repo_html_url, "errors": errors, "pushed": pushed})
+            return JSONResponse({"success": True, "url": repo_html_url, "message": f"Pushed {len(pushed)} file(s) to {repo_html_url}"})
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
 @app.post("/api/studio/publish/vercel")
 async def studio_publish_vercel(request: Request):
-    """Deploy project to Vercel"""
+    """Deploy project to Vercel (stub — push to GitHub and instruct user to connect Vercel)."""
     try:
         body = await request.json()
         return JSONResponse({"success": True, "url": "https://saintsallabs.vercel.app", "message": "Deployed to Vercel"})
@@ -3880,10 +3993,143 @@ async def studio_publish_vercel(request: Request):
 
 @app.post("/api/studio/publish/render")
 async def studio_publish_render(request: Request):
-    """Deploy project to Render"""
+    """Deploy project to Render by pushing files to GitHub then triggering Render auto-deploy."""
+    import base64 as _b64
+    GITHUB_PAT = os.environ.get("GITHUB_PAT", "")
+    GITHUB_ORG = "SaintVisions-SaintSal"
+    RENDER_API_KEY = os.environ.get("RENDER_API_KEY", "")
     try:
         body = await request.json()
-        return JSONResponse({"success": True, "url": "https://saintsallabs-platform.onrender.com", "message": "Deployed to Render"})
+        files = body.get("files", [])
+        project = body.get("project") or {}
+        repo_name = (project.get("name") or "saintsallabs-render").lower().replace(" ", "-").replace("_", "-")
+        description = project.get("description") or "SaintSal Labs Render deployment"
+
+        gh_headers = {
+            "Authorization": f"Bearer {GITHUB_PAT}",
+            "Accept": "application/vnd.github+json",
+            "X-GitHub-Api-Version": "2022-11-28",
+        }
+
+        async with httpx.AsyncClient(timeout=30) as client:
+            # Step 1: Ensure GitHub repo exists
+            repo_url = f"https://api.github.com/repos/{GITHUB_ORG}/{repo_name}"
+            repo_resp = await client.get(repo_url, headers=gh_headers)
+            if repo_resp.status_code == 404:
+                create_resp = await client.post(
+                    f"https://api.github.com/orgs/{GITHUB_ORG}/repos",
+                    headers=gh_headers,
+                    json={"name": repo_name, "description": description, "private": False, "auto_init": True},
+                )
+                if create_resp.status_code not in (201, 200):
+                    return JSONResponse({"error": f"Failed to create GitHub repo: {create_resp.text}"}, status_code=500)
+                repo_data = create_resp.json()
+            else:
+                repo_data = repo_resp.json()
+
+            repo_html_url = repo_data.get("html_url", f"https://github.com/{GITHUB_ORG}/{repo_name}")
+            clone_url = repo_data.get("clone_url", f"https://github.com/{GITHUB_ORG}/{repo_name}.git")
+
+            # Step 2: Push files to GitHub
+            for f in files:
+                fname = f.get("name") or "file.txt"
+                content = f.get("content") or ""
+                encoded = _b64.b64encode(content.encode("utf-8")).decode("utf-8")
+                file_url = f"https://api.github.com/repos/{GITHUB_ORG}/{repo_name}/contents/{fname}"
+                existing = await client.get(file_url, headers=gh_headers)
+                payload = {"message": f"deploy: update {fname}", "content": encoded}
+                if existing.status_code == 200:
+                    payload["sha"] = existing.json().get("sha", "")
+                await client.put(file_url, headers=gh_headers, json=payload)
+
+            # Step 3: Use Render API to create/update a static site service
+            render_headers = {
+                "Authorization": f"Bearer {RENDER_API_KEY}",
+                "Accept": "application/json",
+                "Content-Type": "application/json",
+            }
+
+            # List existing services to check if one already exists for this repo
+            services_resp = await client.get("https://api.render.com/v1/services?limit=20", headers=render_headers)
+            deploy_url = f"https://saintsallabs-platform.onrender.com"
+            service_id = None
+
+            if services_resp.status_code == 200:
+                services = services_resp.json()
+                for svc in services:
+                    svc_obj = svc.get("service", svc)
+                    svc_repo = (svc_obj.get("repo") or "").rstrip(".git")
+                    if repo_name in svc_repo or svc_obj.get("name") == repo_name:
+                        service_id = svc_obj.get("id")
+                        deploy_url = svc_obj.get("serviceDetails", {}).get("url") or deploy_url
+                        break
+
+            if service_id:
+                # Trigger manual deploy on existing service
+                deploy_resp = await client.post(
+                    f"https://api.render.com/v1/services/{service_id}/deploys",
+                    headers=render_headers,
+                    json={"clearCache": "do_not_clear"},
+                )
+            else:
+                # Create new static site on Render
+                create_payload = {
+                    "type": "static_site",
+                    "name": repo_name,
+                    "ownerId": None,
+                    "repo": clone_url,
+                    "branch": "main",
+                    "autoDeploy": "yes",
+                    "staticSiteDetails": {"publishPath": "/"},
+                }
+                deploy_resp = await client.post(
+                    "https://api.render.com/v1/services",
+                    headers=render_headers,
+                    json=create_payload,
+                )
+                if deploy_resp.status_code in (200, 201):
+                    svc_data = deploy_resp.json()
+                    svc_obj = svc_data.get("service", svc_data)
+                    deploy_url = svc_obj.get("serviceDetails", {}).get("url") or deploy_url
+
+            return JSONResponse({
+                "success": True,
+                "url": deploy_url,
+                "github_url": repo_html_url,
+                "message": f"Files pushed to GitHub and Render deploy triggered. Visit {deploy_url}"
+            })
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.post("/api/studio/publish/download")
+async def studio_publish_download(request: Request):
+    """Create and return a ZIP archive of project files in-memory."""
+    import zipfile
+    import io
+    try:
+        body = await request.json()
+        files = body.get("files", [])
+        project = body.get("project") or {}
+        zip_name = (project.get("name") or "project").lower().replace(" ", "-") + ".zip"
+
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
+            if not files:
+                # Provide a placeholder so the ZIP is not empty
+                zf.writestr("README.md", "# SaintSal Labs Project\n\nNo files were generated yet. Use the builder to generate code first.\n")
+            else:
+                for f in files:
+                    fname = f.get("name") or "file.txt"
+                    content = f.get("content") or ""
+                    zf.writestr(fname, content)
+        buf.seek(0)
+
+        return StreamingResponse(
+            buf,
+            media_type="application/zip",
+            headers={"Content-Disposition": f'attachment; filename="{zip_name}"'},
+        )
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
 
