@@ -3623,23 +3623,6 @@ async def stripe_webhook(request: Request):
     return JSONResponse({"received": True})
 
 
-# ── Static file serving (must be AFTER all API routes) ──────────────────────
-_static_dir = Path(__file__).parent
-
-@app.get("/")
-async def serve_index():
-    """Serve the main SPA."""
-    index = _static_dir / "index.html"
-    if index.exists():
-        return FileResponse(str(index), media_type="text/html")
-    return JSONResponse({"error": "index.html not found"}, status_code=404)
-
-# Serve static assets (CSS, JS, images, icons)
-app.mount("/", StaticFiles(directory=str(_static_dir), html=False), name="static")
-
-
-
-
 # ============================================
 # MEDICAL SUITE API ENDPOINTS
 # ============================================
@@ -3835,3 +3818,18 @@ if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 8000))
     uvicorn.run(app, host="0.0.0.0", port=port)
+
+
+# ── Static file serving (must be AFTER all API routes) ──────────────────────
+_static_dir = Path(__file__).parent
+
+@app.get("/")
+async def serve_index():
+    """Serve the main SPA."""
+    index = _static_dir / "index.html"
+    if index.exists():
+        return FileResponse(str(index), media_type="text/html")
+    return JSONResponse({"error": "index.html not found"}, status_code=404)
+
+# Serve static assets (CSS, JS, images, icons)
+app.mount("/", StaticFiles(directory=str(_static_dir), html=False), name="static")

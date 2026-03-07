@@ -2422,7 +2422,7 @@ function handleLogout() {
 // ─── Account Profile Page ─────────────────────────────────────────────
 function renderAccountProfile() {
   var user = window.__salUser || null;
-  var container = document.getElementById('mainContent') || document.getElementById('discoverGrid');
+  var container = document.querySelector('#accountView .account-inner') || document.getElementById('accountView') || document.getElementById('mainContent');
   if (!container) return;
   
   if (!user) {
