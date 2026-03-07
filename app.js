@@ -2432,8 +2432,8 @@ function renderAccountProfile() {
       + '<h2 class="account-guest-title">Welcome to SaintSal™ Labs</h2>'
       + '<p class="account-guest-sub">Sign in to access your profile, usage history, billing, and settings.</p>'
       + '<div class="account-guest-actions">'
-      + '<button class="btn-gold" onclick="document.getElementById('authModal').style.display='flex'">Sign In</button>'
-      + '<button class="btn-outline" onclick="document.getElementById('authModal').style.display='flex'">Create Account</button>'
+      + '<button class="btn-gold" onclick="showAuthModal(\'login\')">Sign In</button>'
+      + '<button class="btn-outline" onclick="showAuthModal(\'signup\')">Create Account</button>'
       + '</div>'
       + '</div>';
     return;
@@ -3072,7 +3072,7 @@ function showOnboardingTour() {
     { title: 'SAL Studio', desc: 'Your full-stack creative suite. Generate images, video, audio, code, UI designs, and publish directly to the web — all with metered AI compute.', icon: '🎨' },
     { title: 'Medical Intelligence', desc: 'ICD-10 code lookup, NPI registry search, drug interactions, and clinical decision tools — powered by SaintAthena.', icon: '🏥' },
     { title: '88 Connectors', desc: 'Connect your entire stack — Slack, GitHub, Google, Stripe, Salesforce, and 83 more. OAuth and API key flows built in.', icon: '🔗' },
-    { title: 'You're Ready', desc: 'Start with a search, explore the Studio, or dive into any vertical. SaintSal™ Labs adapts to how you work. Go build something great.', icon: '🚀' }
+    { title: 'You\u2019re Ready', desc: 'Start with a search, explore the Studio, or dive into any vertical. SaintSal\u2122 Labs adapts to how you work. Go build something great.', icon: '\uD83D\uDE80' }
   ];
   
   var currentStep = 0;
