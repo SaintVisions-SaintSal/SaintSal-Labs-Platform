@@ -1467,7 +1467,7 @@ async function studioGenerate() {
   if (voiceSel) payload.voice = voiceSel.value;
   if (mode === 'audio') payload.text = prompt;
 
-  var apiMode = mode === 'code' ? 'image' : mode;
+  var apiMode = mode;
 
   try {
     var resp = await fetch(API + '/api/studio/generate/' + apiMode, {
@@ -1499,6 +1499,9 @@ async function studioGenerate() {
         resultHtml = '<video src="' + data.data + '" controls autoplay style="max-width:100%;border-radius:8px;"></video>';
       } else if (mode === 'audio' && data.data) {
         resultHtml = '<audio src="' + data.data + '" controls autoplay style="width:100%;"></audio>';
+      } else if (mode === 'code' && (data.code || data.data)) {
+        var codeContent = escapeHtml(data.code || data.data);
+        resultHtml = '<pre style="background:#1a1a2e;color:#e0e0e0;padding:16px;border-radius:8px;overflow-x:auto;font-family:monospace;font-size:13px;line-height:1.5;max-height:500px;overflow-y:auto;"><code>' + codeContent + '</code></pre>';
       }
       resultHtml += '<div style="display:flex;gap:8px;margin-top:12px;">';
       if (data.url) {

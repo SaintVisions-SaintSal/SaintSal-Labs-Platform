@@ -1,76 +1,65 @@
-"""Async image generation via LLM API. Copy into your project and call from FastAPI handlers.
+"""Image generation via xAI Grok Imagine API.
 
 Usage:
     from generate_image import generate_image
-
     image_bytes = await generate_image("A sunset over mountains")
-    image_bytes = await generate_image("Make this a cartoon", image_bytes=uploaded, image_media_type="image/jpeg")
 """
 
+import os
 import base64
+import httpx
 
-from pplx.python.sdks.llm_api import (
-    Client,
-    Conversation,
-    Identity,
-    ImageBlock,
-    ImageGenAspectRatio,
-    ImageGenParams,
-    ImageSource,
-    ImageSourceType,
-    LLMAPIClient,
-    MediaGenParams,
-    SamplingParams,
-    TextBlock,
-)
-
-ASPECT_RATIOS = {
-    "1:1": ImageGenAspectRatio.RATIO_1_1,
-    "3:4": ImageGenAspectRatio.RATIO_3_4,
-    "4:3": ImageGenAspectRatio.RATIO_4_3,
-    "9:16": ImageGenAspectRatio.RATIO_9_16,
-    "16:9": ImageGenAspectRatio.RATIO_16_9,
-}
+XAI_API_KEY = os.getenv("XAI_API_KEY", "")
+XAI_BASE_URL = "https://api.x.ai/v1"
 
 
 async def generate_image(
     prompt: str,
     *,
-    image_bytes: bytes | None = None,
-    image_media_type: str | None = None,
+    model: str = "grok-imagine-image",
     aspect_ratio: str = "1:1",
-    model: str = "nano_banana_2",
+    **kwargs,
 ) -> bytes:
-    client = LLMAPIClient()
-    convo = Conversation()
-    content: list = []
-    if image_bytes:
-        b64 = base64.b64encode(image_bytes).decode()
-        content.append(
-            ImageBlock(
-                source=ImageSource(
-                    type=ImageSourceType.BASE64,
-                    media_type=image_media_type or "image/png",
-                    data=b64,
-                )
-            )
+    """Generate an image using xAI Grok Imagine API. Returns PNG bytes."""
+    if not XAI_API_KEY:
+        raise RuntimeError("XAI_API_KEY not set")
+
+    payload = {
+        "model": "grok-imagine-image",
+        "prompt": prompt,
+        "response_format": "b64_json",
+        "n": 1,
+    }
+    # xAI supports aspect_ratio as a top-level param
+    if aspect_ratio and aspect_ratio != "1:1":
+        payload["aspect_ratio"] = aspect_ratio
+
+    async with httpx.AsyncClient(timeout=120.0) as client:
+        resp = await client.post(
+            f"{XAI_BASE_URL}/images/generations",
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {XAI_API_KEY}",
+            },
+            json=payload,
         )
-    content.append(TextBlock(text=prompt))
-    convo.add_user(content)
+        resp.raise_for_status()
+        data = resp.json()
 
-    result = await client.messages.create(
-        model=model,
-        convo=convo,
-        identity=Identity(client=Client.ASI, use_case="webserver_image_gen"),
-        sampling_params=SamplingParams(max_tokens=1),
-        media_gen_params=MediaGenParams(
-            image=ImageGenParams(
-                number_of_images=1,
-                aspect_ratio=ASPECT_RATIOS.get(aspect_ratio, ImageGenAspectRatio.RATIO_1_1),
-            ),
-        ),
-    )
+    # Response: { "data": [{ "b64_json": "...", "revised_prompt": "..." }] }
+    images = data.get("data", [])
+    if not images:
+        raise RuntimeError("No image returned from xAI API")
 
-    if not result.images:
-        raise RuntimeError("No image generated")
-    return base64.b64decode(result.images[0].b64_data)
+    b64_data = images[0].get("b64_json") or images[0].get("url", "")
+    if not b64_data:
+        # If URL returned instead of base64, fetch the image
+        url = images[0].get("url", "")
+        if url:
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                img_resp = await client.get(url)
+                img_resp.raise_for_status()
+                return img_resp.content
+        raise RuntimeError("No image data in response")
+
+    return base64.b64decode(b64_data)

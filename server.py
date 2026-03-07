@@ -2508,6 +2508,79 @@ async def studio_generate_audio(request: Request):
         return JSONResponse({"error": f"Generation failed: {str(e)[:200]}"}, status_code=422)
 
 
+@limiter.limit("10/minute")
+@app.post("/api/studio/generate/code")
+async def studio_generate_code(request: Request):
+    """Generate code using xAI Grok."""
+    body = await request.json()
+    prompt = body.get("prompt", "")
+    model = body.get("model", "grok-4")
+    language = body.get("language", "python")
+
+    if not prompt:
+        return JSONResponse({"error": "Prompt required"}, status_code=400)
+
+    xai_key = os.getenv("XAI_API_KEY", "")
+    if not xai_key:
+        return JSONResponse({"error": "XAI_API_KEY not configured"}, status_code=500)
+
+    try:
+        import httpx as hx
+        system_prompt = (
+            f"You are an expert {language} programmer. Generate clean, production-ready code. "
+            f"Only output code — no explanations, no markdown fences. Just the raw code."
+        )
+        async with hx.AsyncClient(timeout=60.0) as client:
+            resp = await client.post(
+                "https://api.x.ai/v1/chat/completions",
+                headers={
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {xai_key}",
+                },
+                json={
+                    "model": "grok-4",
+                    "messages": [
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": prompt},
+                    ],
+                    "temperature": 0.3,
+                    "max_tokens": 4096,
+                },
+            )
+            resp.raise_for_status()
+            data = resp.json()
+
+        code_text = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+        if not code_text:
+            raise RuntimeError("No code generated")
+
+        # Save to gallery as a text file
+        file_id = str(uuid.uuid4())[:8]
+        filename = f"code_{file_id}.txt"
+        filepath = MEDIA_DIR / "code" / filename
+        filepath.parent.mkdir(parents=True, exist_ok=True)
+        filepath.write_text(code_text)
+
+        entry = {
+            "id": file_id,
+            "type": "code",
+            "filename": filename,
+            "prompt": prompt,
+            "model": model,
+            "language": language,
+            "created_at": datetime.now().isoformat(),
+            "size_bytes": len(code_text),
+            "url": f"/api/studio/media/code/{filename}",
+        }
+        media_gallery.insert(0, entry)
+
+        return {**entry, "data": code_text, "code": code_text}
+
+    except Exception as e:
+        print(f"[Studio] Code generation error: {e}")
+        return JSONResponse({"error": f"Generation failed: {str(e)[:200]}"}, status_code=422)
+
+
 @app.get("/api/studio/gallery")
 async def get_gallery():
     """Get all generated media."""
