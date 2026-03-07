@@ -3937,8 +3937,9 @@ async def studio_publish_github(request: Request):
             repo_url = f"https://api.github.com/repos/{GITHUB_ORG}/{repo_name}"
             repo_resp = await client.get(repo_url, headers=headers)
             if repo_resp.status_code == 404:
+                # SaintVisions-SaintSal is a user account, not an org — use /user/repos
                 create_resp = await client.post(
-                    f"https://api.github.com/orgs/{GITHUB_ORG}/repos",
+                    "https://api.github.com/user/repos",
                     headers=headers,
                     json={"name": repo_name, "description": description, "private": False, "auto_init": True},
                 )
@@ -4016,8 +4017,9 @@ async def studio_publish_render(request: Request):
             repo_url = f"https://api.github.com/repos/{GITHUB_ORG}/{repo_name}"
             repo_resp = await client.get(repo_url, headers=gh_headers)
             if repo_resp.status_code == 404:
+                # SaintVisions-SaintSal is a user account, not an org — use /user/repos
                 create_resp = await client.post(
-                    f"https://api.github.com/orgs/{GITHUB_ORG}/repos",
+                    "https://api.github.com/user/repos",
                     headers=gh_headers,
                     json={"name": repo_name, "description": description, "private": False, "auto_init": True},
                 )

@@ -107,7 +107,7 @@ function handleHash() {
     }
   }
   if (view === 'welcome') renderWelcome();
-  if (view === 'launchpad') { loadPackagePricing(_lpState.state); loadFilings(); }
+  if (view === 'launchpad') { renderLaunchPadStep(_lpState.step || 1); }
 }
 
 window.addEventListener('hashchange', handleHash);
@@ -1154,8 +1154,8 @@ async function launchpadProceedToPayment() {
 
 function renderLaunchPadStep(step) {
   _lpState.step = step;
-  var container = document.getElementById('launchpadView') || document.querySelector('.lp-wizard');
-  if (!container) return;
+  var view = document.getElementById('launchpadView');
+  if (!view) return;
 
   var ENTITY_LABELS = { llc: 'LLC', c_corp: 'C Corporation', s_corp: 'S Corporation', nonprofit: 'Nonprofit', sole_prop: 'Sole Proprietorship', partnership: 'Partnership', lp: 'LP', pllc: 'PLLC' };
   var PKG_LABELS = { basic: 'Basic', deluxe: 'Deluxe', complete: 'Complete' };
@@ -1237,7 +1237,16 @@ function renderLaunchPadStep(step) {
     setTimeout(function() { loadFilings(); }, 200);
   }
 
-  container.innerHTML = '<div style="max-width:640px">' + stepsBar + body + navBtns + '</div>';
+  var wizardHtml = '<div class="launchpad-inner" style="max-width:900px;margin:0 auto;padding:32px 24px">';
+  wizardHtml += '<div class="launchpad-hero" style="margin-bottom:24px"><h1 style="font-size:28px;font-weight:700;margin:0 0 8px">Launch Your Business</h1><p style="color:var(--text-muted);margin:0">From entity formation to EIN filing — get your business legally established in minutes.</p></div>';
+  wizardHtml += '<div style="max-width:640px">' + stepsBar + body + navBtns + '</div>';
+  wizardHtml += '<div class="lp-filings" id="lpFilingsSection" style="margin-top:32px"></div>';
+  wizardHtml += '<div class="lp-powered" style="margin-top:24px;text-align:center;font-size:12px;color:var(--text-muted)">Powered by CorpNet · HACP\u2122 Protocol · Patent #10,290,222</div>';
+  wizardHtml += '</div>';
+  wizardHtml += '<div class="app-footer">SaintSal\u2122 <span class="footer-labs-green">LABS</span> · Responsible Intelligence · Patent #10,290,222 · <a href="https://www.perplexity.ai/computer" target="_blank" rel="noopener noreferrer">Created with Perplexity Computer</a></div>';
+  view.innerHTML = wizardHtml;
+  // Load filings into the section
+  setTimeout(function() { loadFilings(); }, 100);
 }
 
 function filterConnectors(el, cat) {
