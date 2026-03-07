@@ -1,33 +1,24 @@
-"""Audio/TTS generation via ElevenLabs API.
+"""Audio/TTS generation via Edge TTS (Microsoft Neural voices, no API key needed).
 
 Usage:
     from generate_audio import generate_audio, generate_dialogue
     audio_bytes = await generate_audio("Hello world", voice="kore")
 """
 
-import os
-import httpx
+import edge_tts
 
-ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY", "")
-ELEVENLABS_BASE_URL = "https://api.elevenlabs.io/v1"
-
-# Map friendly voice names to ElevenLabs voice IDs
-# Using popular ElevenLabs voices
+# Map friendly voice names to Edge TTS neural voices
 VOICE_MAP = {
-    "kore": "JBFqnCBsd6RMkjVDRZzb",       # George
-    "charon": "ErXwobaYiN019PkySvjV",      # Antoni
-    "puck": "TX3LPaxmHKxFdv7VOQHJ",       # Liam
-    "fenrir": "VR6AewLTigWG4xSOukaG",      # Arnold
-    "leda": "EXAVITQu4vr4xnSDxMaL",       # Sarah
-    "orus": "onwK4e9ZLuTAKqWW03F9",        # Daniel
-    "vale": "Xb7hH8MSUJpSbSDYk0k2",       # Alice
-    "zephyr": "9BWtsMINqrJLrRacOk9x",      # Aria
-    # Fallback: use the voice name as-is (might be a voice ID)
-}
-
-MODEL_MAP = {
-    "gemini_2_5_pro_tts": "eleven_turbo_v2_5",
-    "elevenlabs_tts_v3": "eleven_multilingual_v2",
+    "kore": "en-US-GuyNeural",
+    "charon": "en-US-ChristopherNeural",
+    "puck": "en-GB-RyanNeural",
+    "fenrir": "en-US-EricNeural",
+    "leda": "en-US-JennyNeural",
+    "orus": "en-US-DavisNeural",
+    "vale": "en-US-AriaNeural",
+    "zephyr": "en-US-SaraNeural",
+    "rachel": "en-US-MichelleNeural",
+    "adam": "en-US-BrandonNeural",
 }
 
 
@@ -37,30 +28,22 @@ async def generate_audio(
     voice: str = "kore",
     model: str = "gemini_2_5_pro_tts",
 ) -> bytes:
-    """Generate TTS audio using ElevenLabs API. Returns MP3 bytes."""
-    if not ELEVENLABS_API_KEY:
-        raise RuntimeError("ELEVENLABS_API_KEY not set")
+    """Generate TTS audio using Edge TTS. Returns MP3 bytes."""
+    if not text:
+        raise RuntimeError("No text provided")
 
-    voice_id = VOICE_MAP.get(voice, voice)
-    el_model = MODEL_MAP.get(model, "eleven_turbo_v2_5")
+    tts_voice = VOICE_MAP.get(voice, "en-US-GuyNeural")
 
-    payload = {
-        "text": text,
-        "model_id": el_model,
-        "output_format": "mp3_44100_128",
-    }
+    communicate = edge_tts.Communicate(text, tts_voice)
+    audio_data = b""
+    async for chunk in communicate.stream():
+        if chunk["type"] == "audio":
+            audio_data += chunk["data"]
 
-    async with httpx.AsyncClient(timeout=60.0) as client:
-        resp = await client.post(
-            f"{ELEVENLABS_BASE_URL}/text-to-speech/{voice_id}",
-            headers={
-                "Content-Type": "application/json",
-                "xi-api-key": ELEVENLABS_API_KEY,
-            },
-            json=payload,
-        )
-        resp.raise_for_status()
-        return resp.content
+    if not audio_data:
+        raise RuntimeError("No audio generated")
+
+    return audio_data
 
 
 async def generate_dialogue(
@@ -72,7 +55,6 @@ async def generate_dialogue(
     if not dialogue:
         raise RuntimeError("No dialogue provided")
 
-    # Generate each line and concatenate the MP3 bytes
     all_audio = b""
     for line in dialogue:
         speaker = line.get("speaker", "kore")

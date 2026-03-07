@@ -9,3 +9,4 @@ websockets
 slowapi
 cryptography
 stripe
+edge-tts
