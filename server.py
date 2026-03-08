@@ -3340,7 +3340,7 @@ async def voice_config():
     """Get ElevenLabs voice agent configuration."""
     return {
         "enabled": bool(ELEVENLABS_API_KEY),
-        "agent_id": os.environ.get("ELEVENLABS_AGENT_ID", ""),
+        "agent_id": os.environ.get("ELEVENLABS_AGENT_ID_KEY", os.environ.get("ELEVENLABS_AGENT_ID", "")),
         "api_key_public": ELEVENLABS_API_KEY[:8] + "..." if ELEVENLABS_API_KEY else "",
     }
 
