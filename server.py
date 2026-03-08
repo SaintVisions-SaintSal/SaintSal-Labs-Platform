@@ -5504,6 +5504,224 @@ if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=port)
 
 
+# ── Builder Publishing Pipeline Endpoints ──────────────────────────────────────
+
+@app.get("/api/usage/credits")
+async def get_usage_credits(request: Request):
+    """Get current user's credit balance and usage."""
+    user = getattr(request.state, "user", None)
+    tier = "free"
+    credits_remaining = 0
+    credits_used = 0
+    total_credits = 0
+    minutes_used = 0
+    
+    if user and supabase_admin:
+        try:
+            p = supabase_admin.table("profiles").select("tier, credits, credits_used, compute_minutes").eq("id", user["id"]).single().execute()
+            if p.data:
+                tier = p.data.get("tier", "free")
+                credits_remaining = p.data.get("credits", 0)
+                credits_used = p.data.get("credits_used", 0)
+                total_credits = credits_remaining + credits_used
+                minutes_used = p.data.get("compute_minutes", 0)
+        except:
+            pass
+    
+    tier_limits = {
+        "free": {"minutes": 10, "price": 0},
+        "starter": {"minutes": 100, "price": 27},
+        "pro": {"minutes": 500, "price": 97},
+        "teams": {"minutes": 2000, "price": 297}
+    }
+    limits = tier_limits.get(tier, tier_limits["free"])
+    
+    return {
+        "tier": tier,
+        "credits_remaining": credits_remaining,
+        "credits_used": credits_used,
+        "total_credits": total_credits,
+        "minutes_used": round(minutes_used, 2),
+        "minutes_limit": limits["minutes"],
+        "tier_price": limits["price"]
+    }
+
+
+@app.post("/api/billing/checkout")
+async def billing_checkout(request: Request):
+    """Create a Stripe checkout session for adding payment method or upgrading."""
+    import stripe as _stripe
+    STRIPE_KEY = os.environ.get("STRIPE_SECRET_KEY", os.environ.get("STRIPE_KEY", ""))
+    if not STRIPE_KEY:
+        return JSONResponse({"error": "Stripe not configured"}, status_code=500)
+    _stripe.api_key = STRIPE_KEY
+    
+    try:
+        body = await request.json()
+        price_id = body.get("price_id", "")
+        mode = body.get("mode", "subscription")
+        success_url = body.get("success_url", "https://saintsallabs.com/#account")
+        cancel_url = body.get("cancel_url", "https://saintsallabs.com/#pricing")
+        
+        session_params = {
+            "mode": mode,
+            "success_url": success_url + "?session_id={CHECKOUT_SESSION_ID}",
+            "cancel_url": cancel_url,
+        }
+        
+        if price_id:
+            session_params["line_items"] = [{"price": price_id, "quantity": 1}]
+        else:
+            session_params["mode"] = "setup"
+            session_params["payment_method_types"] = ["card"]
+        
+        user = getattr(request.state, "user", None)
+        if user:
+            session_params["client_reference_id"] = user.get("id", "")
+            email = user.get("email", "")
+            if email:
+                session_params["customer_email"] = email
+        
+        session = _stripe.checkout.Session.create(**session_params)
+        return {"url": session.url, "session_id": session.id}
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.post("/api/billing/portal")
+async def billing_portal(request: Request):
+    """Create a Stripe billing portal session."""
+    import stripe as _stripe
+    STRIPE_KEY = os.environ.get("STRIPE_SECRET_KEY", os.environ.get("STRIPE_KEY", ""))
+    if not STRIPE_KEY:
+        return JSONResponse({"error": "Stripe not configured"}, status_code=500)
+    _stripe.api_key = STRIPE_KEY
+    
+    try:
+        body = await request.json()
+        customer_id = body.get("customer_id", "")
+        return_url = body.get("return_url", "https://saintsallabs.com/#account")
+        
+        if not customer_id:
+            user = getattr(request.state, "user", None)
+            if user and supabase_admin:
+                try:
+                    p = supabase_admin.table("profiles").select("stripe_customer_id").eq("id", user["id"]).single().execute()
+                    customer_id = (p.data or {}).get("stripe_customer_id", "")
+                except:
+                    pass
+        
+        if not customer_id:
+            return JSONResponse({"error": "No Stripe customer found. Please add a payment method first."}, status_code=400)
+        
+        session = _stripe.billing_portal.Session.create(
+            customer=customer_id,
+            return_url=return_url,
+        )
+        return {"url": session.url}
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.post("/api/builder/domain/add")
+async def builder_add_domain(request: Request):
+    """Add a custom domain to a Vercel project and return DNS records."""
+    VERCEL_TOKEN = os.environ.get("VERCEL_API_ACCESS_TOKEN", "")
+    if not VERCEL_TOKEN:
+        return JSONResponse({"error": "Vercel API token not configured"}, status_code=500)
+    
+    try:
+        body = await request.json()
+        domain = body.get("domain", "").strip().lower()
+        project_name = body.get("project_name", "").strip()
+        deployment_id = body.get("deployment_id", "")
+        
+        if not domain:
+            return JSONResponse({"error": "Domain is required"}, status_code=400)
+        
+        headers = {
+            "Authorization": f"Bearer {VERCEL_TOKEN}",
+            "Content-Type": "application/json"
+        }
+        
+        async with httpx.AsyncClient(timeout=30) as client:
+            # Add domain to Vercel project
+            resp = await client.post(
+                f"https://api.vercel.com/v10/projects/{project_name}/domains",
+                headers=headers,
+                json={"name": domain}
+            )
+            
+            if resp.status_code in (200, 201):
+                data = resp.json()
+                # Generate DNS records based on domain type
+                is_subdomain = domain.count(".") > 1 or domain.startswith("www.")
+                dns_records = []
+                if is_subdomain:
+                    dns_records.append({"type": "CNAME", "name": domain.split(".")[0], "value": "cname.vercel-dns.com", "ttl": 3600})
+                else:
+                    dns_records.append({"type": "A", "name": "@", "value": "76.76.21.21", "ttl": 3600})
+                    dns_records.append({"type": "CNAME", "name": "www", "value": "cname.vercel-dns.com", "ttl": 3600})
+                
+                # Check if verification is needed
+                verification = data.get("verification", [])
+                for v in verification:
+                    dns_records.append({"type": v.get("type", "TXT"), "name": v.get("domain", "@"), "value": v.get("value", ""), "ttl": 3600})
+                
+                return {
+                    "success": True,
+                    "domain": domain,
+                    "dns_records": dns_records,
+                    "verified": data.get("verified", False),
+                    "message": f"Domain {domain} added to Vercel project. Configure the DNS records below."
+                }
+            elif resp.status_code == 409:
+                return {"success": True, "domain": domain, "dns_records": [], "verified": True, "message": "Domain already configured."}
+            else:
+                error_data = resp.json() if resp.headers.get("content-type", "").startswith("application/json") else {}
+                return JSONResponse({"error": error_data.get("error", {}).get("message", f"Vercel API error: {resp.status_code}")}, status_code=502)
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.post("/api/builder/subdomain")
+async def builder_claim_subdomain(request: Request):
+    """Claim a subdomain on saintsallabs.com for free publishing."""
+    VERCEL_TOKEN = os.environ.get("VERCEL_API_ACCESS_TOKEN", "")
+    
+    try:
+        body = await request.json()
+        slug = body.get("slug", "").strip().lower()
+        slug = "".join(c for c in slug if c.isalnum() or c == "-")
+        
+        if not slug or len(slug) < 3:
+            return JSONResponse({"error": "Subdomain must be at least 3 characters"}, status_code=400)
+        
+        subdomain = f"{slug}.saintsallabs.com"
+        
+        # If Vercel token available, try to add to project
+        if VERCEL_TOKEN:
+            headers = {"Authorization": f"Bearer {VERCEL_TOKEN}", "Content-Type": "application/json"}
+            async with httpx.AsyncClient(timeout=15) as client:
+                # Check if subdomain is available
+                check = await client.get(f"https://api.vercel.com/v6/domains/saintsallabs.com/records", headers=headers)
+                existing = []
+                if check.status_code == 200:
+                    existing = [r.get("name", "") for r in check.json().get("records", [])]
+                
+                if slug in existing:
+                    return JSONResponse({"error": f"{subdomain} is already taken. Try another name."}, status_code=409)
+        
+        return {
+            "success": True,
+            "subdomain": subdomain,
+            "url": f"https://{subdomain}",
+            "message": f"Subdomain {subdomain} reserved. Deploy your project to publish it there."
+        }
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
 # ── Static file serving (must be AFTER all API routes) ──────────────────────
 _static_dir = Path(__file__).parent
 
