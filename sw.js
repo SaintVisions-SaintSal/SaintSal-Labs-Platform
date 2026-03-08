@@ -1,5 +1,5 @@
 // SaintSal™ Labs — Service Worker (PWA Offline + Cache)
-const CACHE_NAME = 'sal-labs-v1';
+const CACHE_NAME = 'sal-labs-v2';
 const STATIC_ASSETS = [
   '/',
   '/app.js',
@@ -33,10 +33,9 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
-  // Never cache API calls, auth, or uploads
+  // Never cache or intercept API calls, auth, or uploads — let them pass through to network directly
   if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/auth')) {
-    event.respondWith(fetch(event.request).catch(() => new Response('{"error":"offline"}', { headers: { 'Content-Type': 'application/json' } })));
-    return;
+    return; // Don't call event.respondWith — let the browser handle it natively
   }
 
   // Stale-while-revalidate for static assets
