@@ -55,6 +55,9 @@ function setView(view) {
   if (view === 'dashboard') {
     setTimeout(initDashboard, 50);
   }
+  if (view === 'launchpad') {
+    setTimeout(renderBusinessCenter, 50);
+  }
   if (view === 'account') {
     // Sync __salUser from currentUser so renderAccountProfile can read it
     window.__salUser = currentUser || null;
