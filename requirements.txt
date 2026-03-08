@@ -10,3 +10,5 @@ slowapi
 cryptography
 stripe
 edge-tts
+python-multipart>=0.0.6
+aiofiles>=23.0.0
