@@ -75,7 +75,7 @@ function setView(view) {
     document.getElementById('topbarBreadcrumb').innerHTML = '<span>' + (verticalNames[currentVertical] || 'Search') + '</span>';
   } else {
     document.querySelectorAll('.nav-item[data-vertical]').forEach(function(i) { i.classList.remove('active'); });
-    var breadcrumbMap = { pricing:'Pricing', welcome:'Welcome', account:'Account', studio:'Builder', domains:'Domains & SSL', launchpad:'Launch Pad', connectors:'Integrations', bizplan:'Business Plan', voice:'Voice AI', dashboard:'Dashboard', landing:'Home' };
+    var breadcrumbMap = { pricing:'Pricing', welcome:'Welcome', account:'Account', studio:'Builder', domains:'Domains & SSL', launchpad:'Business Center', connectors:'Integrations', bizplan:'Business Plan', voice:'Voice AI', dashboard:'Dashboard', landing:'Home' };
     document.getElementById('topbarBreadcrumb').innerHTML = '<span>' + (breadcrumbMap[view] || view) + '</span>';
   }
 
@@ -107,7 +107,7 @@ function handleHash() {
     }
   }
   if (view === 'welcome') renderWelcome();
-  if (view === 'launchpad') { renderLaunchPadStep(_lpState.step || 1); }
+  if (view === 'launchpad') { renderBusinessCenter(); }
 }
 
 window.addEventListener('hashchange', handleHash);
@@ -233,9 +233,9 @@ function loadDiscover(category) {
       heroHtml += '</div>';
       heroHtml += '<div class="cta-action-card blue-accent" onclick="navigate(\'launchpad\')">';
       heroHtml += '<div class="cta-card-arrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><polyline points="9 18 15 12 9 6"/></svg></div>';
-      heroHtml += '<div class="cta-card-icon" style="background:rgba(59,130,246,0.1);"><svg viewBox="0 0 24 24" fill="none" stroke="var(--accent-blue)" stroke-width="2" width="24" height="24"><path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4 20-7z"/></svg></div>';
-      heroHtml += '<div class="cta-card-title">Launch a Business</div>';
-      heroHtml += '<div class="cta-card-desc">From idea to incorporation \u2014 build your plan and file in minutes.</div>';
+      heroHtml += '<div class="cta-card-icon" style="background:rgba(59,130,246,0.1);"><svg viewBox="0 0 24 24" fill="none" stroke="var(--accent-blue)" stroke-width="2" width="24" height="24"><path d="M3 21h18"/><path d="M5 21V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16"/></svg></div>';
+      heroHtml += '<div class="cta-card-title">Business Center</div>';
+      heroHtml += '<div class="cta-card-desc">Formation, compliance, EIN, registered agent, licenses &amp; trademark \u2014 all in one place.</div>';
       heroHtml += '</div>';
       heroHtml += '</div>';
 
@@ -1011,255 +1011,9 @@ async function purchaseDomain() {
 }
 
 /* ============================================
-   LAUNCH PAD HELPERS — Live CorpNet API
+   BUSINESS CENTER — Rendered by business-center.js
    ============================================ */
-var _lpState = { entity: 'llc', state: 'CA', step: 1, businessName: '' };
 
-function selectEntity(el) {
-  document.querySelectorAll('.lp-entity-card').forEach(function(c) { c.classList.remove('selected'); });
-  el.classList.add('selected');
-  var entityName = el.querySelector('.lp-entity-name');
-  if (entityName) {
-    var nameMap = {'LLC':'llc','C Corporation':'c_corp','S Corporation':'s_corp','Nonprofit':'nonprofit','Sole Proprietorship':'sole_prop','Partnership':'partnership','LP':'lp','PLLC':'pllc'};
-    _lpState.entity = nameMap[entityName.textContent] || 'llc';
-  }
-}
-
-async function loadPackagePricing(state) {
-  _lpState.state = state || 'CA';
-  try {
-    var resp = await fetch(API + '/api/corpnet/packages?state=' + encodeURIComponent(_lpState.state));
-    var data = await resp.json();
-    var container = document.querySelector('.lp-packages');
-    if (!container || !data.packages) return;
-    var html = '';
-    data.packages.forEach(function(pkg) {
-      var rec = pkg.popular ? ' recommended' : '';
-      html += '<div class="lp-package' + rec + '">';
-      html += '<div class="lp-package-name">' + escapeHtml(pkg.name) + '</div>';
-      html += '<div class="lp-package-price">$' + pkg.price + '</div>';
-      html += '<div style="font-size:var(--text-xs);color:var(--text-muted);margin-bottom:8px">+ $' + data.state_fee + ' ' + escapeHtml(data.state_name) + ' state fee</div>';
-      html += '<div class="lp-package-features">';
-      pkg.features.forEach(function(f) {
-        html += '<div class="lp-package-feature"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>' + escapeHtml(f) + '</div>';
-      });
-      html += '</div>';
-      html += '<div style="font-size:var(--text-lg);font-weight:700;color:var(--accent-gold);margin:12px 0">Total: $' + pkg.total + '</div>';
-      html += '<button class="lp-package-btn" onclick="selectPackage(\'' + pkg.id + '\')">Select ' + escapeHtml(pkg.name) + '</button></div>';
-    });
-    container.innerHTML = html;
-  } catch(e) {
-    console.error('Package pricing error:', e);
-  }
-}
-
-async function loadFilings() {
-  try {
-    var resp = await fetch(API + '/api/corpnet/orders');
-    var data = await resp.json();
-    var container = document.querySelector('.lp-filings');
-    if (!container || !data.orders) return;
-    var html = '<div class="lp-filings-title">Your Filings</div>';
-    data.orders.forEach(function(order) {
-      var statusClass = order.status === 'complete' ? 'complete' : 'review';
-      var statusLabel = order.status === 'complete' ? 'Complete' : order.status === 'in_review' ? 'In Review' : 'Submitted';
-      var progress = order.progress !== undefined ? order.progress : (order.status === 'complete' ? 3 : order.status === 'in_review' ? 1 : 0);
-      html += '<div class="lp-filing-card">';
-      html += '<div class="lp-filing-header"><div class="lp-filing-name">' + escapeHtml(order.business_name) + ' \u2014 ' + escapeHtml(order.state_name || order.state) + '</div>';
-      html += '<div class="lp-filing-status ' + statusClass + '">' + statusLabel + '</div></div>';
-      html += '<div class="lp-filing-progress">';
-      for (var s = 0; s < 4; s++) {
-        var cls = s < progress ? 'done' : (s === progress ? 'current' : '');
-        html += '<div class="lp-filing-step ' + cls + '"></div>';
-      }
-      html += '</div><div class="lp-filing-labels"><span>Submitted</span><span>In Review</span><span>Filed</span><span>Complete</span></div></div>';
-    });
-    container.innerHTML = html;
-  } catch(e) {
-    console.error('Filings load error:', e);
-  }
-}
-
-function selectPackage(pkgId) {
-  _lpState.package = pkgId;
-  _lpState.step = 4;
-  renderLaunchPadStep(4);
-}
-
-async function checkBusinessName() {
-  var name = _lpState.businessName || '';
-  var state = _lpState.state || 'CA';
-  if (!name.trim()) return;
-  var indicator = document.getElementById('lpNameStatus');
-  if (indicator) { indicator.textContent = 'Checking...'; indicator.className = 'lp-name-status checking'; }
-  try {
-    var resp = await fetch(API + '/api/corpnet/name-check?name=' + encodeURIComponent(name) + '&state=' + encodeURIComponent(state));
-    var data = await resp.json();
-    if (indicator) {
-      if (data.available) {
-        indicator.textContent = '\u2713 Available';
-        indicator.className = 'lp-name-status available';
-      } else {
-        indicator.textContent = '\u2717 Name may be taken';
-        indicator.className = 'lp-name-status taken';
-      }
-    }
-  } catch(e) {
-    if (indicator) { indicator.textContent = 'Check failed'; indicator.className = 'lp-name-status'; }
-  }
-}
-
-function launchpadNext() {
-  var step = _lpState.step || 1;
-  if (step === 2) {
-    var nameInput = document.getElementById('lpBusinessName');
-    var stateInput = document.getElementById('lpStateSelect');
-    if (nameInput) _lpState.businessName = nameInput.value.trim();
-    if (stateInput) _lpState.state = stateInput.value;
-    if (!_lpState.businessName) {
-      var ni = document.getElementById('lpNameStatus');
-      if (ni) { ni.textContent = 'Please enter a business name.'; ni.className = 'lp-name-status taken'; }
-      return;
-    }
-  }
-  if (step < 5) {
-    _lpState.step = step + 1;
-    renderLaunchPadStep(_lpState.step);
-  }
-}
-
-function launchpadPrev() {
-  var step = _lpState.step || 1;
-  if (step > 1) {
-    _lpState.step = step - 1;
-    renderLaunchPadStep(_lpState.step);
-  }
-}
-
-async function launchpadProceedToPayment() {
-  var btn = document.getElementById('lpPayBtn');
-  if (btn) { btn.disabled = true; btn.textContent = 'Redirecting to payment...'; }
-  try {
-    var resp = await fetch(API + '/api/corpnet/checkout', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        package_id: _lpState.package || 'basic',
-        entity_type: _lpState.entity || 'llc',
-        state: _lpState.state || 'CA',
-        business_name: _lpState.businessName || ''
-      })
-    });
-    var data = await resp.json();
-    if (data.url) {
-      window.location.href = data.url;
-    } else {
-      if (btn) { btn.disabled = false; btn.textContent = 'Proceed to Payment'; }
-      alert('Checkout error: ' + (data.error || 'Unknown error'));
-    }
-  } catch(e) {
-    if (btn) { btn.disabled = false; btn.textContent = 'Proceed to Payment'; }
-    console.error('Checkout error:', e);
-    alert('Could not initiate checkout. Please try again.');
-  }
-}
-
-function renderLaunchPadStep(step) {
-  _lpState.step = step;
-  var view = document.getElementById('launchpadView');
-  if (!view) return;
-
-  var ENTITY_LABELS = { llc: 'LLC', c_corp: 'C Corporation', s_corp: 'S Corporation', nonprofit: 'Nonprofit', sole_prop: 'Sole Proprietorship', partnership: 'Partnership', lp: 'LP', pllc: 'PLLC' };
-  var PKG_LABELS = { basic: 'Basic', deluxe: 'Deluxe', complete: 'Complete' };
-  var PKG_PRICES = { basic: 197, deluxe: 397, complete: 449 };
-
-  var stepsBar = '<div class="lp-steps-bar" style="display:flex;gap:8px;margin-bottom:24px;align-items:center">';
-  var stepNames = ['Entity', 'Name & State', 'Package', 'Review', 'Payment'];
-  stepNames.forEach(function(name, i) {
-    var n = i + 1;
-    var active = n === step ? 'background:var(--accent-gold);color:#000;font-weight:700;' : (n < step ? 'background:var(--success,#10b981);color:#fff;' : 'background:var(--bg-card,#1a1a2e);color:var(--text-muted);');
-    stepsBar += '<div style="display:flex;align-items:center;gap:4px;">';
-    stepsBar += '<div style="width:28px;height:28px;border-radius:50%;' + active + 'display:flex;align-items:center;justify-content:center;font-size:12px">' + (n < step ? '\u2713' : n) + '</div>';
-    stepsBar += '<span style="font-size:11px;color:var(--text-muted)">' + name + '</span>';
-    if (i < stepNames.length - 1) stepsBar += '<div style="width:16px;height:1px;background:var(--border,#333);margin:0 4px"></div>';
-    stepsBar += '</div>';
-  });
-  stepsBar += '</div>';
-
-  var body = '';
-  var navBtns = '';
-
-  if (step === 1) {
-    var entities = ['LLC', 'C Corporation', 'S Corporation', 'Nonprofit'];
-    body = '<div style="margin-bottom:12px;font-weight:600;color:var(--text-primary)">Choose your entity type</div>';
-    body += '<div style="display:flex;flex-wrap:wrap;gap:12px;margin-bottom:20px">';
-    entities.forEach(function(name) {
-      var key = { 'LLC': 'llc', 'C Corporation': 'c_corp', 'S Corporation': 's_corp', 'Nonprofit': 'nonprofit' }[name] || 'llc';
-      var sel = _lpState.entity === key ? 'border:2px solid var(--accent-gold);background:rgba(255,193,7,.08);' : 'border:1px solid var(--border,#333);';
-      body += '<div class="lp-entity-card" style="cursor:pointer;padding:16px 20px;border-radius:8px;' + sel + 'min-width:120px;text-align:center" onclick="_lpState.entity=\''+key+'\';renderLaunchPadStep(1)">';
-      body += '<div class="lp-entity-name" style="font-weight:600">' + name + '</div>';
-      body += '</div>';
-    });
-    body += '</div>';
-    navBtns = '<button class="btn-primary" onclick="launchpadNext()" style="margin-top:8px">Next: Name &amp; State &rarr;</button>';
-  } else if (step === 2) {
-    var states = ['AL','AK','AZ','AR','CA','CO','CT','DE','FL','GA','HI','ID','IL','IN','IA','KS','KY','LA','ME','MD','MA','MI','MN','MS','MO','MT','NE','NV','NH','NJ','NM','NY','NC','ND','OH','OK','OR','PA','RI','SC','SD','TN','TX','UT','VT','VA','WA','WV','WI','WY'];
-    body = '<div style="margin-bottom:12px;font-weight:600;color:var(--text-primary)">Enter business name &amp; state</div>';
-    body += '<div style="margin-bottom:12px">';
-    body += '<label style="display:block;margin-bottom:4px;color:var(--text-muted);font-size:13px">Business Name</label>';
-    body += '<input id="lpBusinessName" type="text" placeholder="e.g. Acme Holdings" value="' + escapeAttr(_lpState.businessName || '') + '" oninput="_lpState.businessName=this.value" style="width:100%;padding:10px 12px;border-radius:6px;border:1px solid var(--border,#333);background:var(--bg-input,#111);color:var(--text-primary);font-size:14px;box-sizing:border-box" />';
-    body += '<div id="lpNameStatus" class="lp-name-status" style="margin-top:6px;font-size:12px;min-height:18px"></div>';
-    body += '<button onclick="checkBusinessName()" style="margin-top:6px;padding:6px 14px;font-size:12px;border-radius:4px;background:var(--bg-card,#1a1a2e);border:1px solid var(--border,#333);color:var(--text-primary);cursor:pointer">Check Availability</button>';
-    body += '</div>';
-    body += '<div><label style="display:block;margin-bottom:4px;color:var(--text-muted);font-size:13px">State of Formation</label>';
-    body += '<select id="lpStateSelect" style="width:100%;padding:10px 12px;border-radius:6px;border:1px solid var(--border,#333);background:var(--bg-input,#111);color:var(--text-primary);font-size:14px;box-sizing:border-box">';
-    states.forEach(function(s) {
-      body += '<option value="' + s + '"' + (_lpState.state === s ? ' selected' : '') + '>' + s + '</option>';
-    });
-    body += '</select></div>';
-    navBtns = '<div style="display:flex;gap:8px;margin-top:16px"><button onclick="launchpadPrev()" style="padding:8px 18px;border-radius:6px;background:var(--bg-card,#1a1a2e);border:1px solid var(--border,#333);color:var(--text-primary);cursor:pointer">&larr; Back</button><button class="btn-primary" onclick="launchpadNext()">Next: Package &rarr;</button></div>';
-  } else if (step === 3) {
-    body = '<div style="margin-bottom:12px;font-weight:600;color:var(--text-primary)">Select a package</div>';
-    body += '<div class="lp-packages"><div style="color:var(--text-muted);font-size:13px">Loading packages...</div></div>';
-    navBtns = '<div style="display:flex;gap:8px;margin-top:16px"><button onclick="launchpadPrev()" style="padding:8px 18px;border-radius:6px;background:var(--bg-card,#1a1a2e);border:1px solid var(--border,#333);color:var(--text-primary);cursor:pointer">&larr; Back</button></div>';
-    // Load packages after render
-    setTimeout(function() { loadPackagePricing(_lpState.state); }, 50);
-  } else if (step === 4) {
-    var pkgKey = (_lpState.package || 'basic').toLowerCase();
-    var pkgLabel = PKG_LABELS[pkgKey] || pkgKey;
-    var pkgPrice = PKG_PRICES[pkgKey] || 197;
-    body = '<div style="margin-bottom:16px;font-weight:600;color:var(--text-primary)">Review your order</div>';
-    body += '<div style="background:var(--bg-card,#1a1a2e);border:1px solid var(--border,#333);border-radius:8px;padding:20px;margin-bottom:16px">';
-    body += '<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border,#333)"><span style="color:var(--text-muted)">Entity Type</span><span style="font-weight:600">' + escapeHtml(ENTITY_LABELS[_lpState.entity] || _lpState.entity) + '</span></div>';
-    body += '<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border,#333)"><span style="color:var(--text-muted)">Business Name</span><span style="font-weight:600">' + escapeHtml(_lpState.businessName || '(not set)') + '</span></div>';
-    body += '<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border,#333)"><span style="color:var(--text-muted)">State</span><span style="font-weight:600">' + escapeHtml(_lpState.state || 'CA') + '</span></div>';
-    body += '<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border,#333)"><span style="color:var(--text-muted)">Package</span><span style="font-weight:600">' + escapeHtml(pkgLabel) + '</span></div>';
-    body += '<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border,#333)"><span style="color:var(--text-muted)">Package Price</span><span style="font-weight:600">$' + pkgPrice + '</span></div>';
-    body += '<div style="display:flex;justify-content:space-between;padding:12px 0 0;font-size:16px"><span style="font-weight:700">Total (excl. state fee)</span><span style="font-weight:700;color:var(--accent-gold)">$' + pkgPrice + '</span></div>';
-    body += '</div>';
-    navBtns = '<div style="display:flex;gap:8px;margin-top:4px"><button onclick="launchpadPrev()" style="padding:8px 18px;border-radius:6px;background:var(--bg-card,#1a1a2e);border:1px solid var(--border,#333);color:var(--text-primary);cursor:pointer">&larr; Back</button><button id="lpPayBtn" class="btn-primary" onclick="launchpadProceedToPayment()">Proceed to Payment &rarr;</button></div>';
-  } else if (step === 5) {
-    body = '<div style="text-align:center;padding:32px 0">';
-    body += '<div style="font-size:48px;margin-bottom:16px">\uD83C\uDF89</div>';
-    body += '<div style="font-size:20px;font-weight:700;margin-bottom:8px">Payment Complete!</div>';
-    body += '<div style="color:var(--text-muted)">Your formation order is being processed. Check your filings below for status updates.</div>';
-    body += '</div>';
-    navBtns = '<button onclick="_lpState={entity:\'llc\',state:\'CA\',step:1,businessName:\'\'};renderLaunchPadStep(1)" class="btn-primary" style="margin-top:8px">Start New Filing</button>';
-    // Reload filings
-    setTimeout(function() { loadFilings(); }, 200);
-  }
-
-  var wizardHtml = '<div class="launchpad-inner" style="max-width:900px;margin:0 auto;padding:32px 24px">';
-  wizardHtml += '<div class="launchpad-hero" style="margin-bottom:24px"><h1 style="font-size:28px;font-weight:700;margin:0 0 8px">Launch Your Business</h1><p style="color:var(--text-muted);margin:0">From entity formation to EIN filing — get your business legally established in minutes.</p></div>';
-  wizardHtml += '<div style="max-width:640px">' + stepsBar + body + navBtns + '</div>';
-  wizardHtml += '<div class="lp-filings" id="lpFilingsSection" style="margin-top:32px"></div>';
-  wizardHtml += '<div class="lp-powered" style="margin-top:24px;text-align:center;font-size:12px;color:var(--text-muted)">Powered by CorpNet · HACP\u2122 Protocol · Patent #10,290,222</div>';
-  wizardHtml += '</div>';
-  wizardHtml += '<div class="app-footer">SaintSal\u2122 <span class="footer-labs-green">LABS</span> · Responsible Intelligence · Patent #10,290,222 · <a href="https://www.perplexity.ai/computer" target="_blank" rel="noopener noreferrer">Created with Perplexity Computer</a></div>';
-  view.innerHTML = wizardHtml;
-  // Load filings into the section
-  setTimeout(function() { loadFilings(); }, 100);
-}
 
 function filterConnectors(el, cat) {
   document.querySelectorAll('.connector-filter').forEach(function(f) { f.classList.remove('active'); });

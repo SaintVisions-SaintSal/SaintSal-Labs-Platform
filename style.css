@@ -4756,3 +4756,567 @@ ul, ol { list-style: none; }
   .re-deal-preview-metrics { grid-template-columns: repeat(2, 1fr); }
   .calc-grid { grid-template-columns: 1fr; }
 }
+
+/* ============================================================
+   BUSINESS CENTER — Full CorpNet Catalog
+   ============================================================ */
+.bc-wrap {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 32px 24px;
+}
+
+/* ── Hero ── */
+.bc-hero {
+  text-align: center;
+  margin-bottom: 28px;
+}
+.bc-hero-badge {
+  display: inline-block;
+  padding: 4px 14px;
+  border-radius: 20px;
+  font-size: 11px;
+  color: var(--text-muted, #777);
+  background: rgba(255,255,255,.04);
+  border: 1px solid rgba(255,255,255,.06);
+  margin-bottom: 14px;
+  letter-spacing: .3px;
+}
+.bc-hero-title {
+  font-size: 32px;
+  font-weight: 800;
+  margin: 0 0 8px;
+  background: linear-gradient(135deg, #fff 30%, var(--accent-gold, #D4AF37));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+.bc-hero-sub {
+  color: var(--text-muted, #777);
+  font-size: 14px;
+  max-width: 600px;
+  margin: 0 auto;
+  line-height: 1.6;
+}
+
+/* ── Tabs ── */
+.bc-tabs {
+  display: flex;
+  gap: 4px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+  margin-bottom: 24px;
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.bc-tabs::-webkit-scrollbar { display: none; }
+.bc-tab {
+  flex-shrink: 0;
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  color: var(--text-muted, #777);
+  background: transparent;
+  border: 1px solid transparent;
+  transition: all .2s ease;
+  white-space: nowrap;
+}
+.bc-tab:hover {
+  color: var(--text-primary, #e0e0e0);
+  background: rgba(255,255,255,.04);
+}
+.bc-tab.on {
+  color: var(--accent-gold, #D4AF37);
+  background: rgba(212,175,55,.08);
+  border-color: rgba(212,175,55,.2);
+}
+.bc-tab-icon {
+  margin-right: 6px;
+  font-size: 14px;
+}
+
+/* ── Animation ── */
+.bc-anim {
+  animation: bcFade .3s ease;
+}
+@keyframes bcFade {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Section Label ── */
+.bc-sl {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-muted, #777);
+  text-transform: uppercase;
+  letter-spacing: .5px;
+  margin-bottom: 14px;
+}
+
+/* ── Package Selector ── */
+.bc-pkg-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin-bottom: 24px;
+}
+.bc-pkg {
+  background: rgba(255,255,255,.02);
+  border: 1px solid rgba(255,255,255,.06);
+  border-radius: 12px;
+  padding: 20px 16px;
+  cursor: pointer;
+  transition: all .25s ease;
+  position: relative;
+}
+.bc-pkg:hover {
+  border-color: rgba(212,175,55,.25);
+  background: rgba(255,255,255,.03);
+}
+.bc-pkg.hl {
+  border-color: var(--accent-gold, #D4AF37);
+  background: rgba(212,175,55,.06);
+  box-shadow: 0 0 20px rgba(212,175,55,.08);
+}
+.bc-pkg-badge {
+  position: absolute;
+  top: -10px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 2px 12px;
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .4px;
+  background: var(--accent-gold, #D4AF37);
+  color: #000;
+  white-space: nowrap;
+}
+.bc-pkg-name {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-primary, #e0e0e0);
+  margin-bottom: 4px;
+  text-align: center;
+}
+.bc-pkg-name.active {
+  color: var(--accent-gold, #D4AF37);
+}
+.bc-pkg-price {
+  font-size: 12px;
+  color: var(--text-muted, #777);
+  margin-bottom: 12px;
+  text-align: center;
+}
+.bc-pkg-feat {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-secondary, #999);
+  margin-bottom: 6px;
+  line-height: 1.4;
+}
+.bc-check {
+  color: var(--accent-gold, #D4AF37);
+  font-weight: 700;
+  flex-shrink: 0;
+  font-size: 13px;
+}
+
+/* ── Speed Selector ── */
+.bc-speed-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.bc-speed-btns {
+  display: flex;
+  gap: 6px;
+}
+.bc-spd {
+  padding: 6px 14px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  background: transparent;
+  color: var(--text-muted, #777);
+  border: 1px solid rgba(255,255,255,.08);
+  transition: all .2s ease;
+}
+.bc-spd:hover {
+  color: var(--text-primary, #e0e0e0);
+  border-color: rgba(255,255,255,.15);
+}
+.bc-spd.on {
+  background: rgba(212,175,55,.1);
+  color: var(--accent-gold, #D4AF37);
+  border-color: rgba(212,175,55,.3);
+}
+
+/* ── Grid Header (Formation) ── */
+.bc-grid-header {
+  display: grid;
+  grid-template-columns: 1fr 80px 80px 80px;
+  gap: 8px;
+  padding: 8px 12px;
+  margin-bottom: 4px;
+}
+.bc-gh-left {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted, #777);
+  text-transform: uppercase;
+  letter-spacing: .4px;
+}
+.bc-gh-col {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted, #777);
+  text-transform: uppercase;
+  letter-spacing: .4px;
+  text-align: center;
+}
+
+/* ── Entity Rows ── */
+.bc-erow {
+  border-radius: 10px;
+  margin-bottom: 4px;
+  overflow: hidden;
+  transition: background .2s ease;
+}
+.bc-erow:hover {
+  background: rgba(255,255,255,.02);
+}
+.bc-erow.open {
+  background: rgba(212,175,55,.04);
+}
+.bc-erow-main {
+  display: grid;
+  grid-template-columns: 1fr 80px 80px 80px 28px;
+  gap: 8px;
+  align-items: center;
+  padding: 12px;
+  cursor: pointer;
+  transition: background .15s ease;
+}
+.bc-erow-main:hover {
+  background: rgba(255,255,255,.02);
+}
+.bc-erow-info {
+  min-width: 0;
+}
+.bc-erow-name-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.bc-erow-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary, #e0e0e0);
+}
+.bc-chip {
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: .3px;
+}
+.bc-erow-sub {
+  font-size: 12px;
+  color: var(--text-muted, #777);
+  margin-top: 2px;
+}
+.bc-erow-prices {
+  display: contents;
+}
+.bc-erow-price {
+  text-align: center;
+  font-size: 13px;
+}
+.bc-erow-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  color: var(--text-muted, #777);
+  transition: color .15s ease;
+}
+.bc-erow.open .bc-erow-toggle {
+  color: var(--accent-gold, #D4AF37);
+}
+
+/* ── Expanded Detail ── */
+.bc-erow-detail {
+  padding: 0 12px 14px;
+  animation: bcFade .2s ease;
+}
+.bc-erow-btns {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+.bc-btn-gold {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 18px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  background: linear-gradient(135deg, var(--accent-gold, #D4AF37), #b8941e);
+  color: #000;
+  text-decoration: none;
+  transition: all .2s ease;
+  border: none;
+  cursor: pointer;
+}
+.bc-btn-gold:hover {
+  filter: brightness(1.1);
+  transform: translateY(-1px);
+}
+.bc-btn-ghost {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 18px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  background: transparent;
+  color: var(--text-primary, #e0e0e0);
+  text-decoration: none;
+  border: 1px solid rgba(255,255,255,.1);
+  transition: all .2s ease;
+  cursor: pointer;
+}
+.bc-btn-ghost:hover {
+  border-color: rgba(255,255,255,.2);
+  background: rgba(255,255,255,.03);
+}
+.bc-note-inline {
+  font-size: 11px;
+  color: var(--text-muted, #555);
+  font-style: italic;
+}
+
+/* ── Compliance Table ── */
+.bc-table {
+  border-radius: 10px;
+  overflow: hidden;
+  background: rgba(255,255,255,.015);
+  border: 1px solid rgba(255,255,255,.04);
+}
+.bc-compliance-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.bc-srow {
+  display: grid;
+  grid-template-columns: 1fr 90px 90px 90px;
+  gap: 8px;
+  padding: 10px 14px;
+  align-items: center;
+  border-bottom: 1px solid rgba(255,255,255,.03);
+  transition: background .15s ease;
+}
+.bc-srow:last-child { border-bottom: none; }
+.bc-srow:hover { background: rgba(255,255,255,.02); }
+.bc-srow-header {
+  background: rgba(255,255,255,.03);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted, #777);
+  text-transform: uppercase;
+  letter-spacing: .4px;
+}
+.bc-srow-header:hover { background: rgba(255,255,255,.03); }
+.bc-srow-name {
+  font-size: 13px;
+  color: var(--text-primary, #e0e0e0);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.bc-srow-col {
+  text-align: center;
+  font-size: 13px;
+}
+.bc-link {
+  color: var(--text-primary, #e0e0e0);
+  text-decoration: none;
+  transition: color .15s ease;
+}
+.bc-link:hover {
+  color: var(--accent-gold, #D4AF37);
+}
+.bc-hide-mobile {}
+
+/* ── Tax / RA rows ── */
+.bc-rarow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  border-bottom: 1px solid rgba(255,255,255,.03);
+  transition: background .15s ease;
+}
+.bc-rarow:last-child { border-bottom: none; }
+.bc-rarow:hover { background: rgba(255,255,255,.02); }
+.bc-gold-price {
+  color: var(--accent-gold, #D4AF37);
+  font-weight: 600;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+/* ── RA Grid ── */
+.bc-ra-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+.bc-ra-table-header {
+  padding: 12px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary, #e0e0e0);
+  background: rgba(255,255,255,.03);
+  border-bottom: 1px solid rgba(255,255,255,.04);
+}
+.bc-ra-features {
+  background: rgba(255,255,255,.015);
+  border: 1px solid rgba(255,255,255,.04);
+  border-radius: 10px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+}
+.bc-ra-features-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary, #e0e0e0);
+  margin-bottom: 14px;
+}
+
+/* ── Trademark Cards ── */
+.bc-tm-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.bc-tm-card {
+  background: rgba(255,255,255,.02);
+  border: 1px solid rgba(255,255,255,.05);
+  border-radius: 12px;
+  padding: 20px 16px;
+  transition: all .2s ease;
+}
+.bc-tm-card:hover {
+  border-color: rgba(212,175,55,.2);
+  background: rgba(255,255,255,.03);
+}
+.bc-tm-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary, #e0e0e0);
+  margin-bottom: 14px;
+}
+.bc-tm-prices {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+.bc-tm-price-col {
+  text-align: center;
+}
+.bc-tm-price-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: .3px;
+  color: var(--text-muted, #777);
+  margin-bottom: 4px;
+}
+.bc-tm-price-val {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--accent-gold, #D4AF37);
+}
+
+/* ── Info Box ── */
+.bc-info-box {
+  padding: 14px 16px;
+  border-radius: 8px;
+  background: rgba(212,175,55,.04);
+  border: 1px solid rgba(212,175,55,.1);
+  font-size: 12px;
+  color: var(--text-secondary, #999);
+  line-height: 1.5;
+  margin-top: 16px;
+}
+
+/* ── Notes ── */
+.bc-note {
+  font-size: 11px;
+  color: var(--text-muted, #555);
+  line-height: 1.5;
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255,255,255,.04);
+}
+
+/* ── Footer ── */
+.bc-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 24px;
+  margin-top: 32px;
+  border-top: 1px solid rgba(255,255,255,.04);
+  font-size: 11px;
+  color: var(--text-muted, #555);
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.bc-footer a {
+  color: var(--accent-gold, #D4AF37);
+  text-decoration: none;
+}
+.bc-footer a:hover { text-decoration: underline; }
+.bc-footer-right {
+  font-weight: 600;
+  color: var(--text-secondary, #999);
+}
+
+/* ── BC Mobile Responsive ── */
+@media (max-width: 768px) {
+  .bc-wrap { padding: 20px 14px; }
+  .bc-hero-title { font-size: 24px; }
+  .bc-hero-sub { font-size: 13px; }
+  .bc-tabs { gap: 2px; }
+  .bc-tab { padding: 6px 10px; font-size: 12px; }
+  .bc-pkg-row { grid-template-columns: 1fr; gap: 10px; }
+  .bc-grid-header { grid-template-columns: 1fr 60px 60px 60px; }
+  .bc-erow-main { grid-template-columns: 1fr 60px 60px 60px 24px; font-size: 12px; }
+  .bc-srow { grid-template-columns: 1fr 70px 70px; }
+  .bc-hide-mobile { display: none; }
+  .bc-ra-grid { grid-template-columns: 1fr; }
+  .bc-tm-grid { grid-template-columns: 1fr; }
+  .bc-footer { flex-direction: column; text-align: center; }
+}

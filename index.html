@@ -147,9 +147,9 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
         Domains
       </div>
-      <div class="nav-item" data-view="launchpad" onclick="setView('launchpad'); loadPackagePricing(_lpState.state); loadFilings();">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"/><path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"/><path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0"/><path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5"/></svg>
-        Launch Pad
+      <div class="nav-item" data-view="launchpad" onclick="setView('launchpad')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 21h18"/><path d="M9 8h1"/><path d="M9 12h1"/><path d="M9 16h1"/><path d="M14 8h1"/><path d="M14 12h1"/><path d="M14 16h1"/><path d="M5 21V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16"/></svg>
+        Business Center
       </div>
 
       <div class="nav-divider"></div>
@@ -1146,29 +1146,9 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
       <div class="app-footer">SaintSal™ <span class="footer-labs-green">LABS</span> · Responsible Intelligence · Patent #10,290,222 · <a href="https://www.perplexity.ai/computer" target="_blank" rel="noopener noreferrer">Created with Perplexity Computer</a></div>
     </div>
 
-    <!-- Launch Pad View -->
+    <!-- Business Center View -->
     <div class="view launchpad-view" id="launchpadView">
-      <div class="launchpad-inner">
-        <div class="launchpad-hero"><h1>Launch Your Business</h1><p>From entity formation to EIN filing — get your business legally established in minutes.</p></div>
-        <div class="lp-steps"><div class="lp-step active"><div class="lp-step-num">1</div>Entity Type</div><div class="lp-step-connector"></div><div class="lp-step"><div class="lp-step-num">2</div>State</div><div class="lp-step-connector"></div><div class="lp-step"><div class="lp-step-num">3</div>Details</div><div class="lp-step-connector"></div><div class="lp-step"><div class="lp-step-num">4</div>Package</div><div class="lp-step-connector"></div><div class="lp-step"><div class="lp-step-num">5</div>Review</div></div>
-        <div class="lp-entity-grid">
-          <div class="lp-entity-card selected" onclick="selectEntity(this)"><div class="lp-entity-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M12 8v8"/><path d="M8 12h8"/></svg></div><div class="lp-entity-name">LLC</div><div class="lp-entity-desc">Limited liability protection with flexible management structure.</div></div>
-          <div class="lp-entity-card" onclick="selectEntity(this)"><div class="lp-entity-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg></div><div class="lp-entity-name">C Corporation</div><div class="lp-entity-desc">Ideal for raising venture capital.</div></div>
-          <div class="lp-entity-card" onclick="selectEntity(this)"><div class="lp-entity-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></div><div class="lp-entity-name">S Corporation</div><div class="lp-entity-desc">Pass-through taxation with corporate structure.</div></div>
-        </div>
-        <div class="lp-packages">
-          <div class="lp-package"><div class="lp-package-name">Basic</div><div class="lp-package-price">$197</div><div class="lp-package-features"><div class="lp-package-feature"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Name availability search</div><div class="lp-package-feature"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Articles of Organization / Incorporation</div><div class="lp-package-feature"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>60-day Registered Agent</div><div class="lp-package-feature"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Standard processing (5–7 days)</div></div><button class="lp-package-btn">Select Basic</button></div>
-          <div class="lp-package recommended"><div class="lp-package-name">Deluxe</div><div class="lp-package-price">$397</div><div class="lp-package-features"><div class="lp-package-feature"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Everything in Basic + EIN filing</div><div class="lp-package-feature"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Registered Agent (1 full year)</div><div class="lp-package-feature"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>24-hour rush processing</div></div><button class="lp-package-btn">Select Deluxe</button></div>
-          <div class="lp-package"><div class="lp-package-name">Complete</div><div class="lp-package-price">$449</div><div class="lp-package-features"><div class="lp-package-feature"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Everything in Deluxe</div><div class="lp-package-feature"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Custom Operating Agreement / Bylaws</div><div class="lp-package-feature"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>LLC Kit & Seal / Corporate Kit</div></div><button class="lp-package-btn">Select Complete</button></div>
-        </div>
-        <div class="lp-filings">
-          <div class="lp-filings-title">Your Filings</div>
-          <div class="lp-filing-card"><div class="lp-filing-header"><div class="lp-filing-name">HACP Global LLC — Delaware</div><div class="lp-filing-status review">In Review</div></div><div class="lp-filing-progress"><div class="lp-filing-step done"></div><div class="lp-filing-step done"></div><div class="lp-filing-step current"></div><div class="lp-filing-step"></div></div><div class="lp-filing-labels"><span>Submitted</span><span>In Review</span><span>Filed</span><span>Complete</span></div></div>
-          <div class="lp-filing-card"><div class="lp-filing-header"><div class="lp-filing-name">SaintSal Labs Inc — Wyoming</div><div class="lp-filing-status complete">Complete</div></div><div class="lp-filing-progress"><div class="lp-filing-step done"></div><div class="lp-filing-step done"></div><div class="lp-filing-step done"></div><div class="lp-filing-step done"></div></div><div class="lp-filing-labels"><span>Submitted</span><span>In Review</span><span>Filed</span><span>Complete</span></div></div>
-        </div>
-        <div class="lp-powered">Powered by CorpNet · HACP™ Protocol · Patent #10,290,222</div>
-      </div>
-      <div class="app-footer">SaintSal™ <span class="footer-labs-green">LABS</span> · Responsible Intelligence · Patent #10,290,222 · <a href="https://www.perplexity.ai/computer" target="_blank" rel="noopener noreferrer">Created with Perplexity Computer</a></div>
+      <!-- Dynamically rendered by business-center.js renderBusinessCenter() -->
     </div>
 
     <!-- Connectors View -->
@@ -1262,6 +1242,7 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
 <script src="domains-view.js"></script>
 <script src="realestate-view.js"></script>
     <script src="medical-view.js"></script>
+    <script src="business-center.js"></script>
 
 
     <!-- Social Composer Modal -->
