@@ -1,47 +1,51 @@
-/* ============================================================
-   SAINTSALLABS™ BUSINESS CENTER — Real Business Toolkit
-   v7.19.0 — Production-ready tools for SMBs
-   ============================================================ */
+/* ═══════════════════════════════════════════════════════════════════════════════
+   SaintSal™ Labs — Business Center v2.0
+   CorpNet Formation + GoDaddy Domains + Real Business Tools
+   ═══════════════════════════════════════════════════════════════════════════════ */
 
 var bcState = {
   activeTab: 'overview',
-  resumeData: {},
-  signatureData: {},
-  presentationData: {}
+  formationStep: 0,
+  formationData: { state: '', entityType: '', packages: [], selectedPkg: null, selectedSpeed: 'standard', addons: [], contact: {} },
+  domainQuery: '',
+  domainResults: [],
+  orders: [],
+  gdStorefront: {},
+  resumeData: { name: '', title: '', email: '', phone: '', summary: '', experience: '', education: '', skills: '' },
+  signatureData: { name: '', title: '', company: '', email: '', phone: '', website: '', color: '#D4A843' },
+  meetingNotes: [],
+  currentMeeting: { title: '', date: '', attendees: '', notes: '', actionItems: '' },
 };
 
+var API = window.API_BASE || '';
+
+/* ── Main Render ── */
 function renderBusinessCenter() {
-  var container = document.getElementById('launchpadView');
-  if (!container) return;
-
-  var html = '<div class="bc-layout" style="max-width:1200px;margin:0 auto;padding:24px 20px 100px;">';
-
-  /* ── Header ── */
-  html += '<div style="margin-bottom:28px;">';
-  html += '<h1 style="font-size:24px;font-weight:800;color:var(--text-primary);margin:0 0 6px;">Business Center</h1>';
-  html += '<p style="font-size:14px;color:var(--text-muted);margin:0;">Everything you need to start, grow, and manage your business.</p>';
-  html += '</div>';
+  var el = document.getElementById('launchpadView');
+  if (!el) return;
+  var html = '';
+  html += '<div style="padding:20px 16px 100px;max-width:800px;margin:0 auto;">';
+  html += '<h1 style="font-size:24px;font-weight:700;color:var(--text-primary);margin-bottom:4px;">Business Center</h1>';
+  html += '<p style="color:var(--text-muted);font-size:13px;margin-bottom:20px;">Everything you need to start, grow, and manage your business.</p>';
 
   /* ── Tab Navigation ── */
   html += '<div class="bc-tabs" style="display:flex;gap:4px;margin-bottom:24px;overflow-x:auto;padding-bottom:4px;-webkit-overflow-scrolling:touch;">';
   var tabs = [
     { id: 'overview', label: 'Overview', icon: '📊' },
     { id: 'formation', label: 'Formation', icon: '🏢' },
-    { id: 'resume', label: 'Resume Builder', icon: '📄' },
-    { id: 'signature', label: 'Email Signature', icon: '✉️' },
-    { id: 'presentation', label: 'Presentations', icon: '🎯' },
-    { id: 'meetings', label: 'Meeting Notes', icon: '📝' },
-    { id: 'analytics', label: 'Analytics', icon: '📈' }
+    { id: 'domains', label: 'Domains', icon: '🌐' },
+    { id: 'resume', label: 'Resume', icon: '📄' },
+    { id: 'signature', label: 'Signatures', icon: '✉️' },
+    { id: 'meetings', label: 'Meetings', icon: '📝' },
+    { id: 'analytics', label: 'Analytics', icon: '📈' },
   ];
   tabs.forEach(function(t) {
     var active = bcState.activeTab === t.id;
     html += '<button onclick="bcSwitchTab(\'' + t.id + '\')" '
-          + 'style="display:flex;align-items:center;gap:6px;padding:8px 16px;border-radius:10px;border:none;'
-          + 'background:' + (active ? 'var(--accent-gold)' : 'rgba(255,255,255,0.04)') + ';'
-          + 'color:' + (active ? '#000' : 'var(--text-secondary)') + ';'
-          + 'font-size:13px;font-weight:' + (active ? '700' : '500') + ';cursor:pointer;white-space:nowrap;'
-          + 'font-family:\'Inter\',sans-serif;transition:all 0.2s;">'
-          + '<span style="font-size:14px;">' + t.icon + '</span>' + t.label + '</button>';
+         + 'style="flex-shrink:0;padding:8px 14px;border-radius:8px;border:none;cursor:pointer;font-size:12px;font-weight:' + (active ? '600' : '500') + ';'
+         + 'background:' + (active ? 'var(--accent-gold,#D4A843)' : 'var(--surface-raised,#1a1a1a)') + ';'
+         + 'color:' + (active ? '#000' : 'var(--text-secondary,#aaa)') + ';">'
+         + t.icon + ' ' + t.label + '</button>';
   });
   html += '</div>';
 
@@ -49,12 +53,8 @@ function renderBusinessCenter() {
   html += '<div id="bcTabContent">';
   html += bcRenderTab(bcState.activeTab);
   html += '</div>';
-
-  html += '</div>'; // .bc-layout
-
-  html += '<div class="app-footer">SaintSal™ <span class="footer-labs-green">LABS</span> · Responsible Intelligence · Patent #10,290,222 · <a href="https://www.perplexity.ai/computer" target="_blank" rel="noopener noreferrer">Created with Perplexity Computer</a></div>';
-
-  container.innerHTML = html;
+  html += '</div>';
+  el.innerHTML = html;
 }
 
 function bcSwitchTab(tab) {
@@ -66,556 +66,746 @@ function bcRenderTab(tab) {
   switch(tab) {
     case 'overview': return bcOverview();
     case 'formation': return bcFormation();
+    case 'domains': return bcDomains();
     case 'resume': return bcResumeBuilder();
     case 'signature': return bcEmailSignature();
-    case 'presentation': return bcPresentations();
     case 'meetings': return bcMeetingNotes();
     case 'analytics': return bcAnalytics();
     default: return bcOverview();
   }
 }
 
-/* ── OVERVIEW TAB ── */
+/* ══════════════════════════════════════════════════════════════════════════════
+   OVERVIEW TAB
+   ══════════════════════════════════════════════════════════════════════════════ */
 function bcOverview() {
   var html = '';
-
-  /* Quick Stats */
-  html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:24px;">';
-  var stats = [
-    { label: 'Projects Built', value: '0', icon: '🔧', color: '#3b82f6' },
-    { label: 'Documents Created', value: '0', icon: '📄', color: '#22c55e' },
-    { label: 'Presentations', value: '0', icon: '🎯', color: '#f59e0b' },
-    { label: 'Build Minutes Used', value: '0 min', icon: '⚡', color: '#8b5cf6' }
-  ];
-  stats.forEach(function(s) {
-    html += '<div style="background:rgba(255,255,255,0.03);border-radius:12px;padding:16px;display:flex;align-items:center;gap:12px;">';
-    html += '<div style="width:40px;height:40px;border-radius:10px;background:' + s.color + '15;display:flex;align-items:center;justify-content:center;font-size:18px;">' + s.icon + '</div>';
-    html += '<div><div style="font-size:20px;font-weight:800;color:var(--text-primary);">' + s.value + '</div>';
-    html += '<div style="font-size:11px;color:var(--text-muted);">' + s.label + '</div></div>';
-    html += '</div>';
-  });
+  /* Stats */
+  html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:24px;">';
+  html += _bcStatCard('🔧', bcState.orders.length || 0, 'Formations');
+  html += _bcStatCard('📄', Object.keys(bcState.resumeData).filter(function(k){return bcState.resumeData[k];}).length > 2 ? 1 : 0, 'Documents');
   html += '</div>';
 
   /* Quick Actions */
-  html += '<div style="font-size:12px;font-weight:700;color:var(--text-muted);letter-spacing:0.6px;text-transform:uppercase;margin-bottom:12px;">Quick Actions</div>';
-  html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px;margin-bottom:28px;">';
+  html += '<div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-muted);margin-bottom:12px;">Quick Actions</div>';
+  html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:24px;">';
   var actions = [
-    { label: 'Build a Resume', desc: 'Professional AI-generated resume', tab: 'resume', icon: '📄' },
-    { label: 'Create Signature', desc: 'Professional email signature', tab: 'signature', icon: '✉️' },
-    { label: 'New Presentation', desc: 'AI-powered slide decks', tab: 'presentation', icon: '🎯' },
-    { label: 'Meeting Notes', desc: 'Capture and organize notes', tab: 'meetings', icon: '📝' },
-    { label: 'Form a Business', desc: 'LLC, Corp, or Nonprofit', tab: 'formation', icon: '🏢' },
-    { label: 'View Analytics', desc: 'Track your growth', tab: 'analytics', icon: '📈' }
+    { label: 'Form a Business', desc: 'LLC, Corp, Nonprofit via CorpNet', tab: 'formation', icon: '🏢' },
+    { label: 'Search Domains', desc: 'Find your perfect domain', tab: 'domains', icon: '🌐' },
+    { label: 'Build a Resume', desc: 'Professional AI-generated', tab: 'resume', icon: '📄' },
+    { label: 'Create Signature', desc: 'Professional email sig', tab: 'signature', icon: '✉️' },
+    { label: 'Meeting Notes', desc: 'Capture and organize', tab: 'meetings', icon: '📝' },
+    { label: 'View Analytics', desc: 'Track your growth', tab: 'analytics', icon: '📈' },
   ];
   actions.forEach(function(a) {
-    html += '<div onclick="bcSwitchTab(\'' + a.tab + '\')" '
-          + 'style="background:rgba(255,255,255,0.03);border-radius:12px;padding:16px;cursor:pointer;transition:all 0.2s;" '
-          + 'onmouseenter="this.style.background=\'rgba(255,255,255,0.07)\'" '
-          + 'onmouseleave="this.style.background=\'rgba(255,255,255,0.03)\'">';
-    html += '<div style="font-size:22px;margin-bottom:8px;">' + a.icon + '</div>';
-    html += '<div style="font-size:13px;font-weight:600;color:var(--text-primary);margin-bottom:2px;">' + a.label + '</div>';
-    html += '<div style="font-size:11px;color:var(--text-muted);line-height:1.4;">' + a.desc + '</div>';
-    html += '</div>';
+    html += '<div onclick="bcSwitchTab(\'' + a.tab + '\')" style="cursor:pointer;padding:16px;border-radius:12px;background:var(--surface-raised,#1a1a1a);transition:transform 0.15s;">'
+         + '<div style="font-size:24px;margin-bottom:8px;">' + a.icon + '</div>'
+         + '<div style="font-weight:600;font-size:13px;color:var(--text-primary);">' + a.label + '</div>'
+         + '<div style="font-size:11px;color:var(--text-muted);margin-top:2px;">' + a.desc + '</div></div>';
   });
   html += '</div>';
 
-  /* Recent Activity */
-  html += '<div style="font-size:12px;font-weight:700;color:var(--text-muted);letter-spacing:0.6px;text-transform:uppercase;margin-bottom:12px;">Recent Activity</div>';
-  html += '<div style="background:rgba(255,255,255,0.03);border-radius:12px;padding:20px;text-align:center;">';
-  html += '<div style="font-size:13px;color:var(--text-muted);">No activity yet. Start building something to see it here.</div>';
-  html += '</div>';
-
+  /* Recent Orders */
+  html += '<div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-muted);margin-bottom:12px;">Recent Activity</div>';
+  if (bcState.orders.length === 0) {
+    html += '<div style="padding:24px;text-align:center;color:var(--text-muted);font-size:13px;background:var(--surface-raised,#1a1a1a);border-radius:12px;">No activity yet. Start by forming a business or searching for a domain.</div>';
+  }
   return html;
 }
 
-/* ── FORMATION TAB ── */
+function _bcStatCard(icon, value, label) {
+  return '<div style="padding:16px;border-radius:12px;background:var(--surface-raised,#1a1a1a);">'
+       + '<div style="display:flex;align-items:center;gap:10px;">'
+       + '<div style="width:40px;height:40px;border-radius:10px;background:var(--surface-elevated,#252525);display:flex;align-items:center;justify-content:center;font-size:18px;">' + icon + '</div>'
+       + '<div><div style="font-size:22px;font-weight:700;color:var(--text-primary);">' + value + '</div>'
+       + '<div style="font-size:11px;color:var(--text-muted);">' + label + '</div></div></div></div>';
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   FORMATION TAB — Real CorpNet Integration
+   ══════════════════════════════════════════════════════════════════════════════ */
 function bcFormation() {
+  var step = bcState.formationStep;
   var html = '';
-  html += '<div style="margin-bottom:20px;">';
-  html += '<h2 style="font-size:18px;font-weight:700;color:var(--text-primary);margin:0 0 4px;">Business Formation</h2>';
-  html += '<p style="font-size:13px;color:var(--text-muted);margin:0;">Start your business with the right entity type. Powered by CorpNet.</p>';
+  html += '<div style="margin-bottom:16px;display:flex;gap:8px;align-items:center;">';
+  for (var i = 0; i < 4; i++) {
+    var active = i === step, done = i < step;
+    html += '<div style="flex:1;height:4px;border-radius:2px;background:' + (done ? 'var(--accent-gold,#D4A843)' : active ? 'var(--accent-gold,#D4A843)' : 'var(--surface-elevated,#333)') + ';opacity:' + (active ? '1' : done ? '0.7' : '0.3') + ';"></div>';
+  }
   html += '</div>';
+  html += '<div style="font-size:11px;color:var(--text-muted);margin-bottom:16px;">Step ' + (step + 1) + ' of 4</div>';
 
+  if (step === 0) html += bcFormationStep0();
+  else if (step === 1) html += bcFormationStep1();
+  else if (step === 2) html += bcFormationStep2();
+  else if (step === 3) html += bcFormationStep3();
+  return html;
+}
+
+/* Step 0: Choose State + Entity Type */
+function bcFormationStep0() {
+  var html = '';
+  html += '<h2 style="font-size:18px;font-weight:700;margin-bottom:4px;color:var(--text-primary);">Form Your Business</h2>';
+  html += '<p style="color:var(--text-muted);font-size:13px;margin-bottom:20px;">Powered by CorpNet — 500,000+ companies formed since 1997.</p>';
+
+  /* Entity Type */
+  html += '<label style="font-size:12px;font-weight:600;color:var(--text-secondary);display:block;margin-bottom:6px;">Business Type</label>';
+  html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:20px;">';
   var entities = [
-    { name: 'LLC', sub: 'Limited Liability Company', tag: 'Most Popular', tagColor: '#D4AF37', price: '$99', desc: 'Personal asset protection + tax flexibility. Best for most small businesses.' },
-    { name: 'C Corporation', sub: 'C Corp', tag: 'VC Ready', tagColor: '#60a5fa', price: '$99', desc: 'Raise capital from investors. Separate tax entity. Required for venture funding.' },
-    { name: 'S Corporation', sub: 'S Corp', tag: 'Tax Savings', tagColor: '#34d399', price: '$99', desc: 'Pass-through taxation with corporate structure. Save on self-employment tax.' },
-    { name: 'Nonprofit', sub: '501(c)(3)', tag: null, price: '$99', desc: 'Tax-exempt organization for charitable, educational, or religious purposes.' },
-    { name: 'DBA', sub: 'Doing Business As', tag: 'Quick Start', tagColor: '#f59e0b', price: '$49', desc: 'Trade name filing. Operate under a different name without forming a new entity.' },
-    { name: 'Sole Proprietorship', sub: 'Simplest', tag: null, price: 'Free', desc: 'No filing needed in most states. You ARE the business. Unlimited personal liability.' }
+    { id: 'LLC', label: 'LLC', desc: 'Limited Liability Company' },
+    { id: 'C-Corp', label: 'C-Corp', desc: 'C Corporation' },
+    { id: 'S-Corp', label: 'S-Corp', desc: 'S Corporation' },
+    { id: 'Non-Profit Corporation', label: 'Nonprofit', desc: 'Non-Profit Corporation' },
   ];
-
-  html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px;">';
   entities.forEach(function(e) {
-    html += '<div style="background:rgba(255,255,255,0.03);border-radius:12px;padding:18px;transition:all 0.2s;" '
-          + 'onmouseenter="this.style.background=\'rgba(255,255,255,0.06)\'" '
-          + 'onmouseleave="this.style.background=\'rgba(255,255,255,0.03)\'">';
-    html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">';
-    html += '<span style="font-size:15px;font-weight:700;color:var(--text-primary);">' + e.name + '</span>';
-    html += '<span style="font-size:11px;color:var(--text-muted);">' + e.sub + '</span>';
-    if (e.tag) {
-      html += '<span style="font-size:10px;font-weight:700;color:' + (e.tagColor || '#D4AF37') + ';background:' + (e.tagColor || '#D4AF37') + '15;padding:2px 8px;border-radius:6px;">' + e.tag + '</span>';
-    }
-    html += '</div>';
-    html += '<div style="font-size:12px;color:var(--text-muted);line-height:1.5;margin-bottom:10px;">' + e.desc + '</div>';
-    html += '<div style="display:flex;align-items:center;justify-content:space-between;">';
-    html += '<span style="font-size:16px;font-weight:800;color:var(--accent-gold);">From ' + e.price + '</span>';
-    html += '<button onclick="bcStartFormation(\'' + e.name + '\')" style="background:var(--accent-gold);color:#000;border:none;padding:7px 16px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;font-family:\'Inter\',sans-serif;transition:all 0.2s;" onmouseenter="this.style.opacity=\'0.85\'" onmouseleave="this.style.opacity=\'1\'">Get Started →</button>';
-    html += '</div>';
-    html += '</div>';
+    var sel = bcState.formationData.entityType === e.id;
+    html += '<div onclick="bcState.formationData.entityType=\'' + e.id + '\';renderBusinessCenter();" '
+         + 'style="cursor:pointer;padding:14px;border-radius:10px;border:2px solid ' + (sel ? 'var(--accent-gold,#D4A843)' : 'transparent') + ';'
+         + 'background:' + (sel ? 'rgba(212,168,67,0.1)' : 'var(--surface-raised,#1a1a1a)') + ';">'
+         + '<div style="font-weight:600;font-size:14px;color:var(--text-primary);">' + e.label + '</div>'
+         + '<div style="font-size:11px;color:var(--text-muted);margin-top:2px;">' + e.desc + '</div></div>';
   });
   html += '</div>';
 
+  /* State */
+  html += '<label style="font-size:12px;font-weight:600;color:var(--text-secondary);display:block;margin-bottom:6px;">Formation State</label>';
+  html += '<select id="bcStateSelect" onchange="bcState.formationData.state=this.value;" '
+       + 'style="width:100%;padding:12px;border-radius:10px;border:1px solid var(--border-color,#333);background:var(--surface-raised,#1a1a1a);color:var(--text-primary);font-size:14px;margin-bottom:20px;">';
+  html += '<option value="">Select a state...</option>';
+  var states = ["AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN","IA","KS","KY","LA","ME","MD","MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ","NM","NY","NC","ND","OH","OK","OR","PA","RI","SC","SD","TN","TX","UT","VT","VA","WA","WV","WI","WY"];
+  var stateNames = {"AL":"Alabama","AK":"Alaska","AZ":"Arizona","AR":"Arkansas","CA":"California","CO":"Colorado","CT":"Connecticut","DE":"Delaware","FL":"Florida","GA":"Georgia","HI":"Hawaii","ID":"Idaho","IL":"Illinois","IN":"Indiana","IA":"Iowa","KS":"Kansas","KY":"Kentucky","LA":"Louisiana","ME":"Maine","MD":"Maryland","MA":"Massachusetts","MI":"Michigan","MN":"Minnesota","MS":"Mississippi","MO":"Missouri","MT":"Montana","NE":"Nebraska","NV":"Nevada","NH":"New Hampshire","NJ":"New Jersey","NM":"New Mexico","NY":"New York","NC":"North Carolina","ND":"North Dakota","OH":"Ohio","OK":"Oklahoma","OR":"Oregon","PA":"Pennsylvania","RI":"Rhode Island","SC":"South Carolina","SD":"South Dakota","TN":"Tennessee","TX":"Texas","UT":"Utah","VT":"Vermont","VA":"Virginia","WA":"Washington","WV":"West Virginia","WI":"Wisconsin","WY":"Wyoming"};
+  states.forEach(function(s) {
+    var selected = bcState.formationData.state === s ? ' selected' : '';
+    html += '<option value="' + s + '"' + selected + '>' + stateNames[s] + '</option>';
+  });
+  html += '</select>';
+
+  /* Business Name */
+  html += '<label style="font-size:12px;font-weight:600;color:var(--text-secondary);display:block;margin-bottom:6px;">Business Name</label>';
+  html += '<input type="text" id="bcBizName" placeholder="Enter desired business name" '
+       + 'value="' + (bcState.formationData.businessName || '') + '" '
+       + 'onchange="bcState.formationData.businessName=this.value;" '
+       + 'style="width:100%;padding:12px;border-radius:10px;border:1px solid var(--border-color,#333);background:var(--surface-raised,#1a1a1a);color:var(--text-primary);font-size:14px;margin-bottom:24px;box-sizing:border-box;">';
+
+  html += '<button onclick="bcFetchPackages();" '
+       + 'style="width:100%;padding:14px;border-radius:10px;border:none;background:var(--accent-gold,#D4A843);color:#000;font-weight:700;font-size:14px;cursor:pointer;"'
+       + ((!bcState.formationData.entityType || !bcState.formationData.state) ? ' disabled' : '') + '>'
+       + 'View Packages & Pricing</button>';
   return html;
 }
 
-function bcStartFormation(entityType) {
-  if (typeof showToast === 'function') showToast('Starting ' + entityType + ' formation...', 'info');
-  // Open CorpNet in new tab with affiliate link
-  var paths = {
-    'LLC': '/form-an-llc/',
-    'C Corporation': '/incorporate/c-corporation/',
-    'S Corporation': '/incorporate/s-corporation/',
-    'Nonprofit': '/form-a-nonprofit/',
-    'DBA': '/dba-filing/',
-    'Sole Proprietorship': '/sole-proprietorship/'
-  };
-  var path = paths[entityType] || '/';
-  window.open('https://www.corpnet.com' + path + '?a=7E90-738C-175F-41BD-886C', '_blank');
-}
+/* Fetch packages from CorpNet */
+async function bcFetchPackages() {
+  var fd = bcState.formationData;
+  if (!fd.entityType || !fd.state) return;
 
-/* ── RESUME BUILDER TAB ── */
-function bcResumeBuilder() {
-  var r = bcState.resumeData;
-  var html = '';
-  html += '<div style="margin-bottom:20px;">';
-  html += '<h2 style="font-size:18px;font-weight:700;color:var(--text-primary);margin:0 0 4px;">Resume Builder</h2>';
-  html += '<p style="font-size:13px;color:var(--text-muted);margin:0;">Create a professional resume in minutes with AI assistance.</p>';
-  html += '</div>';
-
-  html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;">';
-
-  /* Left: Form */
-  html += '<div style="display:flex;flex-direction:column;gap:12px;">';
-  html += _bcInput('Full Name', 'bcResumeName', r.name || '', 'Your full name');
-  html += _bcInput('Job Title', 'bcResumeTitle', r.title || '', 'e.g. Senior Product Manager');
-  html += _bcInput('Email', 'bcResumeEmail', r.email || '', 'your@email.com');
-  html += _bcInput('Phone', 'bcResumePhone', r.phone || '', '+1 (555) 123-4567');
-  html += _bcInput('Location', 'bcResumeLocation', r.location || '', 'City, State');
-  html += _bcInput('LinkedIn', 'bcResumeLinkedin', r.linkedin || '', 'linkedin.com/in/you');
-  html += _bcTextarea('Professional Summary', 'bcResumeSummary', r.summary || '', 'Brief overview of your experience and goals...', 3);
-  html += _bcTextarea('Work Experience', 'bcResumeExperience', r.experience || '', 'Company Name — Title (Start - End)\\n• Achievement 1\\n• Achievement 2', 6);
-  html += _bcTextarea('Education', 'bcResumeEducation', r.education || '', 'University — Degree (Year)', 3);
-  html += _bcTextarea('Skills', 'bcResumeSkills', r.skills || '', 'Skill 1, Skill 2, Skill 3...', 2);
-
-  html += '<div style="display:flex;gap:8px;margin-top:4px;">';
-  html += '<button onclick="bcGenerateResume()" style="flex:1;background:var(--accent-gold);color:#000;border:none;padding:10px;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;font-family:\'Inter\',sans-serif;transition:all 0.2s;" onmouseenter="this.style.opacity=\'0.85\'" onmouseleave="this.style.opacity=\'1\'">✨ Generate with AI</button>';
-  html += '<button onclick="bcPreviewResume()" style="flex:1;background:var(--bg-secondary);border:none;color:var(--text-primary);padding:10px;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;font-family:\'Inter\',sans-serif;">Preview</button>';
-  html += '</div>';
-  html += '</div>';
-
-  /* Right: Preview */
-  html += '<div id="bcResumePreview" style="background:#fff;border-radius:12px;padding:32px;color:#1a1a1a;min-height:600px;box-shadow:0 2px 12px rgba(0,0,0,0.2);">';
-  html += '<div style="text-align:center;padding:40px;color:#999;font-size:13px;">Fill in your details and click "Generate with AI" or "Preview" to see your resume.</div>';
-  html += '</div>';
-
-  html += '</div>'; // grid
-
-  return html;
-}
-
-async function bcGenerateResume() {
-  bcSaveResumeData();
-  var r = bcState.resumeData;
-  if (!r.name) { if (typeof showToast === 'function') showToast('Enter your name to get started', 'error'); return; }
-  
-  var preview = document.getElementById('bcResumePreview');
-  if (preview) preview.innerHTML = '<div style="text-align:center;padding:40px;"><div style="font-size:13px;color:#666;">Generating your resume with AI...</div></div>';
+  var el = document.getElementById('bcTabContent');
+  if (el) el.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-muted);">Loading packages from CorpNet...</div>';
 
   try {
-    var prompt = 'Generate a professional resume for: ' + r.name + ', ' + (r.title || 'Professional') + '. Summary: ' + (r.summary || 'N/A') + '. Experience: ' + (r.experience || 'N/A') + '. Education: ' + (r.education || 'N/A') + '. Skills: ' + (r.skills || 'N/A') + '. Return clean HTML resume content only (no <html> or <body> tags). Use professional styling inline. Make it polished and ATS-friendly.';
-    
-    var resp = await fetch(API + '/api/chat', {
-      method: 'POST',
-      headers: Object.assign({ 'Content-Type': 'application/json' }, authHeaders()),
-      body: JSON.stringify({ message: prompt, model: 'claude-3-5-sonnet-20241022', history: [] })
-    });
-    
-    var reader = resp.body.getReader();
-    var decoder = new TextDecoder();
-    var fullText = '';
-    while (true) {
-      var result = await reader.read();
-      if (result.done) break;
-      var chunk = decoder.decode(result.value, { stream: true });
-      var lines = chunk.split('\n');
-      for (var i = 0; i < lines.length; i++) {
-        var line = lines[i].trim();
-        if (line.startsWith('data: ')) {
-          var payload = line.slice(6);
-          if (payload === '[DONE]') continue;
-          try { var p = JSON.parse(payload); fullText += (p.text || p.delta || p.content || ''); } catch(e) { fullText += payload; }
-        }
+    var resp = await fetch(API + '/api/corpnet/packages?state=' + fd.state + '&entity_type=' + encodeURIComponent(fd.entityType));
+    var data = await resp.json();
+    if (data.packages && data.packages.length > 0) {
+      /* Parse CorpNet v2 response — the packages come nested */
+      var pkgCollection = data.packages;
+      var productPackages = [];
+      if (pkgCollection[0] && pkgCollection[0].productPackages) {
+        productPackages = pkgCollection[0].productPackages;
+      } else {
+        productPackages = pkgCollection;
       }
-    }
-    
-    if (preview && fullText) {
-      preview.innerHTML = fullText;
-      if (typeof showToast === 'function') showToast('Resume generated', 'success');
+      bcState.formationData.packages = productPackages;
+      bcState.formationData.apiLive = data.api_live;
+      bcState.formationData.stateFee = data.state_fee || 0;
+      bcState.formationStep = 1;
+    } else {
+      bcState.formationData.packages = [];
+      bcState.formationStep = 1;
     }
   } catch(e) {
-    if (preview) preview.innerHTML = '<div style="padding:20px;color:#c00;">Generation failed. Please try again.</div>';
+    console.error('CorpNet fetch error:', e);
+    bcState.formationData.packages = [];
+    bcState.formationStep = 1;
   }
+  renderBusinessCenter();
+}
+
+/* Step 1: Select Package */
+function bcFormationStep1() {
+  var fd = bcState.formationData;
+  var pkgs = fd.packages;
+  var html = '';
+  html += '<h2 style="font-size:18px;font-weight:700;margin-bottom:4px;color:var(--text-primary);">Select Your Package</h2>';
+  html += '<p style="color:var(--text-muted);font-size:13px;margin-bottom:20px;">'
+       + fd.entityType + ' in ' + (fd.state || '') + (fd.apiLive ? ' — Live CorpNet pricing' : ' — Estimated pricing') + '</p>';
+
+  if (pkgs.length === 0) {
+    html += '<div style="padding:24px;text-align:center;color:var(--text-muted);background:var(--surface-raised,#1a1a1a);border-radius:12px;">No packages available for this combination. Try a different state or entity type.</div>';
+    html += '<button onclick="bcState.formationStep=0;renderBusinessCenter();" style="margin-top:16px;padding:12px 24px;border-radius:10px;border:1px solid var(--border-color,#333);background:transparent;color:var(--text-primary);cursor:pointer;">Back</button>';
+    return html;
+  }
+
+  /* Sort packages: Basic < Deluxe < Complete */
+  var sorted = pkgs.slice().sort(function(a,b) { return (a.price || 0) - (b.price || 0); });
+
+  html += '<div style="display:flex;flex-direction:column;gap:12px;margin-bottom:20px;">';
+  sorted.forEach(function(pkg, idx) {
+    var sel = fd.selectedPkg === idx;
+    var name = pkg.name || ('Package ' + (idx + 1));
+    var shortName = name.includes('Complete') ? 'Complete' : name.includes('Deluxe') ? 'Deluxe' : 'Basic';
+    var price = pkg.price || 0;
+    var bundled = (pkg.productOptions || []).filter(function(o) { return o.packageDisplaySelection === 'Bundled'; });
+    var optional = (pkg.productOptions || []).filter(function(o) { return o.packageDisplaySelection === 'Optional'; });
+    var recommended = shortName === 'Complete';
+
+    html += '<div onclick="bcState.formationData.selectedPkg=' + idx + ';renderBusinessCenter();" '
+         + 'style="cursor:pointer;padding:16px;border-radius:12px;border:2px solid ' + (sel ? 'var(--accent-gold,#D4A843)' : 'transparent') + ';'
+         + 'background:' + (sel ? 'rgba(212,168,67,0.08)' : 'var(--surface-raised,#1a1a1a)') + ';position:relative;">';
+
+    if (recommended) {
+      html += '<div style="position:absolute;top:-8px;right:12px;background:var(--accent-gold,#D4A843);color:#000;font-size:10px;font-weight:700;padding:2px 8px;border-radius:4px;">RECOMMENDED</div>';
+    }
+
+    html += '<div style="display:flex;justify-content:space-between;align-items:flex-start;">';
+    html += '<div><div style="font-weight:700;font-size:16px;color:var(--text-primary);">' + shortName + '</div>';
+    html += '<div style="font-size:11px;color:var(--text-muted);margin-top:2px;">' + bundled.length + ' services included</div></div>';
+    html += '<div style="text-align:right;"><div style="font-size:22px;font-weight:700;color:var(--accent-gold,#D4A843);">$' + price.toFixed(0) + '</div>';
+    html += '<div style="font-size:10px;color:var(--text-muted);">+ state fees</div></div>';
+    html += '</div>';
+
+    /* Show bundled items */
+    if (sel && bundled.length > 0) {
+      html += '<div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border-color,#333);">';
+      html += '<div style="font-size:11px;font-weight:600;color:var(--text-muted);margin-bottom:8px;">INCLUDED SERVICES</div>';
+      bundled.forEach(function(b) {
+        html += '<div style="font-size:12px;color:var(--text-secondary);padding:3px 0;">✓ ' + b.productName + (b.price > 0 ? '' : '') + '</div>';
+      });
+      html += '</div>';
+      if (optional.length > 0) {
+        html += '<div style="margin-top:10px;">';
+        html += '<div style="font-size:11px;font-weight:600;color:var(--text-muted);margin-bottom:8px;">OPTIONAL ADD-ONS</div>';
+        optional.forEach(function(o) {
+          html += '<div style="font-size:12px;color:var(--text-secondary);padding:3px 0;">+ ' + o.productName + (o.price > 0 ? ' ($' + o.price.toFixed(0) + ')' : '') + '</div>';
+        });
+        html += '</div>';
+      }
+    }
+    html += '</div>';
+  });
+  html += '</div>';
+
+  /* Processing Speed */
+  if (fd.selectedPkg !== null && fd.selectedPkg !== undefined) {
+    var selectedPkg = sorted[fd.selectedPkg];
+    var speeds = (selectedPkg.productOptions || []).filter(function(o) {
+      return o.productFamily === 'Package Addons' && /speed|processing/i.test(o.productName);
+    });
+    if (speeds.length > 0) {
+      html += '<div style="font-size:12px;font-weight:600;color:var(--text-secondary);margin-bottom:8px;">Processing Speed</div>';
+      html += '<div style="display:flex;gap:8px;margin-bottom:20px;flex-wrap:wrap;">';
+      speeds.forEach(function(sp) {
+        var isStd = /standard/i.test(sp.productName);
+        var sel = (fd.selectedSpeed === sp.id) || (isStd && !fd.selectedSpeed);
+        var label = /24.hour/i.test(sp.productName) ? 'Rush (2-3 days)' : /express/i.test(sp.productName) ? 'Express (7-10 days)' : 'Standard (10-15 days)';
+        html += '<button onclick="bcState.formationData.selectedSpeed=\'' + (sp.id || sp.productName) + '\';renderBusinessCenter();" '
+             + 'style="flex:1;min-width:100px;padding:10px;border-radius:8px;border:2px solid ' + (sel ? 'var(--accent-gold)' : 'var(--border-color,#333)') + ';'
+             + 'background:' + (sel ? 'rgba(212,168,67,0.1)' : 'transparent') + ';color:var(--text-primary);cursor:pointer;font-size:11px;text-align:center;">'
+             + label + (sp.price > 0 ? '<br><span style="color:var(--accent-gold);font-weight:700;">+$' + sp.price.toFixed(0) + '</span>' : '<br><span style="color:#10B981;">Included</span>') + '</button>';
+      });
+      html += '</div>';
+    }
+  }
+
+  html += '<div style="display:flex;gap:10px;">';
+  html += '<button onclick="bcState.formationStep=0;renderBusinessCenter();" style="flex:1;padding:14px;border-radius:10px;border:1px solid var(--border-color,#333);background:transparent;color:var(--text-primary);cursor:pointer;font-weight:600;">Back</button>';
+  html += '<button onclick="bcState.formationStep=2;renderBusinessCenter();" '
+       + 'style="flex:2;padding:14px;border-radius:10px;border:none;background:var(--accent-gold,#D4A843);color:#000;font-weight:700;cursor:pointer;"'
+       + (fd.selectedPkg === null || fd.selectedPkg === undefined ? ' disabled' : '') + '>Continue to Details</button>';
+  html += '</div>';
+  return html;
+}
+
+/* Step 2: Contact Details */
+function bcFormationStep2() {
+  var fd = bcState.formationData;
+  var html = '';
+  html += '<h2 style="font-size:18px;font-weight:700;margin-bottom:4px;color:var(--text-primary);">Your Details</h2>';
+  html += '<p style="color:var(--text-muted);font-size:13px;margin-bottom:20px;">Contact information for the formation filing.</p>';
+
+  var fields = [
+    { id: 'contactName', label: 'Full Name', placeholder: 'John Smith', type: 'text' },
+    { id: 'contactEmail', label: 'Email Address', placeholder: 'john@example.com', type: 'email' },
+    { id: 'contactPhone', label: 'Phone Number', placeholder: '(555) 123-4567', type: 'tel' },
+    { id: 'businessAddress', label: 'Business Address', placeholder: '123 Main St', type: 'text' },
+    { id: 'businessCity', label: 'City', placeholder: 'City', type: 'text' },
+    { id: 'businessZip', label: 'ZIP Code', placeholder: '90210', type: 'text' },
+  ];
+
+  fields.forEach(function(f) {
+    html += '<label style="font-size:12px;font-weight:600;color:var(--text-secondary);display:block;margin-bottom:4px;">' + f.label + '</label>';
+    html += '<input type="' + f.type + '" id="bc_' + f.id + '" placeholder="' + f.placeholder + '" '
+         + 'value="' + (fd.contact[f.id] || '') + '" '
+         + 'onchange="bcState.formationData.contact[\'' + f.id + '\']=this.value;" '
+         + 'style="width:100%;padding:12px;border-radius:10px;border:1px solid var(--border-color,#333);background:var(--surface-raised,#1a1a1a);color:var(--text-primary);font-size:14px;margin-bottom:14px;box-sizing:border-box;">';
+  });
+
+  html += '<div style="display:flex;gap:10px;margin-top:8px;">';
+  html += '<button onclick="bcState.formationStep=1;renderBusinessCenter();" style="flex:1;padding:14px;border-radius:10px;border:1px solid var(--border-color,#333);background:transparent;color:var(--text-primary);cursor:pointer;font-weight:600;">Back</button>';
+  html += '<button onclick="bcSubmitFormation();" style="flex:2;padding:14px;border-radius:10px;border:none;background:var(--accent-gold,#D4A843);color:#000;font-weight:700;cursor:pointer;">Review & Submit</button>';
+  html += '</div>';
+  return html;
+}
+
+/* Step 3: Review & Checkout */
+function bcFormationStep3() {
+  var fd = bcState.formationData;
+  var html = '';
+  html += '<h2 style="font-size:18px;font-weight:700;margin-bottom:4px;color:var(--text-primary);">Order Submitted</h2>';
+  html += '<p style="color:#10B981;font-size:13px;margin-bottom:20px;">Your formation order has been submitted to CorpNet.</p>';
+
+  html += '<div style="padding:16px;border-radius:12px;background:var(--surface-raised,#1a1a1a);margin-bottom:16px;">';
+  html += '<div style="font-size:13px;color:var(--text-secondary);line-height:1.8;">';
+  html += '<strong>Business:</strong> ' + (fd.businessName || 'N/A') + '<br>';
+  html += '<strong>Type:</strong> ' + (fd.entityType || 'N/A') + '<br>';
+  html += '<strong>State:</strong> ' + (fd.state || 'N/A') + '<br>';
+  html += '<strong>Status:</strong> <span style="color:var(--accent-gold);">Order Received</span>';
+  html += '</div></div>';
+
+  html += '<p style="font-size:12px;color:var(--text-muted);">Track your order status in the Business Center. CorpNet will handle all filings with the state and federal agencies.</p>';
+
+  html += '<button onclick="bcState.formationStep=0;bcState.formationData.packages=[];bcState.formationData.selectedPkg=null;renderBusinessCenter();" '
+       + 'style="width:100%;padding:14px;border-radius:10px;border:none;background:var(--accent-gold,#D4A843);color:#000;font-weight:700;cursor:pointer;margin-top:12px;">Start Another Formation</button>';
+  return html;
+}
+
+/* Submit formation to backend (CorpNet API + Stripe checkout) */
+async function bcSubmitFormation() {
+  var fd = bcState.formationData;
+  var el = document.getElementById('bcTabContent');
+  if (el) el.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-muted);">Submitting to CorpNet...</div>';
+
+  try {
+    /* First try Stripe checkout for payment */
+    var pkgs = fd.packages.sort(function(a,b){ return (a.price||0)-(b.price||0); });
+    var selectedPkg = pkgs[fd.selectedPkg] || pkgs[0];
+    var pkgName = (selectedPkg.name || '').toLowerCase();
+    var pkgId = pkgName.includes('complete') ? 'complete' : pkgName.includes('deluxe') ? 'deluxe' : 'basic';
+
+    var checkoutResp = await fetch(API + '/api/corpnet/checkout', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        package_id: pkgId,
+        entity_type: fd.entityType,
+        state: fd.state,
+        business_name: fd.businessName || '',
+      })
+    });
+    var checkoutData = await checkoutResp.json();
+    if (checkoutData.url) {
+      /* Redirect to Stripe checkout */
+      window.open(checkoutData.url, '_blank');
+    }
+
+    /* Also submit formation order */
+    var entityMap = { 'LLC': 'llc', 'C-Corp': 'c_corp', 'S-Corp': 's_corp', 'Non-Profit Corporation': 'nonprofit' };
+    await fetch(API + '/api/corpnet/formation', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        business_name: fd.businessName || '',
+        entity_type: entityMap[fd.entityType] || 'llc',
+        state: fd.state,
+        package: pkgId,
+        contact_name: fd.contact.contactName || '',
+        contact_email: fd.contact.contactEmail || '',
+        contact_phone: fd.contact.contactPhone || '',
+        business_address1: fd.contact.businessAddress || '',
+        business_city: fd.contact.businessCity || '',
+        business_zip: fd.contact.businessZip || '',
+      })
+    });
+
+    bcState.formationStep = 3;
+  } catch(e) {
+    console.error('Formation submit error:', e);
+    bcState.formationStep = 3;
+  }
+  renderBusinessCenter();
+}
+
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   DOMAINS TAB — GoDaddy Reseller
+   ══════════════════════════════════════════════════════════════════════════════ */
+function bcDomains() {
+  var html = '';
+  html += '<h2 style="font-size:18px;font-weight:700;margin-bottom:4px;color:var(--text-primary);">Domains & Hosting</h2>';
+  html += '<p style="color:var(--text-muted);font-size:13px;margin-bottom:20px;">Search, register, and manage domains. Powered by GoDaddy.</p>';
+
+  /* Domain Search */
+  html += '<div style="display:flex;gap:8px;margin-bottom:20px;">';
+  html += '<input type="text" id="bcDomainSearch" placeholder="Search for a domain name..." '
+       + 'value="' + (bcState.domainQuery || '') + '" '
+       + 'onkeydown="if(event.key===\'Enter\')bcSearchDomain();" '
+       + 'style="flex:1;padding:12px;border-radius:10px;border:1px solid var(--border-color,#333);background:var(--surface-raised,#1a1a1a);color:var(--text-primary);font-size:14px;box-sizing:border-box;">';
+  html += '<button onclick="bcSearchDomain();" style="padding:12px 20px;border-radius:10px;border:none;background:var(--accent-gold,#D4A843);color:#000;font-weight:700;cursor:pointer;white-space:nowrap;">Search</button>';
+  html += '</div>';
+
+  /* Results */
+  if (bcState.domainResults.length > 0) {
+    html += '<div style="margin-bottom:20px;">';
+    bcState.domainResults.forEach(function(r) {
+      var avail = r.available;
+      html += '<div style="display:flex;justify-content:space-between;align-items:center;padding:14px;border-radius:10px;background:var(--surface-raised,#1a1a1a);margin-bottom:8px;">';
+      html += '<div>';
+      html += '<div style="font-weight:600;font-size:14px;color:var(--text-primary);">' + r.domain + '</div>';
+      html += '<div style="font-size:11px;color:' + (avail ? '#10B981' : '#EF4444') + ';">' + (avail ? 'Available' : 'Taken') + '</div>';
+      html += '</div>';
+      html += '<div style="text-align:right;">';
+      if (avail) {
+        html += '<div style="font-weight:700;color:var(--accent-gold);font-size:14px;">' + (r.price || '$14.99') + '/yr</div>';
+        html += '<button onclick="bcPurchaseDomain(\'' + r.domain + '\')" style="margin-top:4px;padding:6px 14px;border-radius:6px;border:none;background:var(--accent-gold,#D4A843);color:#000;font-weight:600;font-size:11px;cursor:pointer;">Register</button>';
+      } else {
+        html += '<div style="font-size:12px;color:var(--text-muted);">Not available</div>';
+      }
+      html += '</div></div>';
+    });
+    html += '</div>';
+  }
+
+  /* Quick Links — GoDaddy Storefront */
+  html += '<div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-muted);margin-bottom:12px;">More Services</div>';
+  html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">';
+  var services = [
+    { label: 'Web Hosting', icon: '🖥️', url: 'hosting_url' },
+    { label: 'Professional Email', icon: '📧', url: 'email_url' },
+    { label: 'SSL Certificates', icon: '🔒', url: 'ssl_url' },
+    { label: 'Website Builder', icon: '🎨', url: 'website_builder_url' },
+  ];
+  services.forEach(function(s) {
+    html += '<div onclick="bcOpenStorefront(\'' + s.url + '\')" style="cursor:pointer;padding:14px;border-radius:10px;background:var(--surface-raised,#1a1a1a);">'
+         + '<div style="font-size:20px;margin-bottom:6px;">' + s.icon + '</div>'
+         + '<div style="font-weight:600;font-size:12px;color:var(--text-primary);">' + s.label + '</div></div>';
+  });
+  html += '</div>';
+  return html;
+}
+
+async function bcSearchDomain() {
+  var input = document.getElementById('bcDomainSearch');
+  var query = input ? input.value.trim() : '';
+  if (!query) return;
+  bcState.domainQuery = query;
+
+  var el = document.getElementById('bcTabContent');
+  if (el) el.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-muted);">Searching domains...</div>';
+
+  try {
+    var resp = await fetch(API + '/api/domains/search?domain=' + encodeURIComponent(query));
+    var data = await resp.json();
+    bcState.domainResults = (data.results || []).concat(data.suggestions || []);
+  } catch(e) {
+    console.error('Domain search error:', e);
+    bcState.domainResults = [];
+  }
+  renderBusinessCenter();
+}
+
+async function bcPurchaseDomain(domain) {
+  try {
+    var resp = await fetch(API + '/api/domains/purchase', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ domain: domain })
+    });
+    var data = await resp.json();
+    if (data.checkout_url) {
+      window.open(data.checkout_url, '_blank');
+    }
+  } catch(e) {
+    console.error('Domain purchase error:', e);
+  }
+}
+
+async function bcOpenStorefront(urlKey) {
+  /* Fetch storefront config if not cached */
+  if (!bcState.gdStorefront.storefront_url) {
+    try {
+      var resp = await fetch(API + '/api/godaddy/storefront');
+      bcState.gdStorefront = await resp.json();
+    } catch(e) {
+      bcState.gdStorefront = { storefront_url: 'https://www.secureserver.net/?pl_id=600402' };
+    }
+  }
+  var url = bcState.gdStorefront[urlKey] || bcState.gdStorefront.storefront_url;
+  window.open(url, '_blank');
+}
+
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   RESUME BUILDER
+   ══════════════════════════════════════════════════════════════════════════════ */
+function bcResumeBuilder() {
+  var rd = bcState.resumeData;
+  var html = '';
+  html += '<h2 style="font-size:18px;font-weight:700;margin-bottom:4px;color:var(--text-primary);">Resume Builder</h2>';
+  html += '<p style="color:var(--text-muted);font-size:13px;margin-bottom:20px;">Create a professional resume. Fill in your details below.</p>';
+
+  var fields = [
+    { key: 'name', label: 'Full Name', placeholder: 'John Smith', type: 'input' },
+    { key: 'title', label: 'Job Title', placeholder: 'Software Engineer', type: 'input' },
+    { key: 'email', label: 'Email', placeholder: 'john@example.com', type: 'input' },
+    { key: 'phone', label: 'Phone', placeholder: '(555) 123-4567', type: 'input' },
+    { key: 'summary', label: 'Professional Summary', placeholder: 'Brief summary of your experience and skills...', type: 'textarea' },
+    { key: 'experience', label: 'Work Experience', placeholder: 'Company Name — Job Title — Dates\n• Responsibility 1\n• Achievement 2', type: 'textarea' },
+    { key: 'education', label: 'Education', placeholder: 'University Name — Degree — Year', type: 'textarea' },
+    { key: 'skills', label: 'Skills', placeholder: 'JavaScript, Python, Project Management, etc.', type: 'input' },
+  ];
+
+  fields.forEach(function(f) {
+    html += '<label style="font-size:12px;font-weight:600;color:var(--text-secondary);display:block;margin-bottom:4px;">' + f.label + '</label>';
+    if (f.type === 'textarea') {
+      html += '<textarea id="bcResume_' + f.key + '" placeholder="' + f.placeholder + '" '
+           + 'onchange="bcState.resumeData[\'' + f.key + '\']=this.value;" '
+           + 'style="width:100%;min-height:80px;padding:12px;border-radius:10px;border:1px solid var(--border-color,#333);background:var(--surface-raised,#1a1a1a);color:var(--text-primary);font-size:13px;margin-bottom:14px;box-sizing:border-box;resize:vertical;font-family:inherit;">'
+           + (rd[f.key] || '') + '</textarea>';
+    } else {
+      html += '<input type="text" id="bcResume_' + f.key + '" placeholder="' + f.placeholder + '" '
+           + 'value="' + (rd[f.key] || '') + '" '
+           + 'onchange="bcState.resumeData[\'' + f.key + '\']=this.value;" '
+           + 'style="width:100%;padding:12px;border-radius:10px;border:1px solid var(--border-color,#333);background:var(--surface-raised,#1a1a1a);color:var(--text-primary);font-size:14px;margin-bottom:14px;box-sizing:border-box;">';
+    }
+  });
+
+  html += '<div style="display:flex;gap:10px;margin-top:8px;">';
+  html += '<button onclick="bcPreviewResume();" style="flex:1;padding:14px;border-radius:10px;border:none;background:var(--accent-gold,#D4A843);color:#000;font-weight:700;cursor:pointer;">Preview Resume</button>';
+  html += '<button onclick="bcDownloadResume();" style="flex:1;padding:14px;border-radius:10px;border:1px solid var(--accent-gold,#D4A843);background:transparent;color:var(--accent-gold);font-weight:700;cursor:pointer;">Download</button>';
+  html += '</div>';
+  return html;
 }
 
 function bcPreviewResume() {
-  bcSaveResumeData();
-  var r = bcState.resumeData;
-  var preview = document.getElementById('bcResumePreview');
-  if (!preview) return;
+  var rd = bcState.resumeData;
+  var preview = '<div style="font-family:Georgia,serif;background:#fff;color:#222;padding:32px;border-radius:12px;max-width:600px;margin:16px auto;">';
+  preview += '<h1 style="font-size:24px;margin:0;border-bottom:2px solid #D4A843;padding-bottom:8px;">' + (rd.name || 'Your Name') + '</h1>';
+  preview += '<p style="color:#666;font-size:14px;margin:4px 0;">' + (rd.title || 'Job Title') + '</p>';
+  preview += '<p style="color:#666;font-size:12px;">' + [rd.email, rd.phone].filter(Boolean).join(' | ') + '</p>';
+  if (rd.summary) preview += '<h2 style="font-size:14px;color:#D4A843;margin-top:16px;">PROFESSIONAL SUMMARY</h2><p style="font-size:13px;line-height:1.6;">' + rd.summary + '</p>';
+  if (rd.experience) preview += '<h2 style="font-size:14px;color:#D4A843;margin-top:16px;">EXPERIENCE</h2><pre style="font-size:12px;line-height:1.6;white-space:pre-wrap;font-family:Georgia,serif;">' + rd.experience + '</pre>';
+  if (rd.education) preview += '<h2 style="font-size:14px;color:#D4A843;margin-top:16px;">EDUCATION</h2><p style="font-size:13px;">' + rd.education + '</p>';
+  if (rd.skills) preview += '<h2 style="font-size:14px;color:#D4A843;margin-top:16px;">SKILLS</h2><p style="font-size:13px;">' + rd.skills + '</p>';
+  preview += '</div>';
 
-  var html = '<div style="font-family:Georgia,serif;">';
-  html += '<h1 style="font-size:24px;margin:0 0 4px;color:#1a1a1a;">' + (r.name || 'Your Name') + '</h1>';
-  html += '<div style="font-size:14px;color:#666;margin-bottom:8px;">' + (r.title || 'Professional Title') + '</div>';
-  html += '<div style="font-size:11px;color:#888;margin-bottom:16px;">' + [r.email, r.phone, r.location].filter(Boolean).join(' • ') + '</div>';
-  html += '<hr style="border:none;border-top:1px solid #ddd;margin:0 0 16px;">';
-  
-  if (r.summary) {
-    html += '<h3 style="font-size:12px;font-weight:700;color:#1a1a1a;text-transform:uppercase;letter-spacing:0.5px;margin:0 0 6px;">Summary</h3>';
-    html += '<p style="font-size:12px;color:#333;line-height:1.6;margin:0 0 16px;">' + r.summary.replace(/\n/g, '<br>') + '</p>';
+  var el = document.getElementById('bcTabContent');
+  if (el) {
+    el.innerHTML = '<button onclick="renderBusinessCenter();" style="margin-bottom:12px;padding:8px 16px;border-radius:8px;border:1px solid var(--border-color,#333);background:transparent;color:var(--text-primary);cursor:pointer;">← Back to Editor</button>' + preview;
   }
-  if (r.experience) {
-    html += '<h3 style="font-size:12px;font-weight:700;color:#1a1a1a;text-transform:uppercase;letter-spacing:0.5px;margin:0 0 6px;">Experience</h3>';
-    html += '<div style="font-size:12px;color:#333;line-height:1.6;margin:0 0 16px;white-space:pre-line;">' + r.experience + '</div>';
-  }
-  if (r.education) {
-    html += '<h3 style="font-size:12px;font-weight:700;color:#1a1a1a;text-transform:uppercase;letter-spacing:0.5px;margin:0 0 6px;">Education</h3>';
-    html += '<div style="font-size:12px;color:#333;line-height:1.6;margin:0 0 16px;white-space:pre-line;">' + r.education + '</div>';
-  }
-  if (r.skills) {
-    html += '<h3 style="font-size:12px;font-weight:700;color:#1a1a1a;text-transform:uppercase;letter-spacing:0.5px;margin:0 0 6px;">Skills</h3>';
-    html += '<div style="font-size:12px;color:#333;">' + r.skills + '</div>';
-  }
-  html += '</div>';
-  preview.innerHTML = html;
 }
 
-function bcSaveResumeData() {
-  bcState.resumeData = {
-    name: (document.getElementById('bcResumeName') || {}).value || '',
-    title: (document.getElementById('bcResumeTitle') || {}).value || '',
-    email: (document.getElementById('bcResumeEmail') || {}).value || '',
-    phone: (document.getElementById('bcResumePhone') || {}).value || '',
-    location: (document.getElementById('bcResumeLocation') || {}).value || '',
-    linkedin: (document.getElementById('bcResumeLinkedin') || {}).value || '',
-    summary: (document.getElementById('bcResumeSummary') || {}).value || '',
-    experience: (document.getElementById('bcResumeExperience') || {}).value || '',
-    education: (document.getElementById('bcResumeEducation') || {}).value || '',
-    skills: (document.getElementById('bcResumeSkills') || {}).value || ''
-  };
+function bcDownloadResume() {
+  var rd = bcState.resumeData;
+  var content = (rd.name || 'Your Name') + '\n' + (rd.title || '') + '\n' + [rd.email, rd.phone].filter(Boolean).join(' | ') + '\n\n';
+  if (rd.summary) content += 'PROFESSIONAL SUMMARY\n' + rd.summary + '\n\n';
+  if (rd.experience) content += 'EXPERIENCE\n' + rd.experience + '\n\n';
+  if (rd.education) content += 'EDUCATION\n' + rd.education + '\n\n';
+  if (rd.skills) content += 'SKILLS\n' + rd.skills + '\n';
+  var blob = new Blob([content], { type: 'text/plain' });
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = (rd.name || 'resume').replace(/\s+/g, '_') + '_resume.txt';
+  a.click();
 }
 
-/* ── EMAIL SIGNATURE TAB ── */
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   EMAIL SIGNATURE
+   ══════════════════════════════════════════════════════════════════════════════ */
 function bcEmailSignature() {
-  var s = bcState.signatureData;
+  var sd = bcState.signatureData;
   var html = '';
-  html += '<div style="margin-bottom:20px;">';
-  html += '<h2 style="font-size:18px;font-weight:700;color:var(--text-primary);margin:0 0 4px;">Email Signature Builder</h2>';
-  html += '<p style="font-size:13px;color:var(--text-muted);margin:0;">Create a professional email signature you can paste into any email client.</p>';
+  html += '<h2 style="font-size:18px;font-weight:700;margin-bottom:4px;color:var(--text-primary);">Email Signature</h2>';
+  html += '<p style="color:var(--text-muted);font-size:13px;margin-bottom:20px;">Generate a professional email signature.</p>';
+
+  var fields = [
+    { key: 'name', label: 'Full Name', placeholder: 'John Smith' },
+    { key: 'title', label: 'Job Title', placeholder: 'CEO' },
+    { key: 'company', label: 'Company', placeholder: 'SaintSal Labs' },
+    { key: 'email', label: 'Email', placeholder: 'john@company.com' },
+    { key: 'phone', label: 'Phone', placeholder: '(555) 123-4567' },
+    { key: 'website', label: 'Website', placeholder: 'https://company.com' },
+  ];
+
+  fields.forEach(function(f) {
+    html += '<label style="font-size:12px;font-weight:600;color:var(--text-secondary);display:block;margin-bottom:4px;">' + f.label + '</label>';
+    html += '<input type="text" placeholder="' + f.placeholder + '" '
+         + 'value="' + (sd[f.key] || '') + '" '
+         + 'onchange="bcState.signatureData[\'' + f.key + '\']=this.value;bcUpdateSigPreview();" '
+         + 'style="width:100%;padding:10px;border-radius:8px;border:1px solid var(--border-color,#333);background:var(--surface-raised,#1a1a1a);color:var(--text-primary);font-size:13px;margin-bottom:10px;box-sizing:border-box;">';
+  });
+
+  /* Color Picker */
+  html += '<label style="font-size:12px;font-weight:600;color:var(--text-secondary);display:block;margin-bottom:4px;">Accent Color</label>';
+  html += '<div style="display:flex;gap:8px;margin-bottom:16px;">';
+  ['#D4A843','#10B981','#3B82F6','#8B5CF6','#EF4444','#F59E0B'].forEach(function(c) {
+    var sel = sd.color === c;
+    html += '<div onclick="bcState.signatureData.color=\'' + c + '\';renderBusinessCenter();" '
+         + 'style="width:32px;height:32px;border-radius:8px;background:' + c + ';cursor:pointer;border:3px solid ' + (sel ? '#fff' : 'transparent') + ';"></div>';
+  });
   html += '</div>';
 
-  html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;">';
+  /* Preview */
+  html += '<div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-muted);margin-bottom:8px;">Preview</div>';
+  html += '<div id="bcSigPreview" style="background:#fff;padding:16px;border-radius:10px;">' + bcGenerateSignature() + '</div>';
 
-  /* Left: Form */
-  html += '<div style="display:flex;flex-direction:column;gap:10px;">';
-  html += _bcInput('Full Name', 'bcSigName', s.name || '', 'Your Name');
-  html += _bcInput('Title', 'bcSigTitle', s.title || '', 'CEO / Founder');
-  html += _bcInput('Company', 'bcSigCompany', s.company || '', 'Company Name');
-  html += _bcInput('Email', 'bcSigEmail', s.email || '', 'you@company.com');
-  html += _bcInput('Phone', 'bcSigPhone', s.phone || '', '+1 (555) 123-4567');
-  html += _bcInput('Website', 'bcSigWebsite', s.website || '', 'www.company.com');
-  html += _bcInput('Logo URL', 'bcSigLogo', s.logo || '', 'https://...');
-  html += '<button onclick="bcPreviewSignature()" style="background:var(--accent-gold);color:#000;border:none;padding:10px;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;font-family:\'Inter\',sans-serif;margin-top:4px;">Preview Signature</button>';
-  html += '<button onclick="bcCopySignature()" style="background:var(--bg-secondary);border:none;color:var(--text-primary);padding:10px;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;font-family:\'Inter\',sans-serif;">Copy HTML</button>';
-  html += '</div>';
-
-  /* Right: Preview */
-  html += '<div id="bcSigPreview" style="background:#fff;border-radius:12px;padding:24px;min-height:200px;display:flex;align-items:center;justify-content:center;">';
-  html += '<div style="color:#999;font-size:13px;">Fill in your details and click "Preview Signature"</div>';
-  html += '</div>';
-
-  html += '</div>';
+  html += '<button onclick="bcCopySignature();" style="width:100%;margin-top:16px;padding:14px;border-radius:10px;border:none;background:var(--accent-gold,#D4A843);color:#000;font-weight:700;cursor:pointer;">Copy Signature to Clipboard</button>';
   return html;
 }
 
-function bcPreviewSignature() {
-  var s = {
-    name: (document.getElementById('bcSigName') || {}).value || 'Your Name',
-    title: (document.getElementById('bcSigTitle') || {}).value || '',
-    company: (document.getElementById('bcSigCompany') || {}).value || '',
-    email: (document.getElementById('bcSigEmail') || {}).value || '',
-    phone: (document.getElementById('bcSigPhone') || {}).value || '',
-    website: (document.getElementById('bcSigWebsite') || {}).value || '',
-    logo: (document.getElementById('bcSigLogo') || {}).value || ''
-  };
-  bcState.signatureData = s;
+function bcGenerateSignature() {
+  var sd = bcState.signatureData;
+  var c = sd.color || '#D4A843';
+  return '<table cellpadding="0" cellspacing="0" style="font-family:Arial,sans-serif;font-size:13px;color:#333;">'
+    + '<tr><td style="border-left:3px solid ' + c + ';padding-left:12px;">'
+    + '<div style="font-weight:700;font-size:15px;color:#222;">' + (sd.name || 'Your Name') + '</div>'
+    + '<div style="color:' + c + ';font-size:12px;margin-top:1px;">' + (sd.title || 'Title') + (sd.company ? ' | ' + sd.company : '') + '</div>'
+    + '<div style="margin-top:6px;font-size:11px;color:#666;">'
+    + (sd.phone ? sd.phone + '<br>' : '')
+    + (sd.email ? '<a href="mailto:' + sd.email + '" style="color:' + c + ';text-decoration:none;">' + sd.email + '</a><br>' : '')
+    + (sd.website ? '<a href="' + sd.website + '" style="color:' + c + ';text-decoration:none;">' + sd.website + '</a>' : '')
+    + '</div></td></tr></table>';
+}
 
-  var sigHtml = '<table cellpadding="0" cellspacing="0" style="font-family:Arial,sans-serif;color:#333;">';
-  sigHtml += '<tr><td style="padding-right:16px;border-right:2px solid #D4AF37;vertical-align:top;">';
-  if (s.logo) sigHtml += '<img src="' + s.logo + '" alt="Logo" style="width:60px;height:auto;border-radius:4px;">';
-  sigHtml += '</td><td style="padding-left:16px;">';
-  sigHtml += '<div style="font-size:16px;font-weight:700;color:#1a1a1a;">' + s.name + '</div>';
-  if (s.title) sigHtml += '<div style="font-size:12px;color:#666;margin-top:2px;">' + s.title + (s.company ? ' · ' + s.company : '') + '</div>';
-  sigHtml += '<div style="margin-top:8px;font-size:12px;color:#888;">';
-  if (s.phone) sigHtml += s.phone + '<br>';
-  if (s.email) sigHtml += '<a href="mailto:' + s.email + '" style="color:#D4AF37;text-decoration:none;">' + s.email + '</a><br>';
-  if (s.website) sigHtml += '<a href="https://' + s.website.replace(/^https?:\/\//, '') + '" style="color:#D4AF37;text-decoration:none;">' + s.website + '</a>';
-  sigHtml += '</div>';
-  sigHtml += '</td></tr></table>';
-
-  var preview = document.getElementById('bcSigPreview');
-  if (preview) preview.innerHTML = sigHtml;
-  window._bcLastSigHtml = sigHtml;
+function bcUpdateSigPreview() {
+  var el = document.getElementById('bcSigPreview');
+  if (el) el.innerHTML = bcGenerateSignature();
 }
 
 function bcCopySignature() {
-  if (!window._bcLastSigHtml) { bcPreviewSignature(); }
-  if (window._bcLastSigHtml) {
-    navigator.clipboard.writeText(window._bcLastSigHtml).then(function() {
-      if (typeof showToast === 'function') showToast('Signature HTML copied — paste into your email client', 'success');
-    }).catch(function() {
-      if (typeof showToast === 'function') showToast('Could not copy. Try again.', 'error');
+  var html = bcGenerateSignature();
+  if (navigator.clipboard && navigator.clipboard.write) {
+    var blob = new Blob([html], { type: 'text/html' });
+    navigator.clipboard.write([new ClipboardItem({ 'text/html': blob })]).then(function() {
+      alert('Signature copied! Paste into your email client.');
     });
+  } else {
+    var ta = document.createElement('textarea');
+    ta.value = html;
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    alert('Signature HTML copied! Paste into your email client.');
   }
 }
 
-/* ── PRESENTATIONS TAB ── */
-function bcPresentations() {
-  var html = '';
-  html += '<div style="margin-bottom:20px;">';
-  html += '<h2 style="font-size:18px;font-weight:700;color:var(--text-primary);margin:0 0 4px;">Presentation Builder</h2>';
-  html += '<p style="font-size:13px;color:var(--text-muted);margin:0;">Create pitch decks, investor slides, and meeting presentations with AI.</p>';
-  html += '</div>';
 
-  html += '<div style="display:flex;flex-direction:column;gap:12px;max-width:600px;">';
-  html += _bcInput('Presentation Title', 'bcPresTitle', '', 'e.g. Q1 2026 Investor Update');
-  html += _bcTextarea('Topic / Outline', 'bcPresTopic', '', 'Describe what your presentation should cover. SAL will generate an outline and slides.', 4);
-
-  html += '<div style="display:flex;gap:8px;">';
-  var presetTypes = [
-    { label: 'Pitch Deck', value: 'pitch' },
-    { label: 'Sales Deck', value: 'sales' },
-    { label: 'Meeting Brief', value: 'meeting' },
-    { label: 'Quarterly Review', value: 'quarterly' }
-  ];
-  presetTypes.forEach(function(p) {
-    html += '<button onclick="bcSetPresType(\'' + p.value + '\')" '
-          + 'style="flex:1;background:rgba(255,255,255,0.04);border:none;color:var(--text-secondary);padding:8px;border-radius:8px;font-size:12px;cursor:pointer;font-family:\'Inter\',sans-serif;transition:all 0.2s;" '
-          + 'onmouseenter="this.style.background=\'rgba(255,255,255,0.08)\'" '
-          + 'onmouseleave="this.style.background=\'rgba(255,255,255,0.04)\'">' + p.label + '</button>';
-  });
-  html += '</div>';
-
-  html += '<button onclick="bcGeneratePresentation()" style="background:var(--accent-gold);color:#000;border:none;padding:12px;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;font-family:\'Inter\',sans-serif;transition:all 0.2s;" onmouseenter="this.style.opacity=\'0.85\'" onmouseleave="this.style.opacity=\'1\'">✨ Generate Presentation</button>';
-  html += '</div>';
-
-  html += '<div id="bcPresOutput" style="margin-top:20px;"></div>';
-
-  return html;
-}
-
-function bcSetPresType(type) {
-  var topicField = document.getElementById('bcPresTopic');
-  var titleField = document.getElementById('bcPresTitle');
-  if (!topicField) return;
-  var presets = {
-    pitch: { title: 'Investor Pitch Deck', topic: 'Company overview, problem/solution, market size, traction, team, financials, ask.' },
-    sales: { title: 'Sales Presentation', topic: 'Product overview, key benefits, customer testimonials, pricing, next steps.' },
-    meeting: { title: 'Meeting Brief', topic: 'Agenda, key discussion points, action items, timeline.' },
-    quarterly: { title: 'Quarterly Business Review', topic: 'KPIs, revenue metrics, customer growth, product updates, goals for next quarter.' }
-  };
-  var preset = presets[type] || {};
-  if (titleField && preset.title) titleField.value = preset.title;
-  if (topicField && preset.topic) topicField.value = preset.topic;
-}
-
-async function bcGeneratePresentation() {
-  var title = (document.getElementById('bcPresTitle') || {}).value || 'Presentation';
-  var topic = (document.getElementById('bcPresTopic') || {}).value || '';
-  if (!topic) { if (typeof showToast === 'function') showToast('Describe what your presentation should cover', 'error'); return; }
-
-  var output = document.getElementById('bcPresOutput');
-  if (output) output.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-muted);font-size:13px;">Generating presentation outline...</div>';
-
-  try {
-    var resp = await fetch(API + '/api/chat', {
-      method: 'POST',
-      headers: Object.assign({ 'Content-Type': 'application/json' }, authHeaders()),
-      body: JSON.stringify({
-        message: 'Create a detailed presentation outline for "' + title + '". Topic: ' + topic + '. Return each slide with a title and 3-5 bullet points. Format as clean HTML with slide numbers. Make it professional and ready to present.',
-        model: 'claude-3-5-sonnet-20241022', history: []
-      })
-    });
-
-    var reader = resp.body.getReader();
-    var decoder = new TextDecoder();
-    var fullText = '';
-    while (true) {
-      var result = await reader.read();
-      if (result.done) break;
-      var chunk = decoder.decode(result.value, { stream: true });
-      var lines = chunk.split('\n');
-      for (var i = 0; i < lines.length; i++) {
-        var line = lines[i].trim();
-        if (line.startsWith('data: ')) {
-          var payload = line.slice(6);
-          if (payload === '[DONE]') continue;
-          try { var p = JSON.parse(payload); fullText += (p.text || p.delta || p.content || ''); } catch(e) { fullText += payload; }
-        }
-      }
-    }
-
-    if (output && fullText) {
-      output.innerHTML = '<div style="background:rgba(255,255,255,0.03);border-radius:12px;padding:20px;">' + fullText + '</div>';
-      if (typeof showToast === 'function') showToast('Presentation outline generated', 'success');
-    }
-  } catch(e) {
-    if (output) output.innerHTML = '<div style="padding:16px;color:var(--text-muted);">Generation failed. Please try again.</div>';
-  }
-}
-
-/* ── MEETING NOTES TAB ── */
+/* ══════════════════════════════════════════════════════════════════════════════
+   MEETING NOTES
+   ══════════════════════════════════════════════════════════════════════════════ */
 function bcMeetingNotes() {
   var html = '';
-  html += '<div style="margin-bottom:20px;">';
-  html += '<h2 style="font-size:18px;font-weight:700;color:var(--text-primary);margin:0 0 4px;">Meeting Notes</h2>';
-  html += '<p style="font-size:13px;color:var(--text-muted);margin:0;">Capture, organize, and share meeting notes. AI extracts action items automatically.</p>';
+  html += '<h2 style="font-size:18px;font-weight:700;margin-bottom:4px;color:var(--text-primary);">Meeting Notes</h2>';
+  html += '<p style="color:var(--text-muted);font-size:13px;margin-bottom:20px;">Capture, organize, and extract action items from meetings.</p>';
+
+  /* New Meeting Form */
+  var cm = bcState.currentMeeting;
+  html += '<div style="background:var(--surface-raised,#1a1a1a);padding:16px;border-radius:12px;margin-bottom:20px;">';
+  html += '<div style="font-size:13px;font-weight:600;color:var(--text-primary);margin-bottom:12px;">New Meeting</div>';
+
+  html += '<input type="text" placeholder="Meeting Title" value="' + (cm.title || '') + '" '
+       + 'onchange="bcState.currentMeeting.title=this.value;" '
+       + 'style="width:100%;padding:10px;border-radius:8px;border:1px solid var(--border-color,#333);background:var(--bg-primary,#0a0a0a);color:var(--text-primary);font-size:13px;margin-bottom:8px;box-sizing:border-box;">';
+
+  html += '<div style="display:flex;gap:8px;margin-bottom:8px;">';
+  html += '<input type="date" value="' + (cm.date || '') + '" onchange="bcState.currentMeeting.date=this.value;" '
+       + 'style="flex:1;padding:10px;border-radius:8px;border:1px solid var(--border-color,#333);background:var(--bg-primary,#0a0a0a);color:var(--text-primary);font-size:13px;box-sizing:border-box;">';
+  html += '<input type="text" placeholder="Attendees" value="' + (cm.attendees || '') + '" '
+       + 'onchange="bcState.currentMeeting.attendees=this.value;" '
+       + 'style="flex:2;padding:10px;border-radius:8px;border:1px solid var(--border-color,#333);background:var(--bg-primary,#0a0a0a);color:var(--text-primary);font-size:13px;box-sizing:border-box;">';
   html += '</div>';
 
-  html += '<div style="display:flex;flex-direction:column;gap:12px;max-width:700px;">';
-  html += _bcInput('Meeting Title', 'bcMeetTitle', '', 'e.g. Weekly Team Standup');
-  html += '<div style="display:flex;gap:8px;">';
-  html += _bcInput('Date', 'bcMeetDate', new Date().toISOString().split('T')[0], '', 'date');
-  html += _bcInput('Attendees', 'bcMeetAttendees', '', 'Name 1, Name 2...');
-  html += '</div>';
-  html += _bcTextarea('Meeting Notes', 'bcMeetNotes', '', 'Type or paste your meeting notes here. SAL will extract action items, decisions, and key takeaways.', 10);
+  html += '<textarea placeholder="Meeting notes..." onchange="bcState.currentMeeting.notes=this.value;" '
+       + 'style="width:100%;min-height:120px;padding:10px;border-radius:8px;border:1px solid var(--border-color,#333);background:var(--bg-primary,#0a0a0a);color:var(--text-primary);font-size:13px;margin-bottom:8px;box-sizing:border-box;resize:vertical;font-family:inherit;">'
+       + (cm.notes || '') + '</textarea>';
 
-  html += '<div style="display:flex;gap:8px;">';
-  html += '<button onclick="bcExtractActionItems()" style="flex:1;background:var(--accent-gold);color:#000;border:none;padding:10px;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;font-family:\'Inter\',sans-serif;">✨ Extract Action Items</button>';
-  html += '<button onclick="bcSaveMeetingNotes()" style="flex:1;background:var(--bg-secondary);border:none;color:var(--text-primary);padding:10px;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;font-family:\'Inter\',sans-serif;">Save Notes</button>';
-  html += '</div>';
+  html += '<textarea placeholder="Action items (one per line)" onchange="bcState.currentMeeting.actionItems=this.value;" '
+       + 'style="width:100%;min-height:60px;padding:10px;border-radius:8px;border:1px solid var(--border-color,#333);background:var(--bg-primary,#0a0a0a);color:var(--text-primary);font-size:13px;margin-bottom:12px;box-sizing:border-box;resize:vertical;font-family:inherit;">'
+       + (cm.actionItems || '') + '</textarea>';
+
+  html += '<button onclick="bcSaveMeeting();" style="width:100%;padding:12px;border-radius:8px;border:none;background:var(--accent-gold,#D4A843);color:#000;font-weight:700;cursor:pointer;">Save Meeting Notes</button>';
   html += '</div>';
 
-  html += '<div id="bcMeetOutput" style="margin-top:20px;max-width:700px;"></div>';
-
+  /* Past Meetings */
+  if (bcState.meetingNotes.length > 0) {
+    html += '<div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-muted);margin-bottom:12px;">Past Meetings</div>';
+    bcState.meetingNotes.forEach(function(m, idx) {
+      html += '<div style="padding:14px;border-radius:10px;background:var(--surface-raised,#1a1a1a);margin-bottom:8px;">';
+      html += '<div style="display:flex;justify-content:space-between;">';
+      html += '<div style="font-weight:600;font-size:13px;color:var(--text-primary);">' + m.title + '</div>';
+      html += '<div style="font-size:11px;color:var(--text-muted);">' + (m.date || 'No date') + '</div>';
+      html += '</div>';
+      if (m.attendees) html += '<div style="font-size:11px;color:var(--text-muted);margin-top:4px;">Attendees: ' + m.attendees + '</div>';
+      html += '<div style="font-size:12px;color:var(--text-secondary);margin-top:8px;line-height:1.5;white-space:pre-wrap;">' + (m.notes || '').substring(0, 200) + (m.notes && m.notes.length > 200 ? '...' : '') + '</div>';
+      if (m.actionItems) {
+        html += '<div style="margin-top:8px;font-size:11px;font-weight:600;color:var(--accent-gold);">Action Items:</div>';
+        m.actionItems.split('\n').filter(Boolean).forEach(function(ai) {
+          html += '<div style="font-size:12px;color:var(--text-secondary);padding:2px 0;">☐ ' + ai + '</div>';
+        });
+      }
+      html += '</div>';
+    });
+  }
   return html;
 }
 
-async function bcExtractActionItems() {
-  var notes = (document.getElementById('bcMeetNotes') || {}).value || '';
-  var title = (document.getElementById('bcMeetTitle') || {}).value || 'Meeting';
-  if (!notes) { if (typeof showToast === 'function') showToast('Enter meeting notes first', 'error'); return; }
-
-  var output = document.getElementById('bcMeetOutput');
-  if (output) output.innerHTML = '<div style="padding:16px;color:var(--text-muted);font-size:13px;">Analyzing meeting notes...</div>';
-
-  try {
-    var resp = await fetch(API + '/api/chat', {
-      method: 'POST',
-      headers: Object.assign({ 'Content-Type': 'application/json' }, authHeaders()),
-      body: JSON.stringify({
-        message: 'Analyze these meeting notes from "' + title + '" and extract: 1) Action Items (with assignee if mentioned), 2) Key Decisions Made, 3) Key Takeaways, 4) Follow-up Items. Format as clean HTML with sections. Notes: ' + notes,
-        model: 'claude-3-5-sonnet-20241022', history: []
-      })
-    });
-
-    var reader = resp.body.getReader();
-    var decoder = new TextDecoder();
-    var fullText = '';
-    while (true) {
-      var result = await reader.read();
-      if (result.done) break;
-      var chunk = decoder.decode(result.value, { stream: true });
-      var lines = chunk.split('\n');
-      for (var i = 0; i < lines.length; i++) {
-        var line = lines[i].trim();
-        if (line.startsWith('data: ')) {
-          var payload = line.slice(6);
-          if (payload === '[DONE]') continue;
-          try { var p = JSON.parse(payload); fullText += (p.text || p.delta || p.content || ''); } catch(e) { fullText += payload; }
-        }
-      }
-    }
-    if (output && fullText) {
-      output.innerHTML = '<div style="background:rgba(255,255,255,0.03);border-radius:12px;padding:20px;">' + fullText + '</div>';
-      if (typeof showToast === 'function') showToast('Action items extracted', 'success');
-    }
-  } catch(e) {
-    if (output) output.innerHTML = '<div style="padding:16px;color:var(--text-muted);">Extraction failed. Try again.</div>';
-  }
+function bcSaveMeeting() {
+  var cm = bcState.currentMeeting;
+  if (!cm.title && !cm.notes) return;
+  bcState.meetingNotes.unshift({ ...cm });
+  bcState.currentMeeting = { title: '', date: '', attendees: '', notes: '', actionItems: '' };
+  renderBusinessCenter();
 }
 
-function bcSaveMeetingNotes() {
-  if (typeof showToast === 'function') showToast('Meeting notes saved', 'success');
-}
 
-/* ── ANALYTICS TAB ── */
+/* ══════════════════════════════════════════════════════════════════════════════
+   ANALYTICS
+   ══════════════════════════════════════════════════════════════════════════════ */
 function bcAnalytics() {
   var html = '';
-  html += '<div style="margin-bottom:20px;">';
-  html += '<h2 style="font-size:18px;font-weight:700;color:var(--text-primary);margin:0 0 4px;">Business Analytics</h2>';
-  html += '<p style="font-size:13px;color:var(--text-muted);margin:0;">Track your usage, growth, and business metrics.</p>';
+  html += '<h2 style="font-size:18px;font-weight:700;margin-bottom:4px;color:var(--text-primary);">Analytics Dashboard</h2>';
+  html += '<p style="color:var(--text-muted);font-size:13px;margin-bottom:20px;">Track your business activity and growth.</p>';
+
+  html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:24px;">';
+  html += _bcStatCard('🏢', bcState.orders.length, 'Formations Filed');
+  html += _bcStatCard('🌐', bcState.domainResults.length > 0 ? '1' : '0', 'Domain Searches');
+  html += _bcStatCard('📄', Object.keys(bcState.resumeData).filter(function(k){return bcState.resumeData[k];}).length > 2 ? 1 : 0, 'Resumes Created');
+  html += _bcStatCard('📝', bcState.meetingNotes.length, 'Meetings Logged');
   html += '</div>';
 
-  /* Usage metrics */
-  html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-bottom:24px;">';
-  var metrics = [
-    { label: 'Searches This Month', value: '0', change: '+0%', color: '#3b82f6' },
-    { label: 'AI Minutes Used', value: '0', change: '—', color: '#22c55e' },
-    { label: 'Documents Created', value: '0', change: '+0%', color: '#f59e0b' },
-    { label: 'Credits Remaining', value: '100', change: '100%', color: '#8b5cf6' }
-  ];
-  metrics.forEach(function(m) {
-    html += '<div style="background:rgba(255,255,255,0.03);border-radius:12px;padding:18px;">';
-    html += '<div style="font-size:11px;color:var(--text-muted);margin-bottom:8px;">' + m.label + '</div>';
-    html += '<div style="display:flex;align-items:baseline;gap:8px;">';
-    html += '<span style="font-size:24px;font-weight:800;color:var(--text-primary);">' + m.value + '</span>';
-    html += '<span style="font-size:11px;color:' + m.color + ';">' + m.change + '</span>';
-    html += '</div>';
-    html += '<div style="margin-top:10px;height:4px;background:var(--bg-secondary);border-radius:2px;overflow:hidden;">';
-    html += '<div style="height:100%;width:0%;background:' + m.color + ';border-radius:2px;transition:width 1s;"></div>';
-    html += '</div>';
-    html += '</div>';
+  /* Activity Timeline */
+  html += '<div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-muted);margin-bottom:12px;">Activity Timeline</div>';
+  html += '<div style="padding:16px;border-radius:12px;background:var(--surface-raised,#1a1a1a);">';
+  
+  var activities = [];
+  bcState.meetingNotes.forEach(function(m) {
+    activities.push({ type: 'meeting', label: 'Meeting: ' + m.title, date: m.date || 'Recent' });
   });
-  html += '</div>';
+  bcState.orders.forEach(function(o) {
+    activities.push({ type: 'formation', label: 'Formation: ' + (o.business_name || o.businessName), date: o.created_at || 'Recent' });
+  });
 
-  /* Placeholder chart area */
-  html += '<div style="background:rgba(255,255,255,0.03);border-radius:12px;padding:24px;text-align:center;">';
-  html += '<div style="font-size:14px;font-weight:600;color:var(--text-primary);margin-bottom:8px;">Usage Over Time</div>';
-  html += '<div style="font-size:13px;color:var(--text-muted);">Analytics data will populate as you use the platform. Start building to see your metrics.</div>';
+  if (activities.length === 0) {
+    html += '<div style="text-align:center;color:var(--text-muted);font-size:13px;padding:20px;">No activity yet. Start using the Business Center to see your analytics here.</div>';
+  } else {
+    activities.forEach(function(a) {
+      html += '<div style="display:flex;gap:10px;padding:8px 0;border-bottom:1px solid var(--border-color,#222);">';
+      html += '<div style="font-size:16px;">' + (a.type === 'meeting' ? '📝' : '🏢') + '</div>';
+      html += '<div><div style="font-size:13px;color:var(--text-primary);">' + a.label + '</div>';
+      html += '<div style="font-size:11px;color:var(--text-muted);">' + a.date + '</div></div>';
+      html += '</div>';
+    });
+  }
   html += '</div>';
-
   return html;
-}
-
-/* ── FORM HELPERS ── */
-function _bcInput(label, id, value, placeholder, type) {
-  type = type || 'text';
-  return '<div style="display:flex;flex-direction:column;gap:4px;">'
-    + '<label style="font-size:11px;font-weight:600;color:var(--text-muted);">' + label + '</label>'
-    + '<input id="' + id + '" type="' + type + '" value="' + (value || '').replace(/"/g, '&quot;') + '" placeholder="' + placeholder + '" '
-    + 'style="background:var(--bg-secondary);border:1px solid var(--border-subtle);border-radius:10px;padding:10px 14px;font-size:13px;color:var(--text-primary);font-family:\'Inter\',sans-serif;outline:none;transition:border-color 0.2s;" '
-    + 'onfocus="this.style.borderColor=\'var(--accent-green)\'" onblur="this.style.borderColor=\'var(--border-subtle)\'">'
-    + '</div>';
-}
-
-function _bcTextarea(label, id, value, placeholder, rows) {
-  rows = rows || 3;
-  return '<div style="display:flex;flex-direction:column;gap:4px;">'
-    + '<label style="font-size:11px;font-weight:600;color:var(--text-muted);">' + label + '</label>'
-    + '<textarea id="' + id + '" rows="' + rows + '" placeholder="' + placeholder + '" '
-    + 'style="background:var(--bg-secondary);border:1px solid var(--border-subtle);border-radius:10px;padding:10px 14px;font-size:13px;color:var(--text-primary);font-family:\'Inter\',sans-serif;resize:vertical;outline:none;transition:border-color 0.2s;" '
-    + 'onfocus="this.style.borderColor=\'var(--accent-green)\'" onblur="this.style.borderColor=\'var(--border-subtle)\'">'
-    + (value || '') + '</textarea>'
-    + '</div>';
 }

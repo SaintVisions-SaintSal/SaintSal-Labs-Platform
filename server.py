@@ -121,9 +121,12 @@ social_connections = {}
 
 GODADDY_API_KEY = os.environ.get("GODADDY_API_KEY", "fYfvRW8R6NBK_P7LYBzA3hSUAWMXGNMkpJT")
 GODADDY_API_SECRET = os.environ.get("GODADDY_API_SECRET", "XxC9jFsNJuL1TW7YH6yxkE")
+GODADDY_PL_ID = os.environ.get("GODADDY_PL_ID", "600402")
+GODADDY_STOREFRONT_URL = os.environ.get("GODADDY_STOREFRONT_URL", "https://www.secureserver.net/?pl_id=600402")
 GODADDY_BASE = os.environ.get("GODADDY_BASE", "https://api.godaddy.com")  # switch to api.ote-godaddy.com for testing
-CORPNET_DATA_API_KEY = os.environ.get("CORPNET_DATA_API_KEY", "0D3DB6A514DAED0CEF4F97D71DC9292BA84C895FE25A4EB34D09CDF4F2242F95DB554C9C88D3044F5A05F67457B4F82C44F6")
+CORPNET_DATA_API_KEY = os.environ.get("CORPNET_STAGING_TOKEN", os.environ.get("CORPNET_DATA_API_KEY", "0D3DB6A514DAED0CEF4F97D71DC9292BA84C895FE25A4EB34D09CDF4F2242F95DB554C9C88D3044F5A05F67457B4F82C44F6"))
 CORPNET_API_KEY = os.environ.get("CORPNET_API_KEY", "7E90-738C-175F-41BD-886C")
+CORPNET_BASE_URL = os.environ.get("CORPNET_API_BASE_STAGING", "https://api.staging24.corpnet.com")
 
 # ─── Real Estate API Keys ────────────────────────────────────────────────────
 RENTCAST_API_KEY = os.environ.get("RENTCAST_API_KEY", "e14286fed9e243c6afcba08fcce4bd8f")
@@ -599,6 +602,7 @@ async def get_markets():
 
 GODADDY_HEADERS = {
     "Authorization": f"sso-key {GODADDY_API_KEY}:{GODADDY_API_SECRET}",
+    "X-Private-Label-Id": GODADDY_PL_ID,
     "Accept": "application/json",
     "Content-Type": "application/json",
 }
@@ -752,8 +756,22 @@ async def purchase_domain(request: Request):
         "status": "redirect",
         "message": "Domain purchase initiated",
         "domain": domain,
-        "checkout_url": f"https://www.godaddy.com/domainsearch/find?domainToCheck={domain}",
-        "note": "Full in-app purchase coming when GoDaddy Reseller API is configured.",
+        "checkout_url": f"{GODADDY_STOREFRONT_URL}&domainToCheck={domain}",
+        "note": "Redirecting to SaintSal storefront for secure checkout.",
+    }
+
+
+@app.get("/api/godaddy/storefront")
+async def godaddy_storefront_config():
+    """Get GoDaddy reseller storefront config for frontend."""
+    return {
+        "storefront_url": GODADDY_STOREFRONT_URL,
+        "pl_id": GODADDY_PL_ID,
+        "domain_search_url": f"{GODADDY_STOREFRONT_URL}&domainToCheck=",
+        "hosting_url": f"https://www.secureserver.net/hosting/web-hosting?pl_id={GODADDY_PL_ID}",
+        "email_url": f"https://www.secureserver.net/email/professional-email?pl_id={GODADDY_PL_ID}",
+        "ssl_url": f"https://www.secureserver.net/web-security/ssl-certificate?pl_id={GODADDY_PL_ID}",
+        "website_builder_url": f"https://www.secureserver.net/websites/website-builder?pl_id={GODADDY_PL_ID}",
     }
 
 
@@ -987,7 +1005,7 @@ async def get_packages(state: str = "CA", entity_type: str = "LLC"):
 
     # Try CorpNet v2 API for real packages
     try:
-        CORPNET_BASE = "https://api.staging24.corpnet.com"
+        CORPNET_BASE = CORPNET_BASE_URL
         headers = {
             "Authorization": f"Bearer {CORPNET_DATA_API_KEY}",
             "token": CORPNET_API_KEY,
@@ -1115,7 +1133,7 @@ async def submit_formation(req: FormationRequest):
 
 async def _corpnet_submit_formation(req) -> Optional[dict]:
     """Submit formation order through CorpNet Business Formation v2 API (STAGING)."""
-    CORPNET_BASE = "https://api.staging24.corpnet.com"
+    CORPNET_BASE = CORPNET_BASE_URL
     headers = {
         "Authorization": f"Bearer {CORPNET_DATA_API_KEY}",
         "token": CORPNET_API_KEY,
