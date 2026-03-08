@@ -4444,98 +4444,284 @@ async def social_publish(request: Request):
 _builder_projects: dict = {}
 
 
-# ── Builder Full-Stack Generate Endpoint ────────────────────────────────────
+# ── Builder Multi-Model AI Engine ───────────────────────────────────────────
+
+BUILDER_MODEL_CHAIN = [
+    {"id": "claude", "name": "Claude Sonnet", "provider": "anthropic", "model": "claude-sonnet-4-20250514", "max_tokens": 64000},
+    {"id": "grok", "name": "Grok-4", "provider": "xai", "model": "grok-4", "max_tokens": 32000},
+    {"id": "gemini", "name": "Gemini 2.5 Pro", "provider": "google", "model": "gemini-2.5-pro-preview-06-05", "max_tokens": 65536},
+    {"id": "gpt", "name": "GPT-4.1", "provider": "openai", "model": "gpt-4.1", "max_tokens": 32768},
+]
+
+
+async def _builder_ai_call(system: str, user_msg: str, preferred_model: str = "claude", max_tokens: int = 32000) -> dict:
+    """Call AI with automatic fallback chain. Returns {text, model_used, provider}."""
+    # Order chain: preferred model first, then rest
+    chain = sorted(BUILDER_MODEL_CHAIN, key=lambda m: 0 if m["id"] == preferred_model else 1)
+
+    for model_cfg in chain:
+        try:
+            provider = model_cfg["provider"]
+            tok = min(max_tokens, model_cfg["max_tokens"])
+
+            if provider == "anthropic":
+                key = os.environ.get("ANTHROPIC_API_KEY", "")
+                if not key: continue
+                async with httpx.AsyncClient(timeout=180) as client:
+                    r = await client.post("https://api.anthropic.com/v1/messages",
+                        headers={"x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json"},
+                        json={"model": model_cfg["model"], "max_tokens": tok, "system": system,
+                              "messages": [{"role": "user", "content": user_msg}]})
+                    if r.status_code != 200: continue
+                    data = r.json()
+                    text = data.get("content", [{}])[0].get("text", "")
+                    if text: return {"text": text, "model_used": model_cfg["name"], "provider": provider}
+
+            elif provider == "xai":
+                key = os.environ.get("XAI_API_KEY", "")
+                if not key: continue
+                async with httpx.AsyncClient(timeout=180) as client:
+                    r = await client.post("https://api.x.ai/v1/chat/completions",
+                        headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+                        json={"model": model_cfg["model"], "max_tokens": tok, "temperature": 0.7,
+                              "messages": [{"role": "system", "content": system}, {"role": "user", "content": user_msg}]})
+                    if r.status_code != 200: continue
+                    data = r.json()
+                    text = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+                    if text: return {"text": text, "model_used": model_cfg["name"], "provider": provider}
+
+            elif provider == "google":
+                key = os.environ.get("GEMINI_API_KEY", "")
+                if not key: continue
+                async with httpx.AsyncClient(timeout=180) as client:
+                    r = await client.post(
+                        f"https://generativelanguage.googleapis.com/v1beta/models/{model_cfg['model']}:generateContent?key={key}",
+                        headers={"Content-Type": "application/json"},
+                        json={"contents": [{"parts": [{"text": f"{system}\n\n{user_msg}"}]}],
+                              "generationConfig": {"maxOutputTokens": tok, "temperature": 0.7}})
+                    if r.status_code != 200: continue
+                    data = r.json()
+                    text = data.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "")
+                    if text: return {"text": text, "model_used": model_cfg["name"], "provider": provider}
+
+            elif provider == "openai":
+                key = os.environ.get("OPENAI_API_KEY", "")
+                if not key: continue
+                async with httpx.AsyncClient(timeout=180) as client:
+                    r = await client.post("https://api.openai.com/v1/chat/completions",
+                        headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+                        json={"model": model_cfg["model"], "max_tokens": tok, "temperature": 0.7,
+                              "messages": [{"role": "system", "content": system}, {"role": "user", "content": user_msg}]})
+                    if r.status_code != 200: continue
+                    data = r.json()
+                    text = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+                    if text: return {"text": text, "model_used": model_cfg["name"], "provider": provider}
+
+        except Exception:
+            continue
+
+    return {"text": "", "model_used": "none", "provider": "none"}
+
+
+# ── Builder Plan Endpoint ───────────────────────────────────────────────────
+
+@app.post("/api/builder/plan")
+async def builder_plan(request: Request):
+    """Phase 1: Analyze the user's request and create a structured build plan with clarifying questions."""
+    try:
+        body = await request.json()
+        prompt = body.get("prompt", "")
+        project_type = body.get("type", "website")  # website, social, app, widget
+        context = body.get("context", "")  # any attached file context
+        model = body.get("model", "claude")
+
+        if not prompt:
+            return JSONResponse({"error": "Prompt is required"}, status_code=400)
+
+        system = """You are SAL, the #1 AI Builder — better than builder.io, v0.dev, or Bolt. You plan before you build.
+
+Given a user's project description, create a structured build plan. Return ONLY valid JSON:
+
+{
+  "project_name": "kebab-case-name",
+  "project_type": "landing|dashboard|saas|ecommerce|portfolio|pwa|widget|api|social",
+  "summary": "1-sentence description of what you'll build",
+  "questions": [
+    {"id": "q1", "question": "Clarifying question text", "options": ["Option A", "Option B", "Option C"], "default": "Option A"}
+  ],
+  "architecture": {
+    "pages": ["page1", "page2"],
+    "sections": {"page1": ["hero", "features", "cta", "footer"]},
+    "tech_stack": ["HTML5", "CSS3", "JavaScript"],
+    "features": ["responsive", "dark mode", "animations"]
+  },
+  "files_planned": [
+    {"name": "index.html", "purpose": "Main page with hero, features, CTA"},
+    {"name": "style.css", "purpose": "Responsive styles with dark theme"},
+    {"name": "app.js", "purpose": "Interactivity, animations, form handling"}
+  ],
+  "estimated_complexity": "simple|medium|complex",
+  "build_steps": ["Step 1: Generate page structure", "Step 2: Add styling", "Step 3: Wire interactivity"]
+}
+
+Keep questions to 2-4 max. Focus on design style, color scheme, content specifics, and functionality choices.
+For social posts: ask about platform, tone, audience, call-to-action.
+Return ONLY the JSON object."""
+
+        user_msg = f"Build request: {prompt}"
+        if context:
+            user_msg += f"\n\nAttached context:\n{context[:3000]}"
+
+        result = await _builder_ai_call(system, user_msg, model, max_tokens=4000)
+        if not result["text"]:
+            return JSONResponse({"error": "All AI models unavailable"}, status_code=503)
+
+        # Parse JSON from response
+        import re as _re
+        raw = result["text"].strip()
+        raw = _re.sub(r'^```(?:json)?\s*', '', raw, flags=_re.IGNORECASE)
+        raw = _re.sub(r'```\s*$', '', raw)
+        try:
+            plan = json.loads(raw)
+        except json.JSONDecodeError:
+            match = _re.search(r'\{[\s\S]*\}', raw)
+            if match:
+                plan = json.loads(match.group(0))
+            else:
+                return JSONResponse({"error": "Failed to parse build plan", "raw": raw[:500]}, status_code=502)
+
+        # Store plan in memory
+        proj_name = plan.get("project_name", "my-project")
+        _builder_projects[proj_name] = {"name": proj_name, "plan": plan, "files": [], "status": "planned"}
+
+        return JSONResponse({
+            "success": True,
+            "plan": plan,
+            "model_used": result["model_used"],
+            "provider": result["provider"]
+        })
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+# ── Builder Generate Endpoint (Multi-Model with Fallback) ──────────────────
 
 @app.post("/api/builder/generate-app")
 async def builder_generate_app(request: Request):
-    """Generate a complete multi-file project using Grok-4 via XAI API."""
-    XAI_API_KEY = os.environ.get("XAI_API_KEY", "")
+    """Phase 2: Generate complete multi-file project using AI with automatic fallback chain."""
     try:
         body = await request.json()
         template = body.get("template") or "landing"
         prompt = body.get("prompt") or ""
         name = (body.get("name") or "my-project").lower().replace(" ", "-")
+        model = body.get("model", "claude")
+        plan = body.get("plan")  # Optional: structured plan from /api/builder/plan
+        answers = body.get("answers", {})  # Answers to planning questions
+        context = body.get("context", "")  # Attached file context
+        iteration = body.get("iteration", 0)  # Which iteration of the build
+        existing_files = body.get("existing_files", [])  # For iterative builds
 
-        if not XAI_API_KEY:
-            return JSONResponse({"error": "XAI_API_KEY not configured"}, status_code=500)
         if not prompt:
             return JSONResponse({"error": "prompt is required"}, status_code=400)
 
         template_guides = {
-            "landing": "a beautiful marketing landing page with hero, features, CTA, and footer sections",
-            "dashboard": "an admin dashboard with sidebar navigation, stats cards, charts, and data tables",
-            "saas": "a SaaS web app with authentication UI, pricing page, dashboard, and onboarding flow",
-            "ecommerce": "an e-commerce store with product grid, cart, checkout flow, and product detail pages",
-            "pwa": "a Progressive Web App with service worker, manifest, offline support, and mobile-first design",
-            "widget": "an embeddable JavaScript widget with configuration options and a demo page",
-            "api": "a REST API server with Python/FastAPI including models, routes, auth middleware, and documentation",
-            "portfolio": "a personal portfolio site with about, projects, skills, and contact sections"
+            "landing": "a stunning, modern marketing landing page with hero section (gradient background, bold headline, CTA button), features grid with icons, testimonials, pricing section, and footer. Use CSS Grid/Flexbox, smooth scroll, hover animations.",
+            "dashboard": "a professional admin dashboard with collapsible sidebar navigation, stats cards with charts, data tables with sorting, dark theme, responsive layout. Include chart placeholders using CSS or simple SVG.",
+            "saas": "a complete SaaS web application with: login/signup pages, pricing page with toggle (monthly/annual), dashboard with sidebar, settings page, onboarding flow. Modern, clean design.",
+            "ecommerce": "a modern e-commerce store with: product grid with filters, product detail page, shopping cart with quantity controls, checkout flow, responsive header with search and cart icon.",
+            "pwa": "a Progressive Web App with: manifest.json, service worker for offline, app shell architecture, mobile-first responsive design, installable prompt, cached assets.",
+            "widget": "an embeddable JavaScript widget with: shadow DOM isolation, configuration API, demo page, lightweight CSS, CDN-ready bundle structure.",
+            "api": "a production REST API with FastAPI/Python: models, CRUD routes, authentication middleware, error handling, OpenAPI docs, requirements.txt, Dockerfile.",
+            "portfolio": "a creative personal portfolio with: animated hero section, project showcase with modal/lightbox, skills visualization, about section with timeline, contact form, smooth page transitions.",
+            "blog": "a blog/content site with: article list with featured post, article detail with reading time, categories sidebar, search, newsletter signup, responsive typography.",
         }
 
-        template_description = template_guides.get(template, template_guides["landing"])
+        template_desc = template_guides.get(template, template_guides["landing"])
 
-        system_prompt = (
-            "You are a full-stack developer. Generate a complete project with multiple files. "
-            "Output JSON with a 'files' array where each item has 'name' (filepath like 'index.html', "
-            "'styles.css', 'app.js', 'server.py') and 'content' (the full file content). "
-            "Generate a real, production-ready project. Include ALL necessary files. "
-            "Do not truncate file contents. Output only valid JSON, no markdown fences."
-        )
+        # Build enhanced prompt with plan context
+        plan_context = ""
+        if plan:
+            plan_context = f"""
+Build Plan:
+- Project: {plan.get('project_name', name)}
+- Type: {plan.get('project_type', template)}
+- Summary: {plan.get('summary', '')}
+- Pages: {json.dumps(plan.get('architecture', {}).get('pages', []))}
+- Sections: {json.dumps(plan.get('architecture', {}).get('sections', {}))}
+- Features: {json.dumps(plan.get('architecture', {}).get('features', []))}
+"""
+        if answers:
+            plan_context += f"\nUser's design preferences:\n{json.dumps(answers, indent=2)}"
 
-        user_message = (
-            f"Generate {template_description}.\n\n"
-            f"Project name: {name}\n"
-            f"Additional requirements: {prompt}\n\n"
-            "Return a JSON object with a 'files' array. Each file needs 'name' and 'content' fields."
-        )
+        iteration_context = ""
+        if iteration > 0 and existing_files:
+            iteration_context = f"""
+This is iteration #{iteration}. The user wants changes to the existing project.
+Current files: {json.dumps([f.get('name') for f in existing_files])}
+"""
 
-        headers = {
-            "Authorization": f"Bearer {XAI_API_KEY}",
-            "Content-Type": "application/json"
-        }
-        payload = {
-            "model": "grok-4",
-            "messages": [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_message}
-            ],
-            "temperature": 0.7,
-            "max_tokens": 32000
-        }
+        system = """You are SAL Builder — the world's best full-stack code generator. You generate COMPLETE, PRODUCTION-READY projects.
 
-        async with httpx.AsyncClient(timeout=120) as client:
-            resp = await client.post(
-                "https://api.x.ai/v1/chat/completions",
-                json=payload,
-                headers=headers
-            )
-            if resp.status_code != 200:
-                return JSONResponse({"error": f"XAI API error {resp.status_code}: {resp.text}"}, status_code=502)
+RULES:
+1. Generate ALL files with COMPLETE content — never truncate, never use comments like "// rest of code here"
+2. CSS must be polished: smooth transitions, hover states, proper spacing, responsive breakpoints
+3. Use modern patterns: CSS custom properties, flexbox/grid, semantic HTML5, ES6+ JavaScript
+4. Include meta tags, Open Graph, favicon link, Google Fonts import
+5. All interactive elements must work — forms, modals, toggles, navigation
+6. Mobile-first responsive design with breakpoints at 768px and 1024px
+7. Include subtle animations (fade-in on scroll, hover transforms, smooth transitions)
+8. Professional color palette — dark themes should use proper contrast ratios
+9. Every file must be complete and functional — this deploys directly to production
 
-            data = resp.json()
-            raw_content = data["choices"][0]["message"]["content"]
+OUTPUT FORMAT — Return ONLY a JSON object:
+{
+  "files": [
+    {"name": "index.html", "content": "<!DOCTYPE html>...complete file..."},
+    {"name": "style.css", "content": "/* complete stylesheet */..."},
+    {"name": "app.js", "content": "// complete JavaScript..."}
+  ]
+}
 
-        # Parse the JSON from the AI response
+Return ONLY the JSON. No markdown, no explanation."""
+
+        user_msg = f"""Generate {template_desc}
+
+Project name: {name}
+User's request: {prompt}
+{plan_context}
+{iteration_context}
+{f'Additional context: {context[:2000]}' if context else ''}
+
+Return the complete project as a JSON object with a "files" array. Each file needs "name" and "content"."""
+
+        result = await _builder_ai_call(system, user_msg, model, max_tokens=64000)
+
+        if not result["text"]:
+            return JSONResponse({"error": "All AI models unavailable. Check API keys."}, status_code=503)
+
+        # Parse JSON from response
         import re as _re
-        # Strip markdown code fences if present
-        raw_content = _re.sub(r'^```(?:json)?\s*', '', raw_content.strip(), flags=_re.IGNORECASE)
-        raw_content = _re.sub(r'```\s*$', '', raw_content.strip())
+        raw = result["text"].strip()
+        raw = _re.sub(r'^```(?:json)?\s*', '', raw, flags=_re.IGNORECASE)
+        raw = _re.sub(r'```\s*$', '', raw)
         try:
-            parsed = json.loads(raw_content)
+            parsed = json.loads(raw)
         except json.JSONDecodeError:
-            # Try to extract JSON object from the response
-            match = _re.search(r'\{.*\}', raw_content, _re.DOTALL)
+            match = _re.search(r'\{[\s\S]*"files"\s*:\s*\[[\s\S]*\][\s\S]*\}', raw)
             if match:
-                parsed = json.loads(match.group(0))
+                try:
+                    parsed = json.loads(match.group(0))
+                except json.JSONDecodeError:
+                    return JSONResponse({"error": "AI response was not valid JSON", "raw": raw[:800], "model_used": result["model_used"]}, status_code=502)
             else:
-                return JSONResponse({"error": "AI did not return valid JSON", "raw": raw_content[:500]}, status_code=502)
+                return JSONResponse({"error": "AI did not return a files array", "raw": raw[:800], "model_used": result["model_used"]}, status_code=502)
 
         files = parsed.get("files", [])
         if not files:
-            return JSONResponse({"error": "AI returned no files", "raw": raw_content[:500]}, status_code=502)
+            return JSONResponse({"error": "AI returned empty files array", "model_used": result["model_used"]}, status_code=502)
 
-        # Store in memory
-        _builder_projects[name] = {"name": name, "template": template, "files": files}
+        # Store project
+        _builder_projects[name] = {"name": name, "template": template, "files": files, "status": "generated", "model": result["model_used"]}
 
         return JSONResponse({
             "success": True,
@@ -4543,7 +4729,179 @@ async def builder_generate_app(request: Request):
             "template": template,
             "files": files,
             "file_count": len(files),
-            "message": f"Generated {len(files)} files for project '{name}'"
+            "model_used": result["model_used"],
+            "provider": result["provider"],
+            "message": f"Generated {len(files)} files using {result['model_used']}"
+        })
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+# ── Builder Iterate Endpoint (Edit/Refine) ──────────────────────────────────
+
+@app.post("/api/builder/iterate")
+async def builder_iterate(request: Request):
+    """Iterative refinement — edit specific files or add features to existing project."""
+    try:
+        body = await request.json()
+        prompt = body.get("prompt", "")
+        files = body.get("files", [])
+        target_file = body.get("target_file", "")  # Optional: specific file to edit
+        model = body.get("model", "claude")
+
+        if not prompt or not files:
+            return JSONResponse({"error": "prompt and files are required"}, status_code=400)
+
+        file_context = ""
+        for f in files:
+            fname = f.get("name", "unknown")
+            content = f.get("content", "")
+            if target_file and fname != target_file:
+                file_context += f"\n--- {fname} (unchanged) ---\n[{len(content)} chars]\n"
+            else:
+                file_context += f"\n--- {fname} ---\n{content}\n"
+
+        system = """You are SAL Builder. The user has an existing project and wants changes.
+Edit the requested files based on the user's instructions. Return the COMPLETE updated files.
+Do NOT truncate — return full file contents even for unchanged parts.
+
+Return ONLY a JSON object:
+{
+  "files": [
+    {"name": "filename.ext", "content": "complete updated content"}
+  ],
+  "changes_summary": "Brief description of what was changed"
+}"""
+
+        user_msg = f"""Current project files:
+{file_context}
+
+User's request: {prompt}
+{f'Target file to edit: {target_file}' if target_file else 'Edit any files needed.'}
+
+Return the updated files as JSON."""
+
+        result = await _builder_ai_call(system, user_msg, model, max_tokens=64000)
+
+        if not result["text"]:
+            return JSONResponse({"error": "All AI models unavailable"}, status_code=503)
+
+        import re as _re
+        raw = result["text"].strip()
+        raw = _re.sub(r'^```(?:json)?\s*', '', raw, flags=_re.IGNORECASE)
+        raw = _re.sub(r'```\s*$', '', raw)
+        try:
+            parsed = json.loads(raw)
+        except json.JSONDecodeError:
+            match = _re.search(r'\{[\s\S]*"files"\s*:\s*\[[\s\S]*\][\s\S]*\}', raw)
+            if match:
+                parsed = json.loads(match.group(0))
+            else:
+                return JSONResponse({"error": "Failed to parse iteration response"}, status_code=502)
+
+        updated_files = parsed.get("files", [])
+        changes = parsed.get("changes_summary", "Files updated")
+
+        # Merge: replace only files that were updated, keep rest
+        final_files = list(files)  # copy original
+        for uf in updated_files:
+            replaced = False
+            for i, ef in enumerate(final_files):
+                if ef.get("name") == uf.get("name"):
+                    final_files[i] = uf
+                    replaced = True
+                    break
+            if not replaced:
+                final_files.append(uf)
+
+        return JSONResponse({
+            "success": True,
+            "files": final_files,
+            "updated_files": [f.get("name") for f in updated_files],
+            "changes_summary": changes,
+            "model_used": result["model_used"],
+            "provider": result["provider"]
+        })
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+# ── Builder Design Mode (Replaces Stitch) ───────────────────────────────────
+
+@app.post("/api/builder/design")
+async def builder_design(request: Request):
+    """Generate UI designs as HTML/CSS — replaces Google Stitch with our own AI models."""
+    try:
+        body = await request.json()
+        prompt = body.get("prompt", "")
+        style = body.get("style", "modern-dark")
+        model = body.get("model", "claude")
+        platform = body.get("platform", "web")  # web, mobile, tablet
+
+        if not prompt:
+            return JSONResponse({"error": "prompt is required"}, status_code=400)
+
+        system = """You are SAL Designer — an elite UI/UX designer. Generate beautiful, pixel-perfect UI designs as complete HTML+CSS.
+
+DESIGN RULES:
+1. Use a single HTML file with embedded <style> — self-contained, no external deps except Google Fonts
+2. Use modern design: glass-morphism, subtle gradients, proper shadows, rounded corners
+3. Include hover states, transitions, and subtle animations
+4. Proper spacing rhythm (8px grid system)
+5. Beautiful typography with Google Fonts
+6. Responsive design that works on all screen sizes
+7. For dark themes: use proper contrast, accent colors, layered surfaces
+8. Include realistic placeholder content — names, descriptions, numbers
+9. Make it look like a real product, not a wireframe
+
+Return ONLY a JSON object:
+{
+  "html": "<!DOCTYPE html>...complete self-contained HTML with embedded CSS...",
+  "design_notes": "Brief notes on design decisions",
+  "colors": {"primary": "#hex", "secondary": "#hex", "accent": "#hex", "bg": "#hex"}
+}"""
+
+        style_context = {
+            "modern-dark": "Dark theme with glassmorphism, subtle gradients, neon accents",
+            "modern-light": "Clean white/light theme with shadow depth, vibrant accent colors",
+            "minimal": "Ultra-minimal, lots of whitespace, monochrome with single accent",
+            "corporate": "Professional, trustworthy, blue-toned, clean typography",
+            "creative": "Bold colors, asymmetric layouts, creative typography, dynamic",
+            "brutalist": "Raw, high-contrast, bold typography, unconventional layouts",
+        }.get(style, "Modern, professional, polished")
+
+        user_msg = f"""Design a {platform} UI: {prompt}
+
+Design style: {style_context}
+Platform: {platform}
+
+Return the complete self-contained HTML design as JSON."""
+
+        result = await _builder_ai_call(system, user_msg, model, max_tokens=32000)
+
+        if not result["text"]:
+            return JSONResponse({"error": "All AI models unavailable"}, status_code=503)
+
+        import re as _re
+        raw = result["text"].strip()
+        raw = _re.sub(r'^```(?:json)?\s*', '', raw, flags=_re.IGNORECASE)
+        raw = _re.sub(r'```\s*$', '', raw)
+        try:
+            parsed = json.loads(raw)
+        except json.JSONDecodeError:
+            match = _re.search(r'\{[\s\S]*\}', raw, _re.DOTALL)
+            if match:
+                parsed = json.loads(match.group(0))
+            else:
+                return JSONResponse({"error": "Failed to parse design response"}, status_code=502)
+
+        return JSONResponse({
+            "success": True,
+            "html": parsed.get("html", ""),
+            "design_notes": parsed.get("design_notes", ""),
+            "colors": parsed.get("colors", {}),
+            "model_used": result["model_used"],
+            "provider": result["provider"]
         })
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
@@ -4569,23 +4927,18 @@ async def builder_save_project(request: Request):
         for f in files:
             fname = f.get("name") or "file.txt"
             content = f.get("content") or ""
-            # Resolve relative to project dir, prevent path traversal
             file_path = (project_dir / fname).resolve()
             if not str(file_path).startswith(str(project_dir.resolve())):
-                continue  # Skip unsafe paths
+                continue
             file_path.parent.mkdir(parents=True, exist_ok=True)
             file_path.write_text(content, encoding="utf-8")
             saved.append(fname)
 
-        # Also update in-memory store
         _builder_projects[name] = {"name": name, "files": files}
 
         return JSONResponse({
-            "success": True,
-            "name": name,
-            "path": str(project_dir),
-            "saved_files": saved,
-            "file_count": len(saved),
+            "success": True, "name": name, "path": str(project_dir),
+            "saved_files": saved, "file_count": len(saved),
             "message": f"Saved {len(saved)} files to /tmp/sal_projects/{name}/"
         })
     except Exception as e:
@@ -4598,38 +4951,24 @@ async def builder_load_project(name: str):
     try:
         project_dir = Path("/tmp/sal_projects") / name
         if not project_dir.exists():
-            # Try in-memory store
             if name in _builder_projects:
-                proj = _builder_projects[name]
-                return JSONResponse({
-                    "success": True,
-                    "name": name,
-                    "source": "memory",
-                    "files": proj.get("files", []),
-                    "file_count": len(proj.get("files", []))
-                })
+                return JSONResponse({"success": True, "name": name, "files": _builder_projects[name].get("files", [])})
             return JSONResponse({"error": f"Project '{name}' not found"}, status_code=404)
 
         files = []
-        for file_path in sorted(project_dir.rglob("*")):
-            if file_path.is_file():
-                rel_name = str(file_path.relative_to(project_dir))
+        for fpath in sorted(project_dir.rglob("*")):
+            if fpath.is_file():
+                rel = str(fpath.relative_to(project_dir))
                 try:
-                    content = file_path.read_text(encoding="utf-8")
+                    content = fpath.read_text(encoding="utf-8")
                 except Exception:
-                    content = ""  # Skip binary files
-                files.append({"name": rel_name, "content": content})
+                    content = "[Binary file]"
+                files.append({"name": rel, "content": content, "size": fpath.stat().st_size})
 
-        return JSONResponse({
-            "success": True,
-            "name": name,
-            "source": "disk",
-            "path": str(project_dir),
-            "files": files,
-            "file_count": len(files)
-        })
+        return JSONResponse({"success": True, "name": name, "files": files, "file_count": len(files)})
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
+
 
 
 # ── Builder File Upload ───────────────────────────────────────────────────────

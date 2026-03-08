@@ -889,13 +889,7 @@ function studioSetModel(el) {
   el.classList.add('active');
 }
 
-function studioGenerate() {
-  var btn = document.querySelector('.studio-generate-btn');
-  btn.innerHTML = '<span style="width:14px;height:14px;border:2px solid rgba(0,0,0,0.3);border-top-color:#000;border-radius:50%;animation:spin 0.6s linear infinite;display:inline-block"></span> Generating...';
-  setTimeout(function() {
-    btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/></svg> Generate';
-  }, 2000);
-}
+/* studioGenerate() — real implementation is below at the studio section */
 
 /* ============================================
    DOMAINS HELPERS — Live GoDaddy API
@@ -1995,12 +1989,200 @@ function studioAddMessage(role, content, meta) {
   container.scrollTop = container.scrollHeight;
 }
 
+/* ── Builder Planning State ── */
+var builderPlanState = { plan: null, answers: {}, iteration: 0, projectName: '' };
+
+function builderShowPlan(plan, modelUsed) {
+  var html = '<div class="builder-plan-result">';
+  html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;"><div style="width:10px;height:10px;border-radius:50%;background:var(--accent-green);animation:pulse-dot 1.5s infinite"></div>';
+  html += '<span style="font-weight:600;font-size:15px;color:var(--accent-gold)">Build Plan Ready</span>';
+  html += '<span style="font-size:11px;color:var(--text-muted);margin-left:auto;">via ' + escapeHtml(modelUsed) + '</span></div>';
+  html += '<div style="font-size:13px;color:var(--text-secondary);margin-bottom:16px;">' + escapeHtml(plan.summary || '') + '</div>';
+  // Architecture
+  if (plan.architecture) {
+    var arch = plan.architecture;
+    html += '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">';
+    (arch.features || []).forEach(function(f) { html += '<span style="background:var(--accent-green)15;color:var(--accent-green);font-size:11px;padding:3px 8px;border-radius:4px;">' + escapeHtml(f) + '</span>'; });
+    html += '</div>';
+    html += '<div style="font-size:12px;color:var(--text-muted);margin-bottom:12px;">Pages: ' + (arch.pages || []).join(', ') + ' | Stack: ' + (arch.tech_stack || []).join(', ') + '</div>';
+  }
+  // Files planned
+  if (plan.files_planned && plan.files_planned.length) {
+    html += '<div style="margin-bottom:12px;"><div style="font-size:12px;font-weight:600;color:var(--text-secondary);margin-bottom:6px;">Files to Generate:</div>';
+    html += '<div style="display:flex;gap:6px;flex-wrap:wrap;">';
+    plan.files_planned.forEach(function(fp) {
+      var ext = (fp.name||'').split('.').pop().toLowerCase();
+      var c = ext==='html'?'#ef4444':ext==='css'?'#3b82f6':(ext==='js'||ext==='ts')?'#f59e0b':ext==='py'?'#22c55e':'#6B7280';
+      html += '<span style="background:var(--bg-secondary);border:1px solid var(--border-subtle);padding:4px 8px;border-radius:6px;font-size:11px;display:flex;align-items:center;gap:4px;"><span style="width:6px;height:6px;border-radius:50%;background:'+c+'"></span>' + escapeHtml(fp.name) + '</span>';
+    });
+    html += '</div></div>';
+  }
+  // Questions
+  if (plan.questions && plan.questions.length) {
+    html += '<div style="margin-bottom:16px;"><div style="font-size:12px;font-weight:600;color:var(--text-secondary);margin-bottom:8px;">Quick Preferences:</div>';
+    plan.questions.forEach(function(q) {
+      html += '<div style="margin-bottom:10px;"><div style="font-size:12px;color:var(--text-primary);margin-bottom:4px;">' + escapeHtml(q.question) + '</div>';
+      html += '<div style="display:flex;gap:6px;flex-wrap:wrap;">';
+      (q.options || []).forEach(function(opt, oi) {
+        var isDefault = (opt === q.default);
+        html += '<button class="builder-plan-option' + (isDefault ? ' active' : '') + '" data-qid="' + q.id + '" data-val="' + escapeAttr(opt) + '" onclick="builderSelectPlanOption(this)" style="background:' + (isDefault ? 'var(--accent-green)20' : 'var(--bg-secondary)') + ';border:1px solid ' + (isDefault ? 'var(--accent-green)' : 'var(--border-subtle)') + ';color:var(--text-primary);padding:4px 10px;border-radius:6px;font-size:11px;cursor:pointer;transition:all 0.2s;">' + escapeHtml(opt) + '</button>';
+      });
+      html += '</div></div>';
+    });
+  }
+  // Build button
+  html += '<div style="display:flex;gap:8px;margin-top:16px;">';
+  html += '<button class="studio-action-btn" onclick="builderExecutePlan()" style="background:var(--accent-green);color:#000;font-weight:600;padding:8px 20px;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><polygon points="5 3 19 12 5 21 5 3"/></svg> Build It</button>';
+  html += '<button class="studio-action-btn" onclick="builderPlanState.plan=null;studioAddMessage(\'assistant\',\'Plan cancelled. Tell me what you want to build.\')" style="padding:8px 16px;">Cancel</button>';
+  html += '</div></div>';
+  showStudioResult(html);
+  if (studioState.viewMode === 'chat') studioToggleView('preview');
+}
+
+function builderSelectPlanOption(el) {
+  var qid = el.getAttribute('data-qid');
+  var val = el.getAttribute('data-val');
+  // Deselect siblings
+  el.parentElement.querySelectorAll('button').forEach(function(b) {
+    b.classList.remove('active');
+    b.style.background = 'var(--bg-secondary)';
+    b.style.borderColor = 'var(--border-subtle)';
+  });
+  el.classList.add('active');
+  el.style.background = 'var(--accent-green)20';
+  el.style.borderColor = 'var(--accent-green)';
+  builderPlanState.answers[qid] = val;
+}
+
+async function builderExecutePlan() {
+  if (!builderPlanState.plan) return;
+  var plan = builderPlanState.plan;
+  // Collect any default answers for questions user didn't change
+  if (plan.questions) {
+    plan.questions.forEach(function(q) {
+      if (!builderPlanState.answers[q.id] && q.default) {
+        builderPlanState.answers[q.id] = q.default;
+      }
+    });
+  }
+  studioAddMessage('assistant', 'Building project: ' + (plan.project_name || 'my-project') + '...', { model: studioState.selectedModel, tier: studioState.selectedTier });
+  // Show a progress indicator
+  showStudioResult('<div style="display:flex;align-items:center;gap:12px;padding:40px;justify-content:center;"><div class="studio-btn-spinner" style="width:24px;height:24px;"></div><span style="color:var(--text-secondary);">Generating project files with multi-model AI...</span></div>');
+  try {
+    var template = plan.project_type || (builderState.project && builderState.project.template) || 'landing';
+    var projName = plan.project_name || (builderState.project && builderState.project.name) || 'my-project';
+    // Determine which AI model to use based on selected tier model
+    var aiModel = 'claude';
+    if (/grok/i.test(studioState.selectedModel)) aiModel = 'grok';
+    else if (/gemini/i.test(studioState.selectedModel)) aiModel = 'gemini';
+    else if (/gpt/i.test(studioState.selectedModel)) aiModel = 'gpt';
+
+    var appResp = await fetch(API + '/api/builder/generate-app', {
+      method: 'POST',
+      headers: Object.assign({ 'Content-Type': 'application/json' }, authHeaders()),
+      body: JSON.stringify({
+        prompt: plan.summary || builderPlanState.projectName,
+        template: template,
+        name: projName,
+        model: aiModel,
+        plan: plan,
+        answers: builderPlanState.answers,
+        iteration: builderPlanState.iteration,
+        existing_files: builderPlanState.iteration > 0 ? builderState.files : []
+      })
+    });
+    var appData = await appResp.json();
+    if (appData.error) {
+      studioAddMessage('assistant', 'Builder Error: ' + appData.error, { model: studioState.selectedModel, tier: studioState.selectedTier });
+      showStudioResult('<div style="color:var(--text-muted);padding:20px;">Build failed. Try rephrasing or selecting a different AI model.</div>');
+    } else {
+      var genFiles = appData.files || [];
+      builderState.files = genFiles;
+      builderState.project = builderState.project || {};
+      builderState.project.name = appData.name || projName;
+      builderState.project.template = template;
+      builderPlanState.iteration++;
+      studioAddMessage('assistant', 'Project built \u2014 ' + genFiles.length + ' file(s) via ' + (appData.model_used || 'AI'), {
+        model: appData.model_used || studioState.selectedModel,
+        tier: studioState.selectedTier
+      });
+      builderRenderFileTree();
+      builderAddLog('success', 'Generated ' + genFiles.length + ' files via ' + (appData.model_used || 'AI'));
+      showBuilderGenResult(genFiles);
+      if (typeof showToast === 'function') showToast('Project built: ' + genFiles.length + ' files', 'success');
+    }
+  } catch(e) {
+    studioAddMessage('assistant', 'Build failed: ' + (e.message || 'Network error'), { model: studioState.selectedModel, tier: studioState.selectedTier });
+  }
+}
+
+function showBuilderGenResult(genFiles) {
+  var resultHtml = '<div class="builder-gen-result">';
+  resultHtml += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;"><div style="width:10px;height:10px;border-radius:50%;background:var(--accent-green)"></div><span style="font-weight:600;font-size:15px;color:var(--accent-gold);">Project Generated</span><span style="font-size:11px;color:var(--text-muted);margin-left:auto;">' + genFiles.length + ' files</span></div>';
+  resultHtml += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px;">';
+  genFiles.forEach(function(f, i) {
+    var ext = (f.name||'').split('.').pop().toLowerCase();
+    var color = ext==='html'?'#ef4444':ext==='css'?'#3b82f6':(ext==='js'||ext==='ts')?'#f59e0b':ext==='py'?'#22c55e':'#6B7280';
+    resultHtml += '<div class="builder-file-card" onclick="builderOpenFile(' + i + ')" style="background:var(--bg-secondary);border:1px solid var(--border-subtle);border-radius:8px;padding:10px 12px;cursor:pointer;transition:border-color 0.2s;">';
+    resultHtml += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;"><div style="width:8px;height:8px;border-radius:50%;background:' + color + '"></div><span style="font-weight:500;font-size:13px;">' + escapeHtml(f.name) + '</span></div>';
+    resultHtml += '<div style="font-size:11px;color:var(--text-muted);">' + formatFileSize(f.content ? f.content.length : 0) + '</div></div>';
+  });
+  resultHtml += '</div>';
+  // Action buttons — iterate, publish, download
+  resultHtml += '<div style="display:flex;gap:8px;margin-top:16px;flex-wrap:wrap;">';
+  resultHtml += '<button class="studio-action-btn" onclick="builderIteratePrompt()" style="border-color:var(--accent-green);color:var(--accent-green);"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M1 4v6h6"/><path d="M23 20v-6h-6"/><path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"/></svg> Iterate / Refine</button>';
+  resultHtml += '<button class="studio-action-btn" onclick="builderPublish(\'github\')"><svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23A11.509 11.509 0 0112 5.803c1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576C20.566 21.797 24 17.3 24 12c0-6.627-5.373-12-12-12z"/></svg> GitHub</button>';
+  resultHtml += '<button class="studio-action-btn" onclick="builderPublish(\'vercel\')"><svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M12 1L1 22h22L12 1z"/></svg> Vercel</button>';
+  resultHtml += '<button class="studio-action-btn" onclick="builderPublish(\'render\')">Render</button>';
+  resultHtml += '<button class="studio-action-btn" onclick="builderPublish(\'download\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> ZIP</button>';
+  resultHtml += '</div></div>';
+  showStudioResult(resultHtml);
+  if (studioState.viewMode === 'chat') studioToggleView('preview');
+}
+
+function builderIteratePrompt() {
+  var promptEl = document.getElementById('studioPrompt');
+  if (promptEl) { promptEl.focus(); promptEl.setAttribute('placeholder', 'Describe changes... e.g. "make the hero section taller" or "add a contact form"'); }
+  studioAddMessage('assistant', 'Tell me what to change. I\'ll update the project files while keeping everything else intact.');
+}
+
+async function builderIterate(prompt) {
+  studioAddMessage('assistant', 'Refining project...', { model: studioState.selectedModel, tier: studioState.selectedTier });
+  showStudioResult('<div style="display:flex;align-items:center;gap:12px;padding:40px;justify-content:center;"><div class="studio-btn-spinner" style="width:24px;height:24px;"></div><span style="color:var(--text-secondary);">Iterating on your project...</span></div>');
+  try {
+    var aiModel = 'claude';
+    if (/grok/i.test(studioState.selectedModel)) aiModel = 'grok';
+    else if (/gemini/i.test(studioState.selectedModel)) aiModel = 'gemini';
+    else if (/gpt/i.test(studioState.selectedModel)) aiModel = 'gpt';
+    var resp = await fetch(API + '/api/builder/iterate', {
+      method: 'POST',
+      headers: Object.assign({ 'Content-Type': 'application/json' }, authHeaders()),
+      body: JSON.stringify({ prompt: prompt, files: builderState.files, model: aiModel })
+    });
+    var data = await resp.json();
+    if (data.error) {
+      studioAddMessage('assistant', 'Iterate Error: ' + data.error);
+    } else {
+      builderState.files = data.files || builderState.files;
+      builderPlanState.iteration++;
+      studioAddMessage('assistant', 'Updated: ' + (data.changes_summary || 'Files refined') + ' (via ' + (data.model_used || 'AI') + ')', { model: data.model_used || studioState.selectedModel, tier: studioState.selectedTier });
+      builderRenderFileTree();
+      builderAddLog('success', 'Iterated: ' + (data.updated_files || []).join(', '));
+      showBuilderGenResult(builderState.files);
+      if (typeof showToast === 'function') showToast('Project updated', 'success');
+    }
+  } catch(e) {
+    studioAddMessage('assistant', 'Iteration failed: ' + (e.message || 'Network error'));
+  }
+}
+
 async function studioGenerate() {
   if (studioState.generating) return;
   var promptEl = document.getElementById('studioPrompt');
   if (!promptEl || !promptEl.value.trim()) return;
   var prompt = promptEl.value.trim();
   promptEl.value = '';
+  promptEl.setAttribute('placeholder', 'Describe what you want to build...');
 
   studioState.generating = true;
   var btn = document.getElementById('studioGenerateBtn');
@@ -2012,9 +2194,7 @@ async function studioGenerate() {
     }
   };
 
-  // Add user message to chat
   studioAddMessage('user', prompt);
-
   var mode = studioState.mode;
 
   // ── SOCIAL MODE → Platform Content Generation ──
@@ -2026,38 +2206,38 @@ async function studioGenerate() {
     return;
   }
 
-  // ── DESIGN MODE → Stitch API ──
+  // ── DESIGN MODE → SAL Designer + Stitch as premium tier ──
   if (mode === 'design') {
     try {
-      studioAddMessage('assistant', 'Generating UI design via Google Stitch...', { model: studioState.selectedModel, tier: studioState.selectedTier });
-      var designPayload = { prompt: prompt, model: studioState.selectedModel };
-      if (studioState.selectedProjectId) designPayload.project_id = studioState.selectedProjectId;
-      var resp = await fetch(API + '/api/stitch/generate', {
-        method: 'POST',
-        headers: Object.assign({ 'Content-Type': 'application/json' }, authHeaders()),
-        body: JSON.stringify(designPayload),
-      });
-      var data = await resp.json();
-      if (data.error) {
-        studioAddMessage('assistant', 'Stitch Error: ' + (typeof data.error === 'string' ? data.error : JSON.stringify(data.error)), { model: studioState.selectedModel, tier: studioState.selectedTier });
+      var isStitchModel = /^stitch_/i.test(studioState.selectedModel);
+      if (isStitchModel) {
+        // ── Premium Stitch Design (Google Stitch MCP) ──
+        studioAddMessage('assistant', 'Generating premium UI design via Google Stitch...', { model: studioState.selectedModel, tier: studioState.selectedTier });
+        var designPayload = { prompt: prompt, model: studioState.selectedModel };
+        if (studioState.selectedProjectId) designPayload.project_id = studioState.selectedProjectId;
+        var resp = await fetch(API + '/api/stitch/generate', {
+          method: 'POST',
+          headers: Object.assign({ 'Content-Type': 'application/json' }, authHeaders()),
+          body: JSON.stringify(designPayload),
+        });
+        var data = await resp.json();
+        if (data.error) {
+          studioAddMessage('assistant', 'Stitch: ' + (typeof data.error === 'string' ? data.error : JSON.stringify(data.error)) + ' — falling back to SAL Designer...', { model: studioState.selectedModel, tier: studioState.selectedTier });
+          // Fallback to our own design endpoint
+          await builderDesignFallback(prompt);
+        } else {
+          if (data.project_id) studioState.selectedProjectId = data.project_id;
+          var modelInfo = null;
+          Object.keys(studioState.tierModels).forEach(function(t) { studioState.tierModels[t].forEach(function(m) { if (m.id === studioState.selectedModel) modelInfo = m; }); });
+          var screenCount = (data.screens || []).length;
+          studioAddMessage('assistant', 'Stitch design generated — ' + screenCount + ' screen' + (screenCount !== 1 ? 's' : ''), { model: modelInfo ? modelInfo.name : studioState.selectedModel, tier: studioState.selectedTier });
+          showStitchResult(data);
+          if (studioState.viewMode === 'chat') studioToggleView('preview');
+          loadStitchProjects();
+        }
       } else {
-        // Update selected project
-        if (data.project_id) studioState.selectedProjectId = data.project_id;
-        // Model info for metering badge
-        var modelInfo = null;
-        Object.keys(studioState.tierModels).forEach(function(t) {
-          studioState.tierModels[t].forEach(function(m) { if (m.id === studioState.selectedModel) modelInfo = m; });
-        });
-        var screenCount = (data.screens || []).length;
-        studioAddMessage('assistant', 'Design generated — ' + screenCount + ' screen' + (screenCount !== 1 ? 's' : '') + ' in project', {
-          model: modelInfo ? modelInfo.name : studioState.selectedModel,
-          tier: studioState.selectedTier,
-          cost: modelInfo ? modelInfo.cost_per_min / 60 : 0,
-        });
-        showStitchResult(data);
-        if (studioState.viewMode === 'chat') studioToggleView('preview');
-        // Refresh project list
-        loadStitchProjects();
+        // ── SAL Designer (our multi-model design engine) ──
+        await builderDesignFallback(prompt);
       }
     } catch (e) {
       studioAddMessage('assistant', 'Design generation failed: ' + (e.message || 'Network error'), { model: studioState.selectedModel, tier: studioState.selectedTier });
@@ -2067,73 +2247,57 @@ async function studioGenerate() {
     return;
   }
 
-  // ── FULL-STACK APP BUILDER (code mode with project-level prompts) ──
-  if (mode === 'code' && /\b(app|site|page|dashboard|build|create|website|landing|portfolio|widget|saas|ecommerce|store|pwa)\b/i.test(prompt)) {
-    try {
-      studioAddMessage('assistant', 'Building your project with SAL Builder...', { model: studioState.selectedModel, tier: studioState.selectedTier });
-      var template = (builderState.project && builderState.project.template) || 'landing';
-      var appResp = await fetch(API + '/api/builder/generate-app', {
-        method: 'POST',
-        headers: Object.assign({ 'Content-Type': 'application/json' }, authHeaders()),
-        body: JSON.stringify({ prompt: prompt, template: template, name: (builderState.project && builderState.project.name) || 'my-project' })
-      });
-      var appData = await appResp.json();
-      if (appData.error) {
-        studioAddMessage('assistant', 'Builder Error: ' + appData.error, { model: studioState.selectedModel, tier: studioState.selectedTier });
-      } else {
-        var genFiles = appData.files || [];
-        builderState.files = genFiles;
-        builderState.project = builderState.project || {};
-        builderState.project.name = appData.project || builderState.project.name;
-
-        var modelInfo = null;
-        Object.keys(studioState.tierModels).forEach(function(t) {
-          studioState.tierModels[t].forEach(function(m) { if (m.id === studioState.selectedModel) modelInfo = m; });
-        });
-        studioAddMessage('assistant', 'Project generated \u2014 ' + genFiles.length + ' file(s) created', {
-          model: modelInfo ? modelInfo.name : studioState.selectedModel,
-          tier: studioState.selectedTier,
-          cost: modelInfo ? modelInfo.cost_per_min / 60 : 0
-        });
-
-        builderRenderFileTree();
-        builderAddLog('success', 'Generated ' + genFiles.length + ' files');
-
-        // Show project panel with file tree
-        var resultHtml = '<div class="builder-gen-result">';
-        resultHtml += '<div style="font-weight:600;font-size:15px;margin-bottom:12px;color:var(--accent-gold);">Project Generated</div>';
-        resultHtml += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px;">';
-        genFiles.forEach(function(f, i) {
-          var ext = (f.name||'').split('.').pop().toLowerCase();
-          var color = ext==='html'?'#ef4444':ext==='css'?'#3b82f6':(ext==='js'||ext==='ts')?'#f59e0b':ext==='py'?'#22c55e':'#6B7280';
-          resultHtml += '<div class="builder-file-card" onclick="builderOpenFile(' + i + ')" style="background:var(--bg-secondary);border:1px solid var(--border-subtle);border-radius:8px;padding:10px 12px;cursor:pointer;transition:border-color 0.2s;">';
-          resultHtml += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">';
-          resultHtml += '<div style="width:8px;height:8px;border-radius:50%;background:' + color + '"></div>';
-          resultHtml += '<span style="font-weight:500;font-size:13px;">' + escapeHtml(f.name) + '</span>';
-          resultHtml += '</div>';
-          resultHtml += '<div style="font-size:11px;color:var(--text-muted);">' + formatFileSize(f.content ? f.content.length : 0) + '</div>';
-          resultHtml += '</div>';
-        });
-        resultHtml += '</div>';
-        resultHtml += '<div style="display:flex;gap:8px;margin-top:16px;flex-wrap:wrap;">';
-        resultHtml += '<button class="studio-action-btn" onclick="builderPublish(\'github\')"><svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23A11.509 11.509 0 0112 5.803c1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576C20.566 21.797 24 17.3 24 12c0-6.627-5.373-12-12-12z"/></svg> Push to GitHub</button>';
-        resultHtml += '<button class="studio-action-btn" onclick="builderPublish(\'vercel\')"><svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M12 1L1 22h22L12 1z"/></svg> Deploy Vercel</button>';
-        resultHtml += '<button class="studio-action-btn" onclick="builderPublish(\'render\')">Deploy Render</button>';
-        resultHtml += '<button class="studio-action-btn" onclick="builderPublish(\'download\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Download ZIP</button>';
-        resultHtml += '</div>';
-        resultHtml += '</div>';
-        showStudioResult(resultHtml);
-        if (studioState.viewMode === 'chat') studioToggleView('preview');
-      }
-    } catch(e) {
-      studioAddMessage('assistant', 'Build failed: ' + (e.message || 'Network error'), { model: studioState.selectedModel, tier: studioState.selectedTier });
+  // ── CODE MODE: Iterate if project exists, otherwise plan first ──
+  if (mode === 'code') {
+    // If project already has files and this looks like a refinement request, iterate
+    if (builderState.files && builderState.files.length > 0 && builderPlanState.iteration > 0 && !/\b(new project|start over|from scratch|brand new)\b/i.test(prompt)) {
+      await builderIterate(prompt);
+      studioState.generating = false;
+      restoreBtn();
+      return;
     }
-    studioState.generating = false;
-    restoreBtn();
-    return;
+    // If it's a builder-type request, go through planning phase
+    if (/\b(app|site|page|dashboard|build|create|website|landing|portfolio|widget|saas|ecommerce|store|pwa|make|design|generate)\b/i.test(prompt)) {
+      try {
+        studioAddMessage('assistant', 'Analyzing your project...', { model: studioState.selectedModel, tier: studioState.selectedTier });
+        var aiModel = 'claude';
+        if (/grok/i.test(studioState.selectedModel)) aiModel = 'grok';
+        else if (/gemini/i.test(studioState.selectedModel)) aiModel = 'gemini';
+        else if (/gpt/i.test(studioState.selectedModel)) aiModel = 'gpt';
+        var planResp = await fetch(API + '/api/builder/plan', {
+          method: 'POST',
+          headers: Object.assign({ 'Content-Type': 'application/json' }, authHeaders()),
+          body: JSON.stringify({ prompt: prompt, type: 'website', model: aiModel })
+        });
+        var planData = await planResp.json();
+        if (planData.error) {
+          studioAddMessage('assistant', 'Plan Error: ' + planData.error + ' — building directly...', { model: studioState.selectedModel, tier: studioState.selectedTier });
+          // Fallback to direct generation without plan
+          builderPlanState.plan = null;
+          builderPlanState.projectName = prompt;
+          builderPlanState.iteration = 0;
+          builderPlanState.answers = {};
+          builderPlanState.plan = { project_name: 'my-project', project_type: 'landing', summary: prompt };
+          await builderExecutePlan();
+        } else {
+          // Show plan to user
+          builderPlanState.plan = planData.plan;
+          builderPlanState.projectName = prompt;
+          builderPlanState.iteration = 0;
+          builderPlanState.answers = {};
+          studioAddMessage('assistant', 'Here\'s my build plan — customize your preferences and hit "Build It"!', { model: planData.model_used || studioState.selectedModel, tier: studioState.selectedTier });
+          builderShowPlan(planData.plan, planData.model_used || 'AI');
+        }
+      } catch(e) {
+        studioAddMessage('assistant', 'Planning failed: ' + (e.message || 'Network error'), { model: studioState.selectedModel, tier: studioState.selectedTier });
+      }
+      studioState.generating = false;
+      restoreBtn();
+      return;
+    }
   }
 
-  // ── STANDARD MODES (image/video/audio/code) ──
+  // ── STANDARD MODES (image/video/audio/code snippets) ──
   var payload = { prompt: prompt };
   payload.model = studioState.selectedModel;
   var aspectSel = document.getElementById('studioAspect');
@@ -2159,7 +2323,6 @@ async function studioGenerate() {
     if (data.error) {
       studioAddMessage('assistant', 'Error: ' + data.error, { model: studioState.selectedModel, tier: studioState.selectedTier });
     } else {
-      // Add assistant message
       var modelInfo = null;
       Object.keys(studioState.tierModels).forEach(function(t) {
         studioState.tierModels[t].forEach(function(m) { if (m.id === studioState.selectedModel) modelInfo = m; });
@@ -2170,7 +2333,6 @@ async function studioGenerate() {
         cost: modelInfo ? modelInfo.cost_per_min / 60 : 0,
       });
 
-      // Show in preview
       var resultHtml = '';
       if (mode === 'image' && data.data) {
         resultHtml = '<img src="' + data.data + '" alt="Generated image" style="max-width:100%;border-radius:8px;">';
@@ -2182,7 +2344,6 @@ async function studioGenerate() {
         var rawCode = data.code || data.data;
         var codeContent = escapeHtml(rawCode);
         resultHtml = '<pre style="background:#1a1a2e;color:#e0e0e0;padding:16px;border-radius:8px;overflow-x:auto;font-family:monospace;font-size:13px;line-height:1.5;max-height:500px;overflow-y:auto;"><code>' + codeContent + '</code></pre>';
-        // Parse multi-file project or wrap single file
         var parsedFiles = null;
         try {
           var jsonMatch = rawCode.match(/\{[\s\S]*"files"\s*:\s*\[[\s\S]*\]/m);
@@ -2190,7 +2351,7 @@ async function studioGenerate() {
             var parsed = JSON.parse(jsonMatch[0]);
             if (parsed && Array.isArray(parsed.files)) parsedFiles = parsed.files;
           }
-        } catch (parseErr) { /* not a JSON multi-file response */ }
+        } catch (parseErr) { }
         var genFilename = data.filename || ('generated_' + Date.now() + '.txt');
         if (!Array.isArray(builderState.files)) builderState.files = [];
         if (parsedFiles && parsedFiles.length) {
@@ -2210,10 +2371,7 @@ async function studioGenerate() {
       }
       resultHtml += '</div>';
       showStudioResult(resultHtml);
-      
-      // Switch to preview or split if in chat-only
       if (studioState.viewMode === 'chat') studioToggleView('preview');
-      
       studioState.gallery.unshift(data);
       renderStudioGallery();
     }
@@ -2223,6 +2381,62 @@ async function studioGenerate() {
 
   studioState.generating = false;
   restoreBtn();
+}
+
+async function builderDesignFallback(prompt) {
+  studioAddMessage('assistant', 'Designing with SAL Designer...', { model: studioState.selectedModel, tier: studioState.selectedTier });
+  var aiModel = 'claude';
+  if (/grok/i.test(studioState.selectedModel)) aiModel = 'grok';
+  else if (/gemini/i.test(studioState.selectedModel)) aiModel = 'gemini';
+  else if (/gpt/i.test(studioState.selectedModel)) aiModel = 'gpt';
+  try {
+    var resp = await fetch(API + '/api/builder/design', {
+      method: 'POST',
+      headers: Object.assign({ 'Content-Type': 'application/json' }, authHeaders()),
+      body: JSON.stringify({ prompt: prompt, model: aiModel, style: 'modern-dark' })
+    });
+    var data = await resp.json();
+    if (data.error) {
+      studioAddMessage('assistant', 'Design Error: ' + data.error);
+    } else {
+      studioAddMessage('assistant', 'UI design generated via ' + (data.model_used || 'AI'), { model: data.model_used || studioState.selectedModel, tier: studioState.selectedTier });
+      // Show design in preview iframe
+      var designHtml = data.html || '';
+      if (designHtml) {
+        var blob = new Blob([designHtml], { type: 'text/html' });
+        var blobUrl = URL.createObjectURL(blob);
+        showStudioResult('<iframe src="' + blobUrl + '" style="width:100%;height:600px;border:none;border-radius:8px;background:#fff;"></iframe>' +
+          '<div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;">' +
+          '<button class="studio-action-btn" onclick="builderDesignToCode()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg> Convert to Code Project</button>' +
+          '<button class="studio-action-btn" onclick="builderDesignDownload()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Download HTML</button>' +
+          '</div>');
+        // Store for conversion
+        builderState._lastDesignHtml = designHtml;
+        builderState._lastDesignColors = data.colors || {};
+        if (studioState.viewMode === 'chat') studioToggleView('preview');
+      }
+    }
+  } catch(e) {
+    studioAddMessage('assistant', 'Design failed: ' + (e.message || 'Network error'));
+  }
+}
+
+function builderDesignToCode() {
+  if (!builderState._lastDesignHtml) return;
+  builderState.files = [{ name: 'index.html', content: builderState._lastDesignHtml }];
+  builderRenderFileTree();
+  builderAddLog('success', 'Converted design to code project');
+  showBuilderGenResult(builderState.files);
+  if (typeof showToast === 'function') showToast('Design converted to code project', 'success');
+}
+
+function builderDesignDownload() {
+  if (!builderState._lastDesignHtml) return;
+  var blob = new Blob([builderState._lastDesignHtml], { type: 'text/html' });
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'design.html';
+  a.click();
 }
 
 function showStudioResult(html) {
