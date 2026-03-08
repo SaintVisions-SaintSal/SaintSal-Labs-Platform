@@ -22,7 +22,7 @@
     deployUrls:     {},   // { github: '', vercel: '', render: '' }
     deployIds:      {},   // { vercel: '', render: '' }
     connectors: {
-      github:  { connected: true,  label: 'SaintSal PAT',  type: 'default' },
+      github:  { connected: false, label: 'Connect your GitHub',  type: 'none' },
       vercel:  { connected: false, label: 'Not connected',  type: 'none'    },
       render:  { connected: false, label: 'Not connected',  type: 'none'    }
     },
@@ -263,11 +263,6 @@ function renderBuilderProjectPanel() {
       html += '<button onclick="builderConnectService(\'' + cd.key + '\')" '
             + 'style="background:var(--bg-secondary);border:none;color:var(--text-primary);padding:5px 12px;border-radius:8px;font-size:11px;font-weight:600;cursor:pointer;font-family:\'Inter\',sans-serif;transition:all 0.2s;" '
             + 'onmouseenter="this.style.opacity=\'0.8\'" onmouseleave="this.style.opacity=\'1\'">Connect</button>';
-    } else if (cd.key === 'github' && c.type === 'default') {
-      html += '<button onclick="builderConnectService(\'github-own\')" '
-            + 'style="background:none;border:none;color:var(--text-muted);padding:5px 8px;border-radius:8px;font-size:10px;cursor:pointer;font-family:\'Inter\',sans-serif;transition:all 0.2s;" '
-            + 'title="Connect your own GitHub account">'
-            + 'Use own →</button>';
     } else {
       html += '<button onclick="builderDisconnectService(\'' + cd.key + '\')" '
             + 'style="background:none;border:none;color:var(--text-muted);padding:5px 8px;border-radius:8px;font-size:10px;cursor:pointer;font-family:\'Inter\',sans-serif;" '
@@ -1029,13 +1024,13 @@ async function builderConnectService(service) {
   var s = window.builderState || {};
   s.connectors = s.connectors || {};
 
-  if (service === 'github-own') {
-    // Prompt for PAT
-    var token = window.prompt('Enter your GitHub Personal Access Token (needs repo scope):');
+  if (service === 'github' || service === 'github-own') {
+    // Client connects their own GitHub account
+    var token = window.prompt('Enter your GitHub Personal Access Token (needs repo scope).\n\nCreate one at: github.com/settings/tokens/new\n\nSelect: repo (Full control of private repositories)');
     if (!token) return;
-    s.connectors['github'] = { connected: true, label: 'Your GitHub account', type: 'own', token: token };
-    if (typeof showToast === 'function') showToast('GitHub connected with your account', 'success');
-    builderAddLog('success', 'GitHub: connected with client PAT');
+    s.connectors['github'] = { connected: true, label: 'Your GitHub', type: 'own', token: token };
+    if (typeof showToast === 'function') showToast('GitHub connected — your builds push to your repos', 'success');
+    builderAddLog('success', 'GitHub: connected with your account');
     _bppRefreshConnectors();
     return;
   }
@@ -1064,11 +1059,7 @@ async function builderConnectService(service) {
 function builderDisconnectService(service) {
   var s = window.builderState || {};
   s.connectors = s.connectors || {};
-  if (service === 'github') {
-    s.connectors['github'] = { connected: true, label: 'SaintSal PAT', type: 'default' }; // revert to default
-  } else {
-    s.connectors[service] = { connected: false, label: 'Not connected', type: 'none' };
-  }
+  s.connectors[service] = { connected: false, label: service === 'github' ? 'Connect your GitHub' : 'Not connected', type: 'none' };
   builderAddLog('info', service + ' disconnected');
   if (typeof showToast === 'function') showToast(service + ' disconnected', 'info');
   _bppRefreshConnectors();

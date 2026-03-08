@@ -3598,9 +3598,90 @@ function sendVoiceText() {
   var text = input.value.trim();
   input.value = '';
   appendVoiceTranscript('user', text);
-  setTimeout(function() {
-    appendVoiceTranscript('sal', 'Processing your request: "' + text + '"...');
-  }, 600);
+
+  // If ElevenLabs WebSocket is connected, send text through it
+  if (typeof voiceAI !== 'undefined' && voiceAI.active && voiceAI.ws && voiceAI.ws.readyState === WebSocket.OPEN) {
+    voiceAI.ws.send(JSON.stringify({ text: text, type: 'user_message' }));
+    return;
+  }
+
+  // Otherwise route through SAL search/chat pipeline — Voice as Search
+  voiceSearchQuery(text);
+}
+
+async function voiceSearchQuery(text) {
+  appendVoiceTranscript('system', 'Searching...');
+  try {
+    var resp = await fetch(API + '/api/chat', {
+      method: 'POST',
+      headers: Object.assign({ 'Content-Type': 'application/json' }, authHeaders()),
+      body: JSON.stringify({
+        message: text,
+        model: 'claude-3-5-sonnet-20241022',
+        system_prompt: 'You are SAL, the SaintSal Labs AI assistant. Answer the user\'s question directly and concisely. If they ask for research, search, or information, provide a thorough but focused answer. Keep responses under 300 words for voice readability. Be warm, professional, and helpful.',
+        history: []
+      })
+    });
+    if (!resp.ok) throw new Error('Response ' + resp.status);
+    
+    // Handle streaming response
+    var reader = resp.body.getReader();
+    var decoder = new TextDecoder();
+    var fullText = '';
+    while (true) {
+      var result = await reader.read();
+      if (result.done) break;
+      var chunk = decoder.decode(result.value, { stream: true });
+      // Parse SSE data lines
+      var lines = chunk.split('\n');
+      for (var i = 0; i < lines.length; i++) {
+        var line = lines[i].trim();
+        if (line.startsWith('data: ')) {
+          var payload = line.slice(6);
+          if (payload === '[DONE]') continue;
+          try {
+            var parsed = JSON.parse(payload);
+            if (parsed.text) fullText += parsed.text;
+            else if (parsed.delta) fullText += parsed.delta;
+            else if (parsed.content) fullText += parsed.content;
+          } catch(pe) {
+            fullText += payload;
+          }
+        }
+      }
+    }
+    if (fullText) {
+      // Remove the "Searching..." message
+      var container = document.getElementById('voiceTranscript');
+      if (container) {
+        var lastSystem = container.querySelector('.voice-transcript-system:last-child');
+        if (lastSystem && lastSystem.textContent.includes('Searching')) lastSystem.remove();
+      }
+      appendVoiceTranscript('sal', fullText.trim());
+      // Auto-read the response via TTS if available
+      voiceTTSRead(fullText.trim());
+    }
+  } catch(e) {
+    appendVoiceTranscript('sal', 'Sorry, I couldn\'t process that right now. Please try again.');
+    console.error('[VoiceSearch]', e);
+  }
+}
+
+async function voiceTTSRead(text) {
+  if (!text || text.length > 2000) return;
+  try {
+    var resp = await fetch(API + '/api/tts', {
+      method: 'POST',
+      headers: Object.assign({ 'Content-Type': 'application/json' }, authHeaders()),
+      body: JSON.stringify({ text: text, voice_id: 'pNInz6obpgDQGcFmaJgB' })
+    });
+    if (!resp.ok) return;
+    var blob = await resp.blob();
+    var url = URL.createObjectURL(blob);
+    var audio = new Audio(url);
+    audio.play().catch(function(){});
+    audio.onended = function() { URL.revokeObjectURL(url); };
+  } catch(e) { /* TTS optional — fail silently */ }
 }
 
 /* ============================================
@@ -4243,3 +4324,73 @@ function showOnboardingTour() {
 document.addEventListener('DOMContentLoaded', function() {
   setTimeout(showOnboardingTour, 1000);
 });
+
+/* ============================================
+   PREVIEW VIEWPORT TOGGLE — Web / Tablet / Mobile
+   ============================================ */
+function setPreviewViewport(viewport) {
+  var frame = document.getElementById('previewViewportFrame');
+  var label = document.getElementById('previewVpLabel');
+  if (!frame) return;
+
+  document.querySelectorAll('.preview-vp-btn').forEach(function(b) { b.classList.remove('active'); });
+  var btn = document.querySelector('.preview-vp-btn[data-viewport="' + viewport + '"]');
+  if (btn) btn.classList.add('active');
+
+  frame.setAttribute('data-viewport', viewport);
+
+  var labels = {
+    desktop: 'Desktop · 100%',
+    tablet: 'Tablet · 768px',
+    mobile: 'Mobile · 375px'
+  };
+  if (label) label.textContent = labels[viewport] || 'Desktop · 100%';
+}
+
+function refreshPreview() {
+  var area = document.getElementById('studioResultArea');
+  if (!area) return;
+  var iframe = area.querySelector('iframe');
+  if (iframe) {
+    var src = iframe.srcdoc || iframe.src;
+    if (iframe.srcdoc) { iframe.srcdoc = src; }
+    else if (iframe.src) { iframe.src = src; }
+  }
+  if (typeof showToast === 'function') showToast('Preview refreshed', 'success');
+}
+
+/* ============================================
+   METERING — Tier Switch Recalculation
+   ============================================ */
+var _origSelectComputeTier = window.selectComputeTier;
+if (typeof _origSelectComputeTier === 'function') {
+  window.selectComputeTier = function(tier) {
+    var oldTier = studioState.computeTier || 'mini';
+    _origSelectComputeTier(tier);
+    
+    // Recalculate cost if mid-build
+    if (studioState.sessionStart && oldTier !== tier) {
+      var now = Date.now();
+      var elapsedMs = now - (studioState.lastTierSwitch || studioState.sessionStart);
+      var elapsedMin = elapsedMs / 60000;
+      
+      var rates = { mini: 0.05, pro: 0.25, max: 0.75, max_pro: 1.00 };
+      var oldRate = rates[oldTier] || 0.05;
+      
+      // Accumulate cost from previous tier segment
+      studioState.accumulatedCost = (studioState.accumulatedCost || 0) + (elapsedMin * oldRate);
+      studioState.lastTierSwitch = now;
+      
+      var costDisplay = document.querySelector('.studio-credit-cost');
+      if (costDisplay) {
+        var totalCost = studioState.accumulatedCost;
+        costDisplay.textContent = '$' + totalCost.toFixed(2) + ' so far';
+      }
+      
+      if (typeof builderAddLog === 'function') {
+        builderAddLog('info', 'Tier switched to ' + tier.toUpperCase() + ' ($' + (rates[tier] || 0.05).toFixed(2) + '/min). Accumulated: $' + studioState.accumulatedCost.toFixed(2));
+      }
+    }
+  };
+}
+

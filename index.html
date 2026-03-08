@@ -768,10 +768,29 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
 
           <!-- Preview Panel -->
           <div class="studio-preview-panel" id="studioPreviewPanel" style="display:none;">
-            <div id="studioResultArea" class="studio-result-area">
-              <div class="studio-preview-empty">
-                <svg viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="1" stroke-linecap="round" width="48" height="48"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
-                <span>Preview will appear here</span>
+            <div class="preview-viewport-bar" id="previewViewportBar">
+              <div class="preview-viewport-toggles">
+                <button class="preview-vp-btn active" data-viewport="desktop" onclick="setPreviewViewport('desktop')" title="Desktop">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+                </button>
+                <button class="preview-vp-btn" data-viewport="tablet" onclick="setPreviewViewport('tablet')" title="Tablet">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16"><rect x="4" y="2" width="16" height="20" rx="2"/><line x1="12" y1="18" x2="12" y2="18"/></svg>
+                </button>
+                <button class="preview-vp-btn" data-viewport="mobile" onclick="setPreviewViewport('mobile')" title="Mobile">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16"><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="12" y1="18" x2="12" y2="18"/></svg>
+                </button>
+              </div>
+              <span class="preview-vp-label" id="previewVpLabel">Desktop · 100%</span>
+              <button class="preview-vp-refresh" onclick="refreshPreview()" title="Refresh">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="14" height="14"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+              </button>
+            </div>
+            <div class="preview-viewport-frame" id="previewViewportFrame">
+              <div id="studioResultArea" class="studio-result-area">
+                <div class="studio-preview-empty">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="1" stroke-linecap="round" width="48" height="48"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+                  <span>Preview will appear here</span>
+                </div>
               </div>
             </div>
           </div>
@@ -863,7 +882,7 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
             <div class="voice-orb" id="voiceOrb" onclick="toggleVoiceAI()">
               <div class="voice-orb-ring"></div>
               <div class="voice-orb-ring voice-ring-2"></div>
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" width="32" height="32"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+              <img src="/assets/helmet-icon.jpg" alt="SAL" class="voice-helmet-icon" style="width:52px;height:52px;border-radius:50%;object-fit:cover;">
             </div>
             <div class="voice-cta-label" id="voiceCtaLabel">Tap to Talk to SAL</div>
             <div class="voice-status-indicator" id="voiceStatusIndicator">
