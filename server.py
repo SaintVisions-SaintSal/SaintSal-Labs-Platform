@@ -106,9 +106,13 @@ MEDIA_DIR.mkdir(exist_ok=True)
 (MEDIA_DIR / "images").mkdir(exist_ok=True)
 (MEDIA_DIR / "videos").mkdir(exist_ok=True)
 (MEDIA_DIR / "audio").mkdir(exist_ok=True)
+(MEDIA_DIR / "uploads").mkdir(exist_ok=True)
 
 # In-memory gallery (production: use DB)
 media_gallery = []
+
+# In-memory upload context (files attached to Builder prompts)
+builder_uploads = []  # [{id, filename, content_type, size, url, extracted_text}]
 
 # In-memory social connections (production: use DB + encrypted storage)
 social_connections = {}
@@ -803,8 +807,12 @@ PACKAGES = [
         "id": "basic",
         "name": "Basic",
         "product_id": "SV-CORP-001",
-        "price": 197,  # Client price ($79 cost → 150% markup)
+        "price": 197,
         "processing": "5-7 business days",
+        "stripe_prices": {
+            "llc": "price_1T84WEL47U80vDLAYfgh6tne",
+            "corp": "price_1T84WHL47U80vDLA9xXux4cI",
+        },
         "features": [
             "Name availability search",
             "Articles of Organization / Incorporation",
@@ -817,9 +825,13 @@ PACKAGES = [
         "id": "deluxe",
         "name": "Deluxe",
         "product_id": "SV-CORP-002",
-        "price": 397,  # Client price ($199 cost → 100% markup)
+        "price": 397,
         "popular": True,
         "processing": "24-hour rush",
+        "stripe_prices": {
+            "llc": "price_1T84WFL47U80vDLAB1q3I1Me",
+            "corp": "price_1T84WIL47U80vDLAKaIYgJNq",
+        },
         "features": [
             "Everything in Basic",
             "EIN / Federal Tax ID filing",
@@ -832,8 +844,12 @@ PACKAGES = [
         "id": "complete",
         "name": "Complete",
         "product_id": "SV-CORP-003",
-        "price": 449,  # Client price ($249 cost → 80% markup)
+        "price": 449,
         "processing": "24-hour rush",
+        "stripe_prices": {
+            "llc": "price_1T84WGL47U80vDLAM7AVMeWV",
+            "corp": "price_1T84WJL47U80vDLAj35gfAvk",
+        },
         "features": [
             "Everything in Deluxe",
             "Custom Operating Agreement / Bylaws",
@@ -847,16 +863,16 @@ PACKAGES = [
 
 # Additional CorpNet products from catalog
 CORPNET_ADDONS = [
-    {"id": "dba", "product_id": "SV-CORP-007", "name": "DBA Filing", "price": 149, "type": "one-time"},
-    {"id": "ra_annual", "product_id": "SV-CORP-008", "name": "Registered Agent — Annual", "price": 224, "type": "annual"},
-    {"id": "s_corp_election", "product_id": "SV-CORP-009", "name": "S-Corp Election (Form 2553)", "price": 149, "type": "one-time"},
-    {"id": "annual_report", "product_id": "SV-CORP-010", "name": "Annual Report Filing", "price": 179, "type": "annual"},
-    {"id": "foreign_llc", "product_id": "SV-CORP-011", "name": "Foreign LLC Qualification", "price": 297, "type": "one-time"},
-    {"id": "biz_license", "product_id": "SV-CORP-012", "name": "Business License Research", "price": 169, "type": "one-time"},
-    {"id": "nonprofit", "product_id": "SV-CORP-013", "name": "Nonprofit Formation (501c3)", "price": 197, "type": "one-time"},
-    {"id": "amendment", "product_id": "SV-CORP-014", "name": "Amendment Filing", "price": 169, "type": "one-time"},
-    {"id": "dissolution", "product_id": "SV-CORP-015", "name": "Dissolution / Withdrawal", "price": 224, "type": "one-time"},
-    {"id": "ai_consult", "product_id": "SV-CORP-016", "name": "SaintSal AI Business Consult", "price": 79, "type": "one-time"},
+    {"id": "dba", "product_id": "SV-CORP-007", "name": "DBA Filing", "price": 149, "type": "one-time", "stripe_price_id": "price_1T84WKL47U80vDLAbXKZPWwK"},
+    {"id": "ra_annual", "product_id": "SV-CORP-008", "name": "Registered Agent — Annual", "price": 224, "type": "annual", "stripe_price_id": "price_1T84WLL47U80vDLAjC6OBz5s"},
+    {"id": "s_corp_election", "product_id": "SV-CORP-009", "name": "S-Corp Election (Form 2553)", "price": 149, "type": "one-time", "stripe_price_id": "price_1T84WML47U80vDLAhXUDMw0u"},
+    {"id": "annual_report", "product_id": "SV-CORP-010", "name": "Annual Report Filing", "price": 179, "type": "annual", "stripe_price_id": "price_1T84WNL47U80vDLArGpX7xno"},
+    {"id": "foreign_llc", "product_id": "SV-CORP-011", "name": "Foreign LLC Qualification", "price": 297, "type": "one-time", "stripe_price_id": "price_1T84WOL47U80vDLAXsI6xTBY"},
+    {"id": "biz_license", "product_id": "SV-CORP-012", "name": "Business License Research", "price": 169, "type": "one-time", "stripe_price_id": "price_1T84WQL47U80vDLAufdYUp75"},
+    {"id": "nonprofit", "product_id": "SV-CORP-013", "name": "Nonprofit Formation (501c3)", "price": 197, "type": "one-time", "stripe_price_id": "price_1T84WRL47U80vDLA1Al99kvx"},
+    {"id": "amendment", "product_id": "SV-CORP-014", "name": "Amendment Filing", "price": 169, "type": "one-time", "stripe_price_id": "price_1T84WSL47U80vDLAtOOfNUiH"},
+    {"id": "dissolution", "product_id": "SV-CORP-015", "name": "Dissolution / Withdrawal", "price": 224, "type": "one-time", "stripe_price_id": "price_1T84WTL47U80vDLAnWkmbE7L"},
+    {"id": "ai_consult", "product_id": "SV-CORP-016", "name": "SaintSal AI Business Consult", "price": 79, "type": "one-time", "stripe_price_id": "price_1T84WUL47U80vDLAieQFLCHB"},
 ]
 
 
@@ -884,40 +900,61 @@ async def get_product_catalog():
             "addons": CORPNET_ADDONS,
         },
         "subscriptions": [
-            {"id": "SV-SAL-FREE", "name": "Free", "price": 0, "billing": "free", "stripe_price_id": "price_1T5bkAL47U80vDLAslOm3HoX", "features": ["50 msgs/mo", "Basic AI chat", "Finance & RE modules"]},
-            {"id": "SV-SAL-START", "name": "Starter", "price": 27, "billing": "monthly", "stripe_price_id": "price_1T5bkAL47U80vDLAaChP4Hqg", "features": ["500 msgs/mo", "All 6 domain modules", "SaintSal core", "Email support"]},
-            {"id": "SV-SAL-PRO", "name": "Pro", "price": 97, "billing": "monthly", "stripe_price_id": "price_1T5bkBL47U80vDLALiVDkOgb", "features": ["Unlimited msgs", "All AI models", "SaintSal Labs access", "Cookin.io builder", "Priority support"], "required_for": "Premium Snapshots"},
-            {"id": "SV-SAL-TEAM", "name": "Teams", "price": 297, "billing": "monthly", "stripe_price_id": "price_1T5bkCL47U80vDLANsCa647K", "features": ["Everything in Pro", "Up to 5 seats", "Shared agents", "Team analytics", "GHL CRM integration"]},
-            {"id": "SV-SAL-ENT", "name": "Enterprise", "price": 497, "billing": "monthly", "stripe_price_id": "price_1T5bkDL47U80vDLANXWF33A7", "features": ["Everything in Teams", "Unlimited seats", "White-label", "Custom integrations", "Dedicated support"]},
+            {"id": "SV-SAL-FREE", "name": "Free", "price": 0, "annual_price": 0, "billing": "free", "stripe_price_id": "price_1T5bkAL47U80vDLAslOm3HoX", "stripe_annual_price_id": "price_1T7p1tL47U80vDLAnxtkrGV4", "product_id": "prod_U3jCx2VJbNeXvU", "features": ["50 msgs/mo", "Basic AI chat", "Finance & RE modules"]},
+            {"id": "SV-SAL-START", "name": "Starter", "price": 27, "annual_price": 270, "billing": "monthly", "stripe_price_id": "price_1T5bkAL47U80vDLAaChP4Hqg", "stripe_annual_price_id": "price_1T6dHNL47U80vDLAPgfsUmtO", "product_id": "prod_U3jCGSzn4WqzV3", "features": ["500 msgs/mo", "All 6 domain modules", "SaintSal core", "Email support"]},
+            {"id": "SV-SAL-PRO", "name": "Pro", "price": 97, "annual_price": 970, "billing": "monthly", "stripe_price_id": "price_1T5bkBL47U80vDLALiVDkOgb", "stripe_annual_price_id": "price_1T6dHNL47U80vDLAHYxorUNk", "product_id": "prod_U3jC7k9rF5enMh", "features": ["Unlimited msgs", "All AI models", "SaintSal Labs access", "Cookin.io builder", "Priority support"], "required_for": "Premium Snapshots"},
+            {"id": "SV-SAL-TEAM", "name": "Teams", "price": 297, "annual_price": 2970, "billing": "monthly", "stripe_price_id": "price_1T5bkCL47U80vDLANsCa647K", "stripe_annual_price_id": "price_1T6dHNL47U80vDLAqTTV84lL", "product_id": "prod_U3jCtHY6kyCJdC", "features": ["Everything in Pro", "Up to 5 seats", "Shared agents", "Team analytics", "GHL CRM integration"]},
+            {"id": "SV-SAL-ENT", "name": "Enterprise", "price": 497, "annual_price": 4970, "billing": "monthly", "stripe_price_id": "price_1T5bkDL47U80vDLANXWF33A7", "stripe_annual_price_id": "price_1T6dHOL47U80vDLARSODO7b1", "product_id": "prod_U3jCLNosf5FA6j", "features": ["Everything in Teams", "Unlimited seats", "White-label", "Custom integrations", "Dedicated support"]},
         ],
         "snapshots": {
             "premium": [
-                {"id": "SV-SNAP-RE", "name": "Real Estate Pro", "price": 997, "requires": "Pro ($97/mo)", "features": "300+ custom values, 4 pipelines, 26 workflows"},
-                {"id": "SV-SNAP-RL", "name": "Residential Lending Pro", "price": 997, "requires": "Pro ($97/mo)", "features": "Mortgage pre-qual funnel, rate automation, LO pipeline"},
-                {"id": "SV-SNAP-CL", "name": "Commercial Lending Pro", "price": 1497, "requires": "Pro ($97/mo)", "features": "Deal intake ($5K-$100M), SBA/CMBS/Bridge pipelines"},
-                {"id": "SV-SNAP-IT", "name": "Investment / Tax / Legal Pro", "price": 1497, "requires": "Pro ($97/mo)", "features": "AUM pipeline, tax prep workflows, compliance"},
-                {"id": "SV-SNAP-CC", "name": "Card Store / Collectibles Pro", "price": 797, "requires": "Pro ($97/mo)", "features": "Storefront funnel, inventory pipeline, grading"},
+                {"id": "SV-SNAP-RE", "name": "Real Estate Pro", "price": 997, "stripe_price_id": "price_1T84WVL47U80vDLAIm6fPewj", "requires": "Pro ($97/mo)", "features": "300+ custom values, 4 pipelines, 26 workflows"},
+                {"id": "SV-SNAP-RL", "name": "Residential Lending Pro", "price": 997, "stripe_price_id": "price_1T84WWL47U80vDLArLe6zWtx", "requires": "Pro ($97/mo)", "features": "Mortgage pre-qual funnel, rate automation, LO pipeline"},
+                {"id": "SV-SNAP-CL", "name": "Commercial Lending Pro", "price": 1497, "stripe_price_id": "price_1T84WXL47U80vDLAKpvuPQy8", "requires": "Pro ($97/mo)", "features": "Deal intake ($5K-$100M), SBA/CMBS/Bridge pipelines"},
+                {"id": "SV-SNAP-IT", "name": "Investment / Tax / Legal Pro", "price": 1497, "stripe_price_id": "price_1T84WYL47U80vDLAmmNVVHjd", "requires": "Pro ($97/mo)", "features": "AUM pipeline, tax prep workflows, compliance"},
+                {"id": "SV-SNAP-CC", "name": "Card Store / Collectibles Pro", "price": 797, "stripe_price_id": "price_1T84WZL47U80vDLAriKpNSXO", "requires": "Pro ($97/mo)", "features": "Storefront funnel, inventory pipeline, grading"},
             ],
             "standard": [
-                {"id": "SV-STD-001", "name": "Dental Practice", "price": 197, "requires": "Starter ($27/mo)"},
-                {"id": "SV-STD-002", "name": "Insurance Agency", "price": 197, "requires": "Starter ($27/mo)"},
-                {"id": "SV-STD-003", "name": "Fitness / Gym", "price": 197, "requires": "Starter ($27/mo)"},
-                {"id": "SV-STD-004", "name": "Restaurant / Food Service", "price": 197, "requires": "Starter ($27/mo)"},
-                {"id": "SV-STD-005", "name": "Auto Detailing", "price": 197, "requires": "Starter ($27/mo)"},
-                {"id": "SV-STD-006", "name": "Home Services (HVAC/Plumb/Elec)", "price": 197, "requires": "Starter ($27/mo)"},
-                {"id": "SV-STD-007", "name": "Med Spa / Aesthetics", "price": 197, "requires": "Starter ($27/mo)"},
-                {"id": "SV-STD-008", "name": "Salon / Barbershop", "price": 197, "requires": "Starter ($27/mo)"},
-                {"id": "SV-STD-009", "name": "Coaching / Consulting", "price": 197, "requires": "Starter ($27/mo)"},
-                {"id": "SV-STD-010", "name": "Roofing / Construction", "price": 197, "requires": "Starter ($27/mo)"},
-                {"id": "SV-STD-011", "name": "Chiropractor / Wellness", "price": 197, "requires": "Starter ($27/mo)"},
-                {"id": "SV-STD-012", "name": "Ecommerce / DTC Brand", "price": 197, "requires": "Starter ($27/mo)"},
-                {"id": "SV-STD-013", "name": "Nonprofit / Charity", "price": 197, "requires": "Starter ($27/mo)"},
+                {"id": "SV-STD-001", "name": "Dental Practice", "price": 197, "stripe_price_id": "price_1T84WaL47U80vDLAT0ftyGrd", "requires": "Starter ($27/mo)"},
+                {"id": "SV-STD-002", "name": "Insurance Agency", "price": 197, "stripe_price_id": "price_1T84WbL47U80vDLAhwqN7GA1", "requires": "Starter ($27/mo)"},
+                {"id": "SV-STD-003", "name": "Fitness / Gym", "price": 197, "stripe_price_id": "price_1T84WcL47U80vDLAoVOMgWO6", "requires": "Starter ($27/mo)"},
+                {"id": "SV-STD-004", "name": "Restaurant / Food Service", "price": 197, "stripe_price_id": "price_1T84WdL47U80vDLAK1LrwFeQ", "requires": "Starter ($27/mo)"},
+                {"id": "SV-STD-005", "name": "Auto Detailing / Automotive", "price": 197, "stripe_price_id": "price_1T84WeL47U80vDLAUH11AppD", "requires": "Starter ($27/mo)"},
+                {"id": "SV-STD-006", "name": "Home Services (HVAC/Plumb/Elec)", "price": 197, "stripe_price_id": "price_1T84WfL47U80vDLA1z549NHx", "requires": "Starter ($27/mo)"},
+                {"id": "SV-STD-007", "name": "Med Spa / Aesthetics", "price": 197, "stripe_price_id": "price_1T84WgL47U80vDLAF0XC0L3m", "requires": "Starter ($27/mo)"},
+                {"id": "SV-STD-008", "name": "Salon / Barbershop", "price": 197, "stripe_price_id": "price_1T84WiL47U80vDLA3Uw1cmfl", "requires": "Starter ($27/mo)"},
+                {"id": "SV-STD-009", "name": "Coaching / Consulting", "price": 197, "stripe_price_id": "price_1T84WjL47U80vDLAN9R6m6UK", "requires": "Starter ($27/mo)"},
+                {"id": "SV-STD-010", "name": "Roofing / Construction", "price": 197, "stripe_price_id": "price_1T84WkL47U80vDLAV7kv6HEu", "requires": "Starter ($27/mo)"},
+                {"id": "SV-STD-011", "name": "Chiropractor / Wellness", "price": 197, "stripe_price_id": "price_1T84WlL47U80vDLAG44grf74", "requires": "Starter ($27/mo)"},
+                {"id": "SV-STD-012", "name": "Ecommerce / DTC Brand", "price": 197, "stripe_price_id": "price_1T84WmL47U80vDLAWScn1duY", "requires": "Starter ($27/mo)"},
+                {"id": "SV-STD-013", "name": "Nonprofit / Charity", "price": 197, "stripe_price_id": "price_1T84WnL47U80vDLATXqOKY5v", "requires": "Starter ($27/mo)"},
+            ],
+            "individual": [
+                {"id": "SV-IND-001", "name": "Solar / Energy", "price": 97, "stripe_price_id": "price_1T84inL47U80vDLAhsltrVXp"},
+                {"id": "SV-IND-002", "name": "Plumbing", "price": 97, "stripe_price_id": "price_1T84ioL47U80vDLARHFDszkU"},
+                {"id": "SV-IND-003", "name": "House Cleaning", "price": 97, "stripe_price_id": "price_1T84ipL47U80vDLAXKHVGP7B"},
+                {"id": "SV-IND-004", "name": "Travel Agency", "price": 97, "stripe_price_id": "price_1T84iqL47U80vDLAPyh6Kvli"},
+                {"id": "SV-IND-005", "name": "Life Coach", "price": 97, "stripe_price_id": "price_1T84irL47U80vDLArAPh3xVJ"},
+                {"id": "SV-IND-006", "name": "Bakery / Food Production", "price": 97, "stripe_price_id": "price_1T84isL47U80vDLAG1YAokkK"},
+                {"id": "SV-IND-007", "name": "Family Law / Legal Practice", "price": 97, "stripe_price_id": "price_1T84itL47U80vDLAJvMu8qPk"},
+                {"id": "SV-IND-008", "name": "Course Creator / Online Education", "price": 97, "stripe_price_id": "price_1T84ivL47U80vDLADkohJm70"},
+                {"id": "SV-IND-009", "name": "Web Design / Creative Agency", "price": 97, "stripe_price_id": "price_1T84iwL47U80vDLAmatChkQH"},
+                {"id": "SV-IND-010", "name": "Bookkeeping / Accounting", "price": 97, "stripe_price_id": "price_1T84ixL47U80vDLAb276bhz7"},
+                {"id": "SV-IND-011", "name": "Marketing Agency", "price": 97, "stripe_price_id": "price_1T84iyL47U80vDLA7EQ0Mi3p"},
+                {"id": "SV-IND-012", "name": "Pet Services / Veterinary", "price": 97, "stripe_price_id": "price_1T84izL47U80vDLA0WhulAw4"},
+                {"id": "SV-IND-013", "name": "Photography / Videography", "price": 97, "stripe_price_id": "price_1T84j0L47U80vDLAZ2pirq78"},
+                {"id": "SV-IND-014", "name": "Auto Repair Shop", "price": 97, "stripe_price_id": "price_1T84qkL47U80vDLAMta7FfIa"},
+                {"id": "SV-IND-015", "name": "Nail Salon", "price": 97, "stripe_price_id": "price_1T84qlL47U80vDLArdq4dCDL"},
+                {"id": "SV-IND-016", "name": "Landscaping", "price": 97, "stripe_price_id": "price_1T84qmL47U80vDLAEcW5pWoh"},
+                {"id": "SV-IND-017", "name": "Day Spa", "price": 97, "stripe_price_id": "price_1T84qoL47U80vDLAPH33EaNE"},
+                {"id": "SV-IND-018", "name": "Pest Control", "price": 97, "stripe_price_id": "price_1T84qpL47U80vDLAGaGpK2mC"},
+                {"id": "SV-IND-019", "name": "Bed & Breakfast / Hospitality", "price": 97, "stripe_price_id": "price_1T84qqL47U80vDLAJNrMoFJM"},
             ],
         },
         "bundles": [
-            {"id": "SV-BUN-START", "name": "Starter Launch Bundle", "setup": 347, "monthly": 27, "includes": "CorpNet Deluxe LLC + 1 Standard Snapshot + Starter sub"},
-            {"id": "SV-BUN-PRO", "name": "Pro Business Bundle", "setup": 997, "monthly": 97, "includes": "CorpNet Complete LLC + 1 Premium Snapshot + Pro sub + onboarding"},
-            {"id": "SV-BUN-EMPIRE", "name": "Empire Bundle", "setup": 4497, "monthly": 297, "includes": "All 5 Premium Snapshots + CorpNet Complete + Teams + 90-day onboarding"},
+            {"id": "SV-BUN-START", "name": "Starter Launch Bundle", "setup": 347, "monthly": 27, "stripe_price_id": "price_1T84WoL47U80vDLA2J0DxSMY", "includes": "CorpNet Deluxe LLC + 1 Standard Snapshot + Starter sub"},
+            {"id": "SV-BUN-PRO", "name": "Pro Business Bundle", "setup": 997, "monthly": 97, "stripe_price_id": "price_1T84WpL47U80vDLAPiQf4qM3", "includes": "CorpNet Complete LLC + 1 Premium Snapshot + Pro sub + onboarding"},
+            {"id": "SV-BUN-EMPIRE", "name": "Empire Bundle", "setup": 4497, "monthly": 297, "stripe_price_id": "price_1T84WqL47U80vDLAk3ErZGgb", "includes": "All 5 Premium Snapshots + CorpNet Complete + Teams + 90-day onboarding"},
         ],
         "compute_tiers": COMPUTE_TIERS,
     }
@@ -1245,14 +1282,16 @@ async def corpnet_checkout(request: Request):
     state = body.get("state", "CA")
     business_name = body.get("business_name", "")
 
-    # Package prices in cents
-    PACKAGE_PRICES = {
-        "basic":    {"amount": 19700, "name": "Basic Formation Package"},
-        "deluxe":   {"amount": 39700, "name": "Deluxe Formation Package"},
-        "complete": {"amount": 44900, "name": "Complete Formation Package"},
+    # Map entity + package to real Stripe price IDs
+    entity_key = "corp" if entity_type.lower() in ("c_corp", "s_corp", "corporation", "corp") else "llc"
+    PACKAGE_STRIPE = {
+        "basic":    {"llc": "price_1T84WEL47U80vDLAYfgh6tne", "corp": "price_1T84WHL47U80vDLA9xXux4cI", "name": "Basic Formation Package"},
+        "deluxe":   {"llc": "price_1T84WFL47U80vDLAB1q3I1Me", "corp": "price_1T84WIL47U80vDLAKaIYgJNq", "name": "Deluxe Formation Package"},
+        "complete": {"llc": "price_1T84WGL47U80vDLAM7AVMeWV", "corp": "price_1T84WJL47U80vDLAj35gfAvk", "name": "Complete Formation Package"},
     }
 
-    pkg = PACKAGE_PRICES.get(package_id.lower(), PACKAGE_PRICES["basic"])
+    pkg = PACKAGE_STRIPE.get(package_id.lower(), PACKAGE_STRIPE["basic"])
+    stripe_price_id = pkg.get(entity_key, pkg["llc"])
     entity_label = entity_type.replace("_", " ").upper()
     description = f"{entity_label} formation in {state.upper()}"
     if business_name:
@@ -1262,14 +1301,7 @@ async def corpnet_checkout(request: Request):
         session = stripe_lib.checkout.Session.create(
             payment_method_types=["card"],
             line_items=[{
-                "price_data": {
-                    "currency": "usd",
-                    "unit_amount": pkg["amount"],
-                    "product_data": {
-                        "name": pkg["name"],
-                        "description": description,
-                    },
-                },
+                "price": stripe_price_id,
                 "quantity": 1,
             }],
             mode="payment",
@@ -2060,8 +2092,8 @@ async def stitch_status():
 # Stripe Metered Price IDs:
 #   Mini ($0.05/min):     price_1T5bkVL47U80vDLAHHAjXmJh
 #   Pro ($0.25/min):      price_1T5bkWL47U80vDLA4EI3dylp
-#   Max ($0.75/min):      price_1T5bkXL47U80vDLAdF4S8y4T
-#   Max Pro ($1.00/min):  price_1T5bkYL47U80vDLA5v8o0c2o
+#   Max ($0.75/min):      price_1T5bkXL47U80vDLAh6DLuS0j
+#   Max Pro ($1.00/min):  price_1T5bkYL47U80vDLAVOs5fj75
 # ============================================================================
 
 STRIPE_SECRET = os.environ.get("STRIPE_SECRET_KEY", "")
@@ -2070,8 +2102,8 @@ STRIPE_SECRET = os.environ.get("STRIPE_SECRET_KEY", "")
 COMPUTE_TIERS = {
     "mini":     {"price_per_min": 0.05, "label": "Mini",     "stripe_price_id": "price_1T5bkVL47U80vDLAHHAjXmJh", "color": "#6B7280"},
     "pro":      {"price_per_min": 0.25, "label": "Pro",      "stripe_price_id": "price_1T5bkWL47U80vDLA4EI3dylp", "color": "#10B981"},
-    "max":      {"price_per_min": 0.75, "label": "Max",      "stripe_price_id": "price_1T5bkXL47U80vDLAdF4S8y4T", "color": "#8B5CF6"},
-    "max_pro":  {"price_per_min": 1.00, "label": "Max Pro",  "stripe_price_id": "price_1T5bkYL47U80vDLA5v8o0c2o", "color": "#F59E0B"},
+    "max":      {"price_per_min": 0.75, "label": "Max",      "stripe_price_id": "price_1T5bkXL47U80vDLAh6DLuS0j", "color": "#8B5CF6"},
+    "max_pro":  {"price_per_min": 1.00, "label": "Max Pro",  "stripe_price_id": "price_1T5bkYL47U80vDLAVOs5fj75", "color": "#F59E0B"},
 }
 
 # Model → compute tier mapping with full cost data
@@ -3711,11 +3743,29 @@ async def stripe_webhook(request: Request):
             
             # Map Stripe price IDs to plan tiers
             price_to_tier = {
+                # Monthly
                 "price_1T5bkAL47U80vDLAslOm3HoX": "free",
                 "price_1T5bkAL47U80vDLAaChP4Hqg": "starter",
                 "price_1T5bkBL47U80vDLALiVDkOgb": "pro",
                 "price_1T5bkCL47U80vDLANsCa647K": "teams",
                 "price_1T5bkDL47U80vDLANXWF33A7": "enterprise",
+                # Annual
+                "price_1T7p1tL47U80vDLAnxtkrGV4": "free",
+                "price_1T6dHNL47U80vDLAPgfsUmtO": "starter",
+                "price_1T6dHNL47U80vDLAHYxorUNk": "pro",
+                "price_1T84uZL47U80vDLARDZK46qE": "pro",  # Pro annual v2
+                "price_1T6dHNL47U80vDLAqTTV84lL": "teams",
+                "price_1T6dHOL47U80vDLARSODO7b1": "enterprise",
+                # Duplicate product set (monthly)
+                "price_1T7p1sL47U80vDLAgU2shcQO": "starter",
+                "price_1T7p1tL47U80vDLAVC0N4N4J": "pro",
+                "price_1T7p1uL47U80vDLA9QF62BKS": "teams",
+                "price_1T7p1uL47U80vDLAR4Wk6uW0": "enterprise",
+                # Duplicate product set (annual)
+                "price_1T7p1sL47U80vDLAYEEv8Kmg": "starter",
+                "price_1T7p1tL47U80vDLAk5HK8YcR": "pro",
+                "price_1T7p1uL47U80vDLAjlnLTuul": "teams",
+                "price_1T7p1uL47U80vDLAk9UA0lnr": "enterprise",
             }
             tier = price_to_tier.get(price_id, "free")
             
@@ -4580,6 +4630,393 @@ async def builder_load_project(name: str):
         })
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
+
+
+# ── Builder File Upload ───────────────────────────────────────────────────────
+
+ALLOWED_UPLOAD_EXTENSIONS = {
+    # Images
+    ".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".bmp", ".ico",
+    # Documents
+    ".pdf", ".doc", ".docx", ".txt", ".md", ".rtf", ".csv", ".json", ".xml",
+    # Code
+    ".py", ".js", ".ts", ".jsx", ".tsx", ".html", ".css", ".scss", ".less",
+    ".java", ".cpp", ".c", ".h", ".go", ".rs", ".rb", ".php", ".swift",
+    ".yaml", ".yml", ".toml", ".env", ".sh", ".bat", ".sql",
+    # Archives
+    ".zip",
+}
+MAX_UPLOAD_SIZE = 20 * 1024 * 1024  # 20MB
+
+
+@app.post("/api/studio/upload")
+async def studio_upload_file(file: UploadFile = File(...)):
+    """Upload a file to Builder for AI context — images, screenshots, documents, code."""
+    if not file or not file.filename:
+        return JSONResponse({"error": "No file provided"}, status_code=400)
+
+    ext = Path(file.filename).suffix.lower()
+    if ext not in ALLOWED_UPLOAD_EXTENSIONS:
+        return JSONResponse({"error": f"File type {ext} not supported"}, status_code=400)
+
+    content = await file.read()
+    if len(content) > MAX_UPLOAD_SIZE:
+        return JSONResponse({"error": "File too large (max 20MB)"}, status_code=400)
+
+    file_id = str(uuid.uuid4())[:8]
+    safe_name = f"{file_id}_{file.filename.replace(' ', '_')}"
+    filepath = MEDIA_DIR / "uploads" / safe_name
+    filepath.write_bytes(content)
+
+    # Determine if we can extract text for AI context
+    extracted_text = ""
+    content_type = file.content_type or "application/octet-stream"
+    is_image = content_type.startswith("image/") or ext in {".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".bmp", ".ico"}
+    is_text = ext in {".txt", ".md", ".py", ".js", ".ts", ".jsx", ".tsx", ".html", ".css", ".scss",
+                       ".json", ".xml", ".yaml", ".yml", ".toml", ".env", ".sh", ".sql",
+                       ".java", ".cpp", ".c", ".h", ".go", ".rs", ".rb", ".php", ".swift",
+                       ".csv", ".less", ".bat", ".rtf"}
+
+    if is_text:
+        try:
+            extracted_text = content.decode("utf-8", errors="replace")[:50000]  # First 50k chars
+        except Exception:
+            extracted_text = "[Binary file — could not extract text]"
+
+    # For images, prepare base64 thumbnail for AI vision
+    thumbnail_b64 = ""
+    if is_image and ext != ".svg":
+        thumbnail_b64 = base64.b64encode(content).decode()[:500000]  # Limit base64 size
+
+    entry = {
+        "id": file_id,
+        "filename": file.filename,
+        "safe_name": safe_name,
+        "content_type": content_type,
+        "size": len(content),
+        "url": f"/api/studio/uploads/{safe_name}",
+        "is_image": is_image,
+        "is_text": is_text,
+        "extracted_text": extracted_text[:2000] if extracted_text else "",
+        "thumbnail_b64": thumbnail_b64[:100000] if thumbnail_b64 else "",
+        "created_at": datetime.now().isoformat(),
+    }
+    builder_uploads.insert(0, entry)
+
+    return JSONResponse(entry)
+
+
+@app.get("/api/studio/uploads/{filename}")
+async def serve_upload(filename: str):
+    """Serve uploaded files."""
+    filepath = MEDIA_DIR / "uploads" / filename
+    if filepath.exists():
+        return FileResponse(str(filepath))
+    return JSONResponse({"error": "File not found"}, status_code=404)
+
+
+@app.get("/api/studio/uploads")
+async def list_uploads():
+    """List all uploaded files."""
+    return JSONResponse({"uploads": builder_uploads})
+
+
+@app.delete("/api/studio/uploads/{file_id}")
+async def delete_upload(file_id: str):
+    """Remove an uploaded file."""
+    global builder_uploads
+    entry = next((u for u in builder_uploads if u["id"] == file_id), None)
+    if not entry:
+        return JSONResponse({"error": "Not found"}, status_code=404)
+    filepath = MEDIA_DIR / "uploads" / entry["safe_name"]
+    if filepath.exists():
+        filepath.unlink()
+    builder_uploads = [u for u in builder_uploads if u["id"] != file_id]
+    return JSONResponse({"success": True})
+
+
+# ── Social Content Generation ─────────────────────────────────────────────────
+
+SOCIAL_PLATFORM_SPECS = {
+    "linkedin": {
+        "name": "LinkedIn",
+        "image_size": "1200x627",
+        "aspect": "1.91:1",
+        "max_chars": 3000,
+        "style_hint": "professional, corporate, clean design with blue accents",
+        "content_types": ["image_post", "carousel", "article"],
+    },
+    "instagram": {
+        "name": "Instagram",
+        "image_size": "1080x1080",
+        "aspect": "1:1",
+        "max_chars": 2200,
+        "style_hint": "vibrant, eye-catching, trendy, Instagram-worthy aesthetic",
+        "content_types": ["image_post", "story", "reel"],
+    },
+    "twitter": {
+        "name": "X (Twitter)",
+        "image_size": "1200x675",
+        "aspect": "16:9",
+        "max_chars": 280,
+        "style_hint": "bold, shareable, concise visual with strong typography",
+        "content_types": ["image_post", "thread"],
+    },
+    "youtube": {
+        "name": "YouTube",
+        "image_size": "1280x720",
+        "aspect": "16:9",
+        "max_chars": 5000,
+        "style_hint": "thumbnail style — bold text, bright colors, face closeup, high contrast",
+        "content_types": ["thumbnail", "short_video"],
+    },
+    "facebook": {
+        "name": "Facebook",
+        "image_size": "1200x630",
+        "aspect": "1.91:1",
+        "max_chars": 63206,
+        "style_hint": "engaging, community-focused, warm and inviting",
+        "content_types": ["image_post", "video", "story"],
+    },
+    "tiktok": {
+        "name": "TikTok",
+        "image_size": "1080x1920",
+        "aspect": "9:16",
+        "max_chars": 2200,
+        "style_hint": "trendy, fast-paced, Gen-Z aesthetic, vertical format",
+        "content_types": ["short_video", "image_post"],
+    },
+    "snapchat": {
+        "name": "Snapchat",
+        "image_size": "1080x1920",
+        "aspect": "9:16",
+        "max_chars": 250,
+        "style_hint": "fun, youthful, vertical, bold overlays",
+        "content_types": ["story", "spotlight"],
+    },
+}
+
+
+@app.post("/api/social/generate")
+async def social_generate_content(request: Request):
+    """Generate platform-optimized social media content — image + caption."""
+    body = await request.json()
+    topic = body.get("topic", "")
+    platform = body.get("platform", "linkedin").lower()
+    content_type = body.get("content_type", "image_post")  # image_post, thumbnail, short_video, story
+    brand_voice = body.get("brand_voice", "professional yet approachable")
+    extra_context = body.get("context", "")
+
+    if not topic:
+        return JSONResponse({"error": "Topic required"}, status_code=400)
+
+    spec = SOCIAL_PLATFORM_SPECS.get(platform, SOCIAL_PLATFORM_SPECS["linkedin"])
+    xai_key = os.environ.get("XAI_API_KEY", "")
+
+    results = {"platform": platform, "spec": spec["name"], "content_type": content_type}
+
+    # ── Step 1: Generate caption/post text using Grok-4 ──
+    try:
+        caption_prompt = f"""You are a world-class social media content strategist.
+Generate a {spec['name']} post about: {topic}
+
+Platform specs:
+- Max characters: {spec['max_chars']}
+- Style: {spec['style_hint']}
+- Brand voice: {brand_voice}
+{f'Additional context: {extra_context}' if extra_context else ''}
+
+Return ONLY a JSON object with these fields:
+{{
+  "caption": "the post text optimized for {spec['name']}",
+  "hashtags": ["relevant", "hashtags"],
+  "hook": "attention-grabbing first line",
+  "cta": "call to action",
+  "image_prompt": "detailed prompt to generate the perfect {spec['name']} image for this post, including style: {spec['style_hint']}, dimensions suitable for {spec['image_size']}"
+}}"""
+
+        async with httpx.AsyncClient(timeout=60) as client:
+            resp = await client.post(
+                "https://api.x.ai/v1/chat/completions",
+                headers={"Authorization": f"Bearer {xai_key}", "Content-Type": "application/json"},
+                json={
+                    "model": "grok-4",
+                    "messages": [{"role": "user", "content": caption_prompt}],
+                    "temperature": 0.8,
+                }
+            )
+            resp_data = resp.json()
+            raw_text = resp_data.get("choices", [{}])[0].get("message", {}).get("content", "")
+
+            # Parse JSON from response
+            import re
+            json_match = re.search(r'\{[\s\S]*\}', raw_text)
+            if json_match:
+                caption_data = json.loads(json_match.group())
+            else:
+                caption_data = {"caption": raw_text[:spec['max_chars']], "hashtags": [], "hook": "", "cta": "", "image_prompt": topic}
+
+            results["caption"] = caption_data.get("caption", "")
+            results["hashtags"] = caption_data.get("hashtags", [])
+            results["hook"] = caption_data.get("hook", "")
+            results["cta"] = caption_data.get("cta", "")
+            image_prompt = caption_data.get("image_prompt", topic)
+
+    except Exception as e:
+        print(f"[Social] Caption generation error: {e}")
+        results["caption"] = f"Check out {topic}!"
+        results["hashtags"] = []
+        image_prompt = f"{spec['style_hint']}: {topic}"
+
+    # ── Step 2: Generate image using xAI Grok Imagine ──
+    if content_type in ("image_post", "thumbnail", "story"):
+        try:
+            from generate_image import generate_image
+            # Map platform aspect to generation aspect
+            aspect_map = {
+                "1:1": "1:1", "1.91:1": "16:9", "16:9": "16:9", "9:16": "9:16",
+                "4:3": "4:3", "3:4": "3:4",
+            }
+            gen_aspect = aspect_map.get(spec["aspect"], "1:1")
+            full_image_prompt = f"{image_prompt}. Optimized for {spec['name']} at {spec['image_size']}. Style: {spec['style_hint']}"
+
+            image_bytes = await generate_image(full_image_prompt, model="grok-2-image", aspect_ratio=gen_aspect)
+
+            file_id = str(uuid.uuid4())[:8]
+            filename = f"social_{platform}_{file_id}.png"
+            filepath = MEDIA_DIR / "images" / filename
+            filepath.write_bytes(image_bytes)
+
+            b64 = base64.b64encode(image_bytes).decode()
+            results["image"] = {
+                "url": f"/api/studio/media/images/{filename}",
+                "data": f"data:image/png;base64,{b64}",
+                "filename": filename,
+                "size": len(image_bytes),
+            }
+
+            media_gallery.insert(0, {
+                "id": file_id, "type": "image", "filename": filename,
+                "prompt": full_image_prompt, "model": "grok-2-image",
+                "created_at": datetime.now().isoformat(), "size_bytes": len(image_bytes),
+                "url": f"/api/studio/media/images/{filename}",
+            })
+
+        except Exception as e:
+            print(f"[Social] Image generation error: {e}")
+            results["image"] = {"error": str(e)[:200]}
+
+    # ── Step 3: Generate short video for video-first platforms ──
+    elif content_type == "short_video":
+        try:
+            from generate_video import generate_video
+            video_prompt = f"{image_prompt}. Vertical 9:16 format for {spec['name']}. {spec['style_hint']}"
+            video_bytes = await generate_video(video_prompt, duration=4)
+
+            file_id = str(uuid.uuid4())[:8]
+            filename = f"social_{platform}_{file_id}.mp4"
+            filepath = MEDIA_DIR / "videos" / filename
+            filepath.write_bytes(video_bytes)
+
+            b64 = base64.b64encode(video_bytes).decode()
+            results["video"] = {
+                "url": f"/api/studio/media/videos/{filename}",
+                "data": f"data:video/mp4;base64,{b64}",
+                "filename": filename,
+            }
+        except Exception as e:
+            print(f"[Social] Video generation error: {e}")
+            results["video"] = {"error": str(e)[:200]}
+
+    results["success"] = True
+    return JSONResponse(results)
+
+
+@app.get("/api/social/platform-specs")
+async def social_platform_specs():
+    """Return all platform specifications."""
+    return JSONResponse(SOCIAL_PLATFORM_SPECS)
+
+
+# ── Voice-to-Text (Speech-to-Text) via Deepgram ──────────────────────────────
+
+@app.post("/api/studio/transcribe")
+async def studio_transcribe_audio(request: Request):
+    """Transcribe audio from Builder voice input via Deepgram."""
+    content_type = request.headers.get("content-type", "")
+
+    if "multipart/form-data" in content_type:
+        form = await request.form()
+        audio_file = form.get("audio")
+        if not audio_file:
+            return JSONResponse({"error": "No audio file"}, status_code=400)
+        audio_data = await audio_file.read()
+        mime = audio_file.content_type or "audio/webm"
+    else:
+        audio_data = await request.body()
+        mime = content_type or "audio/webm"
+
+    if not audio_data or len(audio_data) < 100:
+        return JSONResponse({"error": "Audio too short"}, status_code=400)
+
+    deepgram_key = os.environ.get("DEEPGRAM_API_KEY", "")
+    assemblyai_key = os.environ.get("ASSEMBLYAI_API_KEY", "")
+
+    # Try Deepgram first
+    if deepgram_key:
+        try:
+            async with httpx.AsyncClient(timeout=30) as client:
+                resp = await client.post(
+                    "https://api.deepgram.com/v1/listen?model=nova-2&smart_format=true&language=en",
+                    headers={
+                        "Authorization": f"Token {deepgram_key}",
+                        "Content-Type": mime,
+                    },
+                    content=audio_data,
+                )
+                if resp.status_code == 200:
+                    data = resp.json()
+                    transcript = data.get("results", {}).get("channels", [{}])[0].get("alternatives", [{}])[0].get("transcript", "")
+                    if transcript:
+                        return JSONResponse({"text": transcript, "provider": "deepgram"})
+        except Exception as e:
+            print(f"[STT] Deepgram error: {e}")
+
+    # Fallback to AssemblyAI
+    if assemblyai_key:
+        try:
+            async with httpx.AsyncClient(timeout=60) as client:
+                # Upload audio
+                upload_resp = await client.post(
+                    "https://api.assemblyai.com/v2/upload",
+                    headers={"authorization": assemblyai_key},
+                    content=audio_data,
+                )
+                upload_url = upload_resp.json().get("upload_url")
+                if upload_url:
+                    # Request transcription
+                    transcript_resp = await client.post(
+                        "https://api.assemblyai.com/v2/transcript",
+                        headers={"authorization": assemblyai_key, "Content-Type": "application/json"},
+                        json={"audio_url": upload_url, "language_code": "en"},
+                    )
+                    transcript_id = transcript_resp.json().get("id")
+                    # Poll for completion (up to 30s)
+                    for _ in range(30):
+                        await asyncio.sleep(1)
+                        poll_resp = await client.get(
+                            f"https://api.assemblyai.com/v2/transcript/{transcript_id}",
+                            headers={"authorization": assemblyai_key},
+                        )
+                        poll_data = poll_resp.json()
+                        if poll_data.get("status") == "completed":
+                            return JSONResponse({"text": poll_data.get("text", ""), "provider": "assemblyai"})
+                        elif poll_data.get("status") == "error":
+                            break
+        except Exception as e:
+            print(f"[STT] AssemblyAI error: {e}")
+
+    return JSONResponse({"error": "Transcription failed — no STT provider available"}, status_code=500)
 
 
 if __name__ == "__main__":

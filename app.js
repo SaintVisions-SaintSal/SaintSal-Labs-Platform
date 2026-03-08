@@ -1463,39 +1463,450 @@ function toggleStudioRightSidebar() {
   }
 }
 
-// Social mode content — renders social platform cards
+// Social mode content — renders platform cards for AI content generation
+var socialSelectedPlatform = 'linkedin';
+var socialContentType = 'image_post';
+
+var SOCIAL_PLATFORMS = [
+  { id: 'linkedin', name: 'LinkedIn', color: '#0A66C2', size: '1200x627', types: ['Image Post', 'Carousel', 'Article'], icon: '<svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/></svg>' },
+  { id: 'instagram', name: 'Instagram', color: '#E4405F', size: '1080x1080', types: ['Image Post', 'Story', 'Reel'], icon: '<svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 1 0 0 12.324 6.162 6.162 0 0 0 0-12.324zM12 16a4 4 0 1 1 0-8 4 4 0 0 1 0 8zm6.406-11.845a1.44 1.44 0 1 0 0 2.881 1.44 1.44 0 0 0 0-2.881z"/></svg>' },
+  { id: 'twitter', name: 'X (Twitter)', color: '#000', size: '1200x675', types: ['Image Post', 'Thread'], icon: '<svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>' },
+  { id: 'youtube', name: 'YouTube', color: '#FF0000', size: '1280x720', types: ['Thumbnail', 'Short Video'], icon: '<svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>' },
+  { id: 'facebook', name: 'Facebook', color: '#1877F2', size: '1200x630', types: ['Image Post', 'Video', 'Story'], icon: '<svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>' },
+  { id: 'tiktok', name: 'TikTok', color: '#000', size: '1080x1920', types: ['Short Video', 'Image Post'], icon: '<svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20"><path d="M12.525.02c1.31-.02 2.61-.01 3.91-.02.08 1.53.63 3.09 1.75 4.17 1.12 1.11 2.7 1.62 4.24 1.79v4.03c-1.44-.05-2.89-.35-4.2-.97-.57-.26-1.1-.59-1.62-.93-.01 2.92.01 5.84-.02 8.75-.08 1.4-.54 2.79-1.35 3.94-1.31 1.92-3.58 3.17-5.91 3.21-1.43.08-2.86-.31-4.08-1.03-2.02-1.19-3.44-3.37-3.65-5.71-.02-.5-.03-1-.01-1.49.18-1.9 1.12-3.72 2.58-4.96 1.66-1.44 3.98-2.13 6.15-1.72.02 1.48-.04 2.96-.04 4.44-.99-.32-2.15-.23-3.02.37-.63.41-1.11 1.04-1.36 1.75-.21.51-.15 1.07-.14 1.61.24 1.64 1.82 3.02 3.5 2.87 1.12-.01 2.19-.66 2.77-1.61.19-.33.4-.67.41-1.06.1-1.79.06-3.57.07-5.36.01-4.03-.01-8.05.02-12.07z"/></svg>' },
+  { id: 'snapchat', name: 'Snapchat', color: '#FFFC00', size: '1080x1920', types: ['Story', 'Spotlight'], icon: '<svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20"><path d="M12.206.793c.99 0 4.347.276 5.93 3.821.529 1.193.403 3.219.299 4.847l-.003.06c-.012.18-.022.345-.03.51.075.045.203.09.401.09.3-.016.659-.12 1.033-.301.165-.088.344-.104.464-.104.182 0 .359.029.509.09.45.149.734.479.734.838.015.449-.39.839-1.213 1.168-.089.029-.209.075-.344.119-.45.135-1.139.36-1.333.81-.09.193-.074.42.046.638.36.659.958 1.449 1.718 2.24-.196.106-.451.181-.734.181-.299 0-.6-.09-.899-.27.158.27.254.51.254.689 0 .09-.015.165-.045.239-.195.449-.779.67-1.723.67-.389 0-.81-.044-1.259-.135-.465-.09-.719-.169-1.124-.27-.12-.029-.239-.06-.37-.09-.345-.074-.719-.105-1.049-.105-.599 0-1.049.135-1.318.255-.254.12-.554.255-.869.255-.345 0-.644-.135-.854-.45-.914-.719-1.289-1.739-1.649-2.37-.12-.24-.135-.45-.045-.63.195-.449.884-.674 1.334-.81.135-.044.254-.089.344-.119.824-.329 1.228-.719 1.213-1.168 0-.359-.284-.689-.734-.838-.15-.06-.329-.09-.509-.09-.12 0-.299.016-.464.104-.374.18-.734.285-1.033.3-.196 0-.329-.045-.404-.089-.009-.166-.019-.33-.03-.51l-.003-.06c-.103-1.628-.23-3.654.3-4.847C7.866 1.069 11.216.793 12.206.793z"/></svg>' },
+];
+
 function renderSocialContent() {
   var msgs = document.getElementById('studioMessages');
   if (!msgs) return;
-  var platforms = [
-    { name: 'YouTube', color: '#FF0000', icon: '<svg viewBox="0 0 24 24" fill="currentColor" width="24" height="24"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>' },
-    { name: 'X (Twitter)', color: '#000', icon: '<svg viewBox="0 0 24 24" fill="currentColor" width="24" height="24"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>' },
-    { name: 'Instagram', color: '#E4405F', icon: '<svg viewBox="0 0 24 24" fill="currentColor" width="24" height="24"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 1 0 0 12.324 6.162 6.162 0 0 0 0-12.324zM12 16a4 4 0 1 1 0-8 4 4 0 0 1 0 8zm6.406-11.845a1.44 1.44 0 1 0 0 2.881 1.44 1.44 0 0 0 0-2.881z"/></svg>' },
-    { name: 'Facebook', color: '#1877F2', icon: '<svg viewBox="0 0 24 24" fill="currentColor" width="24" height="24"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>' },
-    { name: 'TikTok', color: '#000', icon: '<svg viewBox="0 0 24 24" fill="currentColor" width="24" height="24"><path d="M12.525.02c1.31-.02 2.61-.01 3.91-.02.08 1.53.63 3.09 1.75 4.17 1.12 1.11 2.7 1.62 4.24 1.79v4.03c-1.44-.05-2.89-.35-4.2-.97-.57-.26-1.1-.59-1.62-.93-.01 2.92.01 5.84-.02 8.75-.08 1.4-.54 2.79-1.35 3.94-1.31 1.92-3.58 3.17-5.91 3.21-1.43.08-2.86-.31-4.08-1.03-2.02-1.19-3.44-3.37-3.65-5.71-.02-.5-.03-1-.01-1.49.18-1.9 1.12-3.72 2.58-4.96 1.66-1.44 3.98-2.13 6.15-1.72.02 1.48-.04 2.96-.04 4.44-.99-.32-2.15-.23-3.02.37-.63.41-1.11 1.04-1.36 1.75-.21.51-.15 1.07-.14 1.61.24 1.64 1.82 3.02 3.5 2.87 1.12-.01 2.19-.66 2.77-1.61.19-.33.4-.67.41-1.06.1-1.79.06-3.57.07-5.36.01-4.03-.01-8.05.02-12.07z"/></svg>' },
-    { name: 'LinkedIn', color: '#0A66C2', icon: '<svg viewBox="0 0 24 24" fill="currentColor" width="24" height="24"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/></svg>' },
-    { name: 'Snapchat', color: '#FFFC00', icon: '<svg viewBox="0 0 24 24" fill="currentColor" width="24" height="24"><path d="M12.206.793c.99 0 4.347.276 5.93 3.821.529 1.193.403 3.219.299 4.847l-.003.06c-.012.18-.022.345-.03.51.075.045.203.09.401.09.3-.016.659-.12 1.033-.301.165-.088.344-.104.464-.104.182 0 .359.029.509.09.45.149.734.479.734.838.015.449-.39.839-1.213 1.168-.089.029-.209.075-.344.119-.45.135-1.139.36-1.333.81-.09.193-.074.42.046.638.36.659.958 1.449 1.718 2.24-.196.106-.451.181-.734.181-.299 0-.6-.09-.899-.27.158.27.254.51.254.689 0 .09-.015.165-.045.239-.195.449-.779.67-1.723.67-.389 0-.81-.044-1.259-.135-.465-.09-.719-.169-1.124-.27-.12-.029-.239-.06-.37-.09-.345-.074-.719-.105-1.049-.105-.599 0-1.049.135-1.318.255-.254.12-.554.255-.869.255-.345 0-.644-.135-.854-.45-.914-.719-1.289-1.739-1.649-2.37-.12-.24-.135-.45-.045-.63.195-.449.884-.674 1.334-.81.135-.044.254-.089.344-.119.824-.329 1.228-.719 1.213-1.168 0-.359-.284-.689-.734-.838-.15-.06-.329-.09-.509-.09-.12 0-.299.016-.464.104-.374.18-.734.285-1.033.3-.196 0-.329-.045-.404-.089-.009-.166-.019-.33-.03-.51l-.003-.06c-.103-1.628-.23-3.654.3-4.847C7.866 1.069 11.216.793 12.206.793z"/></svg>' },
-  ];
-  var html = '<div class="studio-social-grid">';
-  platforms.forEach(function(p) {
-    html += '<div class="studio-social-card" onclick="openSocialCreator(\'' + p.name + '\')">'
-    html += '<div class="studio-social-icon" style="color:' + p.color + '">' + p.icon + '</div>';
-    html += '<div class="studio-social-name">' + p.name + '</div>';
-    html += '<div class="studio-social-status">Connect & Create</div>';
-    html += '</div>';
+  var html = '<div style="padding:16px 20px">';
+  html += '<div style="font-size:16px;font-weight:600;color:var(--text-primary);margin-bottom:4px;">Social Content Creator</div>';
+  html += '<div style="font-size:13px;color:var(--text-muted);margin-bottom:16px;">AI generates platform-optimized images, captions, and hashtags. Select a platform and describe your post topic.</div>';
+  html += '</div>';
+  html += '<div class="social-creator-grid">';
+  SOCIAL_PLATFORMS.forEach(function(p) {
+    var contentTypeMap = { 'Image Post': 'image_post', 'Carousel': 'image_post', 'Article': 'image_post', 'Story': 'story', 'Reel': 'short_video', 'Thumbnail': 'thumbnail', 'Short Video': 'short_video', 'Video': 'short_video', 'Thread': 'image_post', 'Spotlight': 'story' };
+    var firstType = contentTypeMap[p.types[0]] || 'image_post';
+    html += '<div class="social-creator-card" onclick="selectSocialPlatform(\'' + p.id + '\',\'' + firstType + '\')">';
+    html += '<div class="social-creator-header">';
+    html += '<div class="social-creator-icon" style="color:' + p.color + ';background:' + p.color + '15">' + p.icon + '</div>';
+    html += '<div>';
+    html += '<div class="social-creator-name">' + p.name + '</div>';
+    html += '<div class="social-creator-size">' + p.size + '</div>';
+    html += '</div></div>';
+    html += '<div class="social-creator-types">';
+    p.types.forEach(function(t) { html += '<span class="social-type-tag">' + t + '</span>'; });
+    html += '</div></div>';
   });
   html += '</div>';
-  html += '<div style="padding:16px 20px;font-size:12px;color:var(--text-muted)">Create content for any platform. Connect accounts to publish directly from Studio.</div>';
   msgs.innerHTML = html;
+
+  // Update prompt placeholder for social mode
+  var promptEl = document.getElementById('studioPrompt');
+  if (promptEl) promptEl.placeholder = 'Describe your social post topic (e.g. "New AI product launch for SaintSal Labs")...';
+}
+
+function selectSocialPlatform(platformId, contentType) {
+  socialSelectedPlatform = platformId;
+  socialContentType = contentType || 'image_post';
+  var plat = SOCIAL_PLATFORMS.find(function(p) { return p.id === platformId; });
+  var promptEl = document.getElementById('studioPrompt');
+  if (promptEl && plat) {
+    promptEl.placeholder = 'Create ' + plat.name + ' content \u2014 describe the topic...';
+    promptEl.focus();
+  }
+  if (typeof showToast === 'function') showToast('Selected ' + (plat ? plat.name : platformId) + ' \u2014 type your topic and generate', 'info');
+}
+
+async function socialGenerate(topic) {
+  var plat = SOCIAL_PLATFORMS.find(function(p) { return p.id === socialSelectedPlatform; });
+  var platName = plat ? plat.name : socialSelectedPlatform;
+
+  studioAddMessage('user', topic);
+  studioAddMessage('assistant', 'Creating ' + platName + ' content: generating image + caption...', { model: 'Grok-4 + Grok Imagine', tier: studioState.selectedTier });
+
+  showStudioResult('<div class="social-generating"><div class="social-generating-spinner"></div><div>Generating ' + escapeHtml(platName) + ' content...</div><div style="font-size:12px;margin-top:4px;color:var(--text-muted)">AI is creating your image + caption</div></div>');
+  if (studioState.viewMode === 'chat') studioToggleView('preview');
+
+  try {
+    var resp = await fetch(API + '/api/social/generate', {
+      method: 'POST',
+      headers: Object.assign({ 'Content-Type': 'application/json' }, authHeaders()),
+      body: JSON.stringify({
+        topic: topic,
+        platform: socialSelectedPlatform,
+        content_type: socialContentType,
+        brand_voice: 'professional yet approachable, innovative, forward-thinking'
+      })
+    });
+    var data = await resp.json();
+    if (data.error) {
+      studioAddMessage('assistant', 'Social generation failed: ' + data.error, { model: 'Grok-4', tier: studioState.selectedTier });
+      showStudioResult('<div style="padding:20px;color:#ef4444;">Generation failed: ' + escapeHtml(data.error) + '</div>');
+      return;
+    }
+
+    var html = '<div class="social-result">';
+    html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;">';
+    if (plat) html += '<div style="color:' + plat.color + '">' + plat.icon + '</div>';
+    html += '<div style="font-weight:600;font-size:16px;color:var(--text-primary);">' + escapeHtml(platName) + ' Content</div>';
+    html += '<div style="font-size:12px;color:var(--text-muted);margin-left:auto;">' + escapeHtml(data.content_type || socialContentType) + '</div>';
+    html += '</div>';
+
+    if (data.image && data.image.data) {
+      html += '<img class="social-result-image" src="' + data.image.data + '" alt="Generated ' + escapeHtml(platName) + ' image">';
+    }
+    if (data.video && data.video.data) {
+      html += '<video class="social-result-image" src="' + data.video.data + '" controls autoplay></video>';
+    }
+    if (data.caption) {
+      html += '<div class="social-result-caption">' + escapeHtml(data.caption) + '</div>';
+    }
+    if (data.hashtags && data.hashtags.length) {
+      html += '<div class="social-result-hashtags">';
+      data.hashtags.forEach(function(tag) {
+        var cleanTag = tag.startsWith('#') ? tag : '#' + tag;
+        html += '<span class="social-hashtag">' + escapeHtml(cleanTag) + '</span>';
+      });
+      html += '</div>';
+    }
+
+    html += '<div class="social-result-actions">';
+    if (data.caption) {
+      html += '<button class="social-result-btn primary" onclick="copySocialCaption()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> Copy Caption</button>';
+    }
+    if (data.image && data.image.url) {
+      html += '<button class="social-result-btn" onclick="downloadStudioMedia(\'' + escapeAttr(data.image.url) + '\',\'' + escapeAttr(data.image.filename || 'social-image.png') + '\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Download Image</button>';
+    }
+    html += '<button class="social-result-btn" onclick="openSocialComposer(null,null,\'' + escapeAttr(socialSelectedPlatform) + '\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg> Publish</button>';
+    html += '<button class="social-result-btn" onclick="renderSocialContent()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg> Create Another</button>';
+    html += '</div></div>';
+
+    window._lastSocialCaption = (data.caption || '') + (data.hashtags && data.hashtags.length ? '\n\n' + data.hashtags.map(function(t) { return t.startsWith('#') ? t : '#' + t; }).join(' ') : '');
+
+    showStudioResult(html);
+    studioAddMessage('assistant', platName + ' content created: image + caption with ' + (data.hashtags || []).length + ' hashtags', { model: 'Grok-4 + Grok Imagine', tier: studioState.selectedTier });
+
+  } catch(e) {
+    studioAddMessage('assistant', 'Social generation failed: ' + (e.message || 'Network error'), { model: 'Grok-4', tier: studioState.selectedTier });
+    showStudioResult('<div style="padding:20px;color:#ef4444;">Generation failed. Please try again.</div>');
+  }
+}
+
+function copySocialCaption() {
+  if (window._lastSocialCaption) {
+    navigator.clipboard.writeText(window._lastSocialCaption).then(function() {
+      if (typeof showToast === 'function') showToast('Caption copied to clipboard', 'success');
+    });
+  }
 }
 
 function openSocialCreator(platform) {
-  // Switch to image mode for content creation, pre-fill placeholder
-  studioSwitchMode('image');
-  var promptEl = document.getElementById('studioPrompt');
-  if (promptEl) {
-    promptEl.placeholder = 'Create content for ' + platform + '...';
-    promptEl.focus();
+  var platMap = { 'YouTube': 'youtube', 'X (Twitter)': 'twitter', 'Instagram': 'instagram', 'Facebook': 'facebook', 'TikTok': 'tiktok', 'LinkedIn': 'linkedin', 'Snapchat': 'snapchat' };
+  selectSocialPlatform(platMap[platform] || 'linkedin', 'image_post');
+}
+
+
+/* ============================================
+   BUILDER FILE UPLOADS — attach images, screenshots, docs, code
+   ============================================ */
+var builderAttachedFiles = [];
+
+async function handleBuilderFileUpload(files) {
+  if (!files || !files.length) return;
+  var preview = document.getElementById('studioUploadPreview');
+  if (preview) preview.style.display = 'flex';
+  var fileInput = document.getElementById('studioFileInput');
+
+  for (var i = 0; i < files.length; i++) {
+    var file = files[i];
+    if (file.size > 20 * 1024 * 1024) {
+      if (typeof showToast === 'function') showToast(file.name + ' is too large (max 20MB)', 'error');
+      continue;
+    }
+
+    var tempId = 'tmp_' + Date.now() + '_' + i;
+    addUploadChip(tempId, file.name, file.type.startsWith('image/'), null, file.size, true);
+
+    try {
+      var formData = new FormData();
+      formData.append('file', file);
+      var resp = await fetch(API + '/api/studio/upload', { method: 'POST', body: formData });
+      var data = await resp.json();
+
+      if (data.error) {
+        removeUploadChip(tempId);
+        if (typeof showToast === 'function') showToast('Upload failed: ' + data.error, 'error');
+        continue;
+      }
+
+      removeUploadChip(tempId);
+      builderAttachedFiles.push(data);
+      addUploadChip(data.id, data.filename, data.is_image, data.is_image && data.thumbnail_b64 ? 'data:image/png;base64,' + data.thumbnail_b64 : null, data.size, false);
+
+    } catch(e) {
+      removeUploadChip(tempId);
+      if (typeof showToast === 'function') showToast('Upload failed: ' + (e.message || 'Network error'), 'error');
+    }
+  }
+
+  if (fileInput) fileInput.value = '';
+}
+
+function addUploadChip(id, filename, isImage, thumbUrl, size, loading) {
+  var preview = document.getElementById('studioUploadPreview');
+  if (!preview) return;
+  var chip = document.createElement('div');
+  chip.className = 'upload-chip' + (loading ? ' uploading' : '');
+  chip.id = 'upload-chip-' + id;
+  var thumbHtml = '';
+  if (isImage && thumbUrl) {
+    thumbHtml = '<img class="upload-chip-thumb" src="' + thumbUrl + '" alt="">';
+  } else {
+    var ext = (filename || '').split('.').pop().toUpperCase();
+    thumbHtml = '<div class="upload-chip-icon">' + (ext.length <= 4 ? ext : 'FILE') + '</div>';
+  }
+  var sizeStr = size ? formatFileSize(size) : '';
+  chip.innerHTML = thumbHtml + '<span class="upload-chip-name" title="' + escapeAttr(filename) + '">' + escapeHtml(filename) + '</span>' +
+    (sizeStr ? '<span style="font-size:10px;color:var(--text-muted)">' + sizeStr + '</span>' : '') +
+    (!loading ? '<button class="upload-chip-remove" onclick="removeBuilderUpload(\'' + id + '\')">&times;</button>' : '');
+  preview.appendChild(chip);
+  preview.style.display = 'flex';
+}
+
+function removeUploadChip(id) {
+  var chip = document.getElementById('upload-chip-' + id);
+  if (chip) chip.remove();
+  var preview = document.getElementById('studioUploadPreview');
+  if (preview && !preview.children.length) preview.style.display = 'none';
+}
+
+function removeBuilderUpload(fileId) {
+  builderAttachedFiles = builderAttachedFiles.filter(function(f) { return f.id !== fileId; });
+  removeUploadChip(fileId);
+  fetch(API + '/api/studio/uploads/' + fileId, { method: 'DELETE' }).catch(function() {});
+}
+
+function clearBuilderUploads() {
+  builderAttachedFiles = [];
+  var preview = document.getElementById('studioUploadPreview');
+  if (preview) { preview.innerHTML = ''; preview.style.display = 'none'; }
+}
+
+// Enhanced drop handler — supports files, folders, and screenshots (paste)
+async function handleBuilderDrop(event) {
+  var items = event.dataTransfer.items;
+  if (!items || !items.length) {
+    // Simple file drop fallback
+    handleBuilderFileUpload(event.dataTransfer.files);
+    return;
+  }
+
+  var allFiles = [];
+
+  // Use webkitGetAsEntry for folder traversal
+  var entries = [];
+  for (var i = 0; i < items.length; i++) {
+    var entry = items[i].webkitGetAsEntry ? items[i].webkitGetAsEntry() : null;
+    if (entry) entries.push(entry);
+  }
+
+  if (entries.length && entries.some(function(e) { return e && e.isDirectory; })) {
+    // Has folders — recursively gather files
+    async function readEntry(entry) {
+      return new Promise(function(resolve) {
+        if (entry.isFile) {
+          entry.file(function(f) { allFiles.push(f); resolve(); }, function() { resolve(); });
+        } else if (entry.isDirectory) {
+          var reader = entry.createReader();
+          reader.readEntries(function(subEntries) {
+            var promises = subEntries.map(function(se) { return readEntry(se); });
+            Promise.all(promises).then(resolve);
+          }, function() { resolve(); });
+        } else {
+          resolve();
+        }
+      });
+    }
+
+    await Promise.all(entries.map(function(e) { return readEntry(e); }));
+    if (allFiles.length) {
+      handleBuilderFileUpload(allFiles);
+      if (typeof showToast === 'function') showToast('Dropped ' + allFiles.length + ' file(s) from folder(s)', 'info');
+    }
+  } else {
+    // Regular files
+    handleBuilderFileUpload(event.dataTransfer.files);
+  }
+}
+
+// Paste handler — screenshots from clipboard go directly to Builder
+document.addEventListener('paste', function(e) {
+  // Only if Builder view is active
+  var studioView = document.getElementById('studioView');
+  if (!studioView || studioView.style.display === 'none') return;
+
+  var items = (e.clipboardData || e.originalEvent.clipboardData).items;
+  var files = [];
+  for (var i = 0; i < items.length; i++) {
+    if (items[i].type.indexOf('image') !== -1) {
+      var blob = items[i].getAsFile();
+      if (blob) {
+        // Give it a meaningful name
+        var ext = blob.type.split('/')[1] || 'png';
+        var namedFile = new File([blob], 'screenshot_' + Date.now() + '.' + ext, { type: blob.type });
+        files.push(namedFile);
+      }
+    }
+  }
+  if (files.length) {
+    e.preventDefault();
+    handleBuilderFileUpload(files);
+    if (typeof showToast === 'function') showToast('Screenshot pasted', 'success');
+  }
+});
+
+
+/* ============================================
+   VOICE-TO-TEXT — mic button for Builder prompts
+   ============================================ */
+var voiceState = {
+  recording: false,
+  mediaRecorder: null,
+  audioChunks: [],
+  stream: null,
+};
+
+async function toggleVoiceInput() {
+  if (voiceState.recording) {
+    stopVoiceRecording();
+  } else {
+    startVoiceRecording();
+  }
+}
+
+async function startVoiceRecording() {
+  var micBtn = document.getElementById('studioMicBtn');
+  var statusEl = document.getElementById('studioVoiceStatus');
+
+  // First try Web Speech API (works in Chrome/Edge, no server call needed)
+  if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+    try {
+      var SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      var recognition = new SpeechRecognition();
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.lang = 'en-US';
+
+      voiceState.recognition = recognition;
+      voiceState.recording = true;
+      voiceState.finalTranscript = '';
+
+      if (micBtn) micBtn.classList.add('recording');
+      if (statusEl) { statusEl.style.display = 'flex'; statusEl.innerHTML = '<span class="voice-dot"></span> Listening...'; }
+
+      recognition.onresult = function(event) {
+        var interim = '';
+        for (var i = event.resultIndex; i < event.results.length; i++) {
+          if (event.results[i].isFinal) {
+            voiceState.finalTranscript += event.results[i][0].transcript + ' ';
+          } else {
+            interim += event.results[i][0].transcript;
+          }
+        }
+        var promptEl = document.getElementById('studioPrompt');
+        if (promptEl) promptEl.value = voiceState.finalTranscript + interim;
+      };
+
+      recognition.onerror = function(event) {
+        console.log('[Voice] Speech recognition error:', event.error);
+        if (event.error === 'not-allowed') {
+          if (typeof showToast === 'function') showToast('Microphone access denied. Please allow microphone in browser settings.', 'error');
+        }
+        stopVoiceRecording();
+      };
+
+      recognition.onend = function() {
+        if (voiceState.recording) {
+          stopVoiceRecording();
+        }
+      };
+
+      recognition.start();
+      return;
+    } catch(e) {
+      console.log('[Voice] Web Speech API failed, falling back to Deepgram:', e);
+    }
+  }
+
+  // Fallback: Record audio and send to Deepgram/AssemblyAI via server
+  try {
+    var stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    voiceState.stream = stream;
+    voiceState.audioChunks = [];
+    var mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : 'audio/webm';
+    var recorder = new MediaRecorder(stream, { mimeType: mimeType });
+    voiceState.mediaRecorder = recorder;
+    voiceState.recording = true;
+
+    if (micBtn) micBtn.classList.add('recording');
+    if (statusEl) { statusEl.style.display = 'flex'; statusEl.innerHTML = '<span class="voice-dot"></span> Recording... click mic to stop'; }
+
+    recorder.ondataavailable = function(e) {
+      if (e.data.size > 0) voiceState.audioChunks.push(e.data);
+    };
+
+    recorder.onstop = async function() {
+      if (statusEl) statusEl.innerHTML = 'Transcribing...';
+      var blob = new Blob(voiceState.audioChunks, { type: 'audio/webm' });
+      try {
+        var formData = new FormData();
+        formData.append('audio', blob, 'voice.webm');
+        var resp = await fetch(API + '/api/studio/transcribe', { method: 'POST', body: formData });
+        var data = await resp.json();
+        if (data.text) {
+          var promptEl = document.getElementById('studioPrompt');
+          if (promptEl) {
+            promptEl.value = (promptEl.value ? promptEl.value + ' ' : '') + data.text;
+            promptEl.focus();
+          }
+          if (typeof showToast === 'function') showToast('Voice transcribed via ' + (data.provider || 'AI'), 'success');
+        } else {
+          if (typeof showToast === 'function') showToast('Could not transcribe audio: ' + (data.error || 'Unknown error'), 'error');
+        }
+      } catch(e) {
+        if (typeof showToast === 'function') showToast('Transcription failed: ' + (e.message || 'Network error'), 'error');
+      }
+      if (statusEl) { statusEl.style.display = 'none'; statusEl.innerHTML = ''; }
+    };
+
+    recorder.start();
+  } catch(e) {
+    if (typeof showToast === 'function') showToast('Microphone access denied. Please allow microphone in browser settings.', 'error');
+  }
+}
+
+function stopVoiceRecording() {
+  var micBtn = document.getElementById('studioMicBtn');
+  var statusEl = document.getElementById('studioVoiceStatus');
+  voiceState.recording = false;
+
+  if (micBtn) micBtn.classList.remove('recording');
+
+  if (voiceState.recognition) {
+    voiceState.recognition.stop();
+    voiceState.recognition = null;
+    if (statusEl) { statusEl.style.display = 'none'; statusEl.innerHTML = ''; }
+    return;
+  }
+
+  if (voiceState.mediaRecorder && voiceState.mediaRecorder.state !== 'inactive') {
+    voiceState.mediaRecorder.stop();
+  }
+  if (voiceState.stream) {
+    voiceState.stream.getTracks().forEach(function(t) { t.stop(); });
+    voiceState.stream = null;
   }
 }
 
@@ -1605,6 +2016,15 @@ async function studioGenerate() {
   studioAddMessage('user', prompt);
 
   var mode = studioState.mode;
+
+  // ── SOCIAL MODE → Platform Content Generation ──
+  if (mode === 'social') {
+    await socialGenerate(prompt);
+    studioState.generating = false;
+    restoreBtn();
+    clearBuilderUploads();
+    return;
+  }
 
   // ── DESIGN MODE → Stitch API ──
   if (mode === 'design') {

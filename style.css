@@ -3602,3 +3602,132 @@ ul, ol { list-style: none; }
 
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 @keyframes fadeOut { from { opacity: 1; } to { opacity: 0; } }
+
+/* ─── Builder Attach & Mic Buttons ──────────────────────────── */
+.studio-attach-btn, .studio-mic-btn {
+  width: 36px; height: 36px; min-width: 36px;
+  border-radius: 8px; border: 1px solid var(--border-subtle, #333);
+  background: transparent; color: var(--text-secondary, #888);
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; transition: all 0.2s;
+}
+.studio-attach-btn:hover { color: var(--accent-gold, #d4a017); border-color: var(--accent-gold, #d4a017); background: rgba(212,160,23,0.08); }
+.studio-mic-btn:hover { color: var(--accent-green, #22c55e); border-color: var(--accent-green, #22c55e); background: rgba(34,197,94,0.08); }
+.studio-mic-btn.recording { color: #ef4444; border-color: #ef4444; background: rgba(239,68,68,0.12); animation: micPulse 1.2s ease-in-out infinite; }
+@keyframes micPulse { 0%,100% { box-shadow: 0 0 0 0 rgba(239,68,68,0.3); } 50% { box-shadow: 0 0 0 8px rgba(239,68,68,0); } }
+
+/* Drag-over highlight on prompt bar */
+.studio-prompt-bar.drag-over {
+  border: 2px dashed var(--accent-gold, #d4a017) !important;
+  background: rgba(212,160,23,0.06);
+}
+
+/* ─── Upload Preview Strip ──────────────────────────────────── */
+.studio-upload-preview {
+  display: flex; gap: 8px; padding: 8px 12px; flex-wrap: wrap;
+  background: rgba(255,255,255,0.02); border-bottom: 1px solid var(--border-subtle, #222);
+  max-height: 120px; overflow-y: auto;
+}
+.upload-chip {
+  display: flex; align-items: center; gap: 6px;
+  padding: 4px 10px 4px 6px; border-radius: 8px;
+  background: var(--bg-secondary, #1a1a1a); border: 1px solid var(--border-subtle, #333);
+  font-size: 12px; color: var(--text-secondary, #aaa);
+  animation: fadeIn 0.2s ease;
+}
+.upload-chip-thumb {
+  width: 28px; height: 28px; border-radius: 4px; object-fit: cover;
+  background: var(--bg-tertiary, #222);
+}
+.upload-chip-icon {
+  width: 28px; height: 28px; border-radius: 4px;
+  background: var(--bg-tertiary, #222); display: flex; align-items: center; justify-content: center;
+  color: var(--text-muted, #666); font-size: 12px;
+}
+.upload-chip-name { max-width: 100px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.upload-chip-remove {
+  width: 16px; height: 16px; border-radius: 50%; border: none;
+  background: rgba(239,68,68,0.2); color: #ef4444; font-size: 10px;
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+  transition: background 0.2s;
+}
+.upload-chip-remove:hover { background: rgba(239,68,68,0.4); }
+.upload-chip.uploading { opacity: 0.6; }
+.upload-chip.uploading::after {
+  content: ''; width: 12px; height: 12px;
+  border: 2px solid var(--border-subtle, #333); border-top-color: var(--accent-gold, #d4a017);
+  border-radius: 50%; animation: spin 0.6s linear infinite;
+}
+
+/* ─── Voice Status ──────────────────────────────────────────── */
+.studio-voice-status {
+  font-size: 11px; color: #ef4444; display: flex; align-items: center; gap: 4px;
+}
+.voice-dot { width: 6px; height: 6px; border-radius: 50%; background: #ef4444; animation: micPulse 1.2s ease-in-out infinite; }
+
+/* ─── Social Creator Cards (overhauled) ─────────────────────── */
+.social-creator-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 12px; padding: 16px 20px;
+}
+.social-creator-card {
+  background: var(--bg-secondary, #1a1a1a); border: 1px solid var(--border-subtle, #333);
+  border-radius: 12px; padding: 16px; cursor: pointer;
+  transition: all 0.2s; display: flex; flex-direction: column; gap: 10px;
+}
+.social-creator-card:hover { border-color: var(--accent-gold, #d4a017); transform: translateY(-2px); }
+.social-creator-header { display: flex; align-items: center; gap: 10px; }
+.social-creator-icon { width: 36px; height: 36px; border-radius: 8px; display: flex; align-items: center; justify-content: center; }
+.social-creator-name { font-weight: 600; font-size: 14px; color: var(--text-primary, #fff); }
+.social-creator-size { font-size: 11px; color: var(--text-muted, #666); }
+.social-creator-types { display: flex; gap: 4px; flex-wrap: wrap; }
+.social-type-tag {
+  padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 500;
+  background: rgba(212,160,23,0.1); color: var(--accent-gold, #d4a017);
+}
+
+/* Social generation result panel */
+.social-result {
+  padding: 20px; animation: fadeIn 0.3s ease;
+}
+.social-result-image { max-width: 100%; border-radius: 8px; margin-bottom: 12px; }
+.social-result-caption {
+  background: var(--bg-secondary, #1a1a1a); border: 1px solid var(--border-subtle, #333);
+  border-radius: 8px; padding: 12px; font-size: 14px; color: var(--text-primary, #fff);
+  line-height: 1.6; white-space: pre-wrap; margin-bottom: 8px;
+}
+.social-result-hashtags { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
+.social-hashtag {
+  padding: 2px 8px; border-radius: 4px; font-size: 12px;
+  background: rgba(34,197,94,0.1); color: var(--accent-green, #22c55e);
+}
+.social-result-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.social-result-btn {
+  padding: 8px 16px; border-radius: 8px; border: 1px solid var(--border-subtle, #333);
+  background: transparent; color: var(--text-primary, #fff); font-size: 13px;
+  cursor: pointer; transition: all 0.2s; display: flex; align-items: center; gap: 6px;
+}
+.social-result-btn:hover { border-color: var(--accent-gold, #d4a017); color: var(--accent-gold, #d4a017); }
+.social-result-btn.primary { background: var(--accent-gold, #d4a017); color: #000; border-color: var(--accent-gold, #d4a017); font-weight: 600; }
+.social-result-btn.primary:hover { opacity: 0.9; }
+
+/* Social generation loading */
+.social-generating {
+  padding: 40px 20px; text-align: center; color: var(--text-muted, #666);
+}
+.social-generating-spinner {
+  width: 32px; height: 32px; border: 3px solid var(--border-subtle, #333);
+  border-top-color: var(--accent-gold, #d4a017); border-radius: 50%;
+  animation: spin 0.8s linear infinite; margin: 0 auto 12px;
+}
+
+/* Social platform picker in prompt area */
+.social-platform-picker {
+  display: flex; gap: 6px; padding: 8px 0; flex-wrap: wrap;
+}
+.social-plat-btn {
+  padding: 4px 10px; border-radius: 6px; border: 1px solid var(--border-subtle, #333);
+  background: transparent; color: var(--text-secondary, #888); font-size: 12px;
+  cursor: pointer; transition: all 0.2s; display: flex; align-items: center; gap: 4px;
+}
+.social-plat-btn:hover, .social-plat-btn.active { border-color: var(--accent-gold, #d4a017); color: var(--accent-gold, #d4a017); background: rgba(212,160,23,0.08); }
