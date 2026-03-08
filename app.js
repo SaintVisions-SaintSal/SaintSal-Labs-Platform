@@ -75,7 +75,7 @@ function setView(view) {
     document.getElementById('topbarBreadcrumb').innerHTML = '<span>' + (verticalNames[currentVertical] || 'Search') + '</span>';
   } else {
     document.querySelectorAll('.nav-item[data-vertical]').forEach(function(i) { i.classList.remove('active'); });
-    var breadcrumbMap = { pricing:'Pricing', welcome:'Welcome', account:'Account', studio:'Studio', domains:'Domains & SSL', launchpad:'Launch Pad', connectors:'Integrations', bizplan:'Business Plan', voice:'Voice AI', dashboard:'Dashboard', landing:'Home' };
+    var breadcrumbMap = { pricing:'Pricing', welcome:'Welcome', account:'Account', studio:'Builder', domains:'Domains & SSL', launchpad:'Launch Pad', connectors:'Integrations', bizplan:'Business Plan', voice:'Voice AI', dashboard:'Dashboard', landing:'Home' };
     document.getElementById('topbarBreadcrumb').innerHTML = '<span>' + (breadcrumbMap[view] || view) + '</span>';
   }
 
@@ -982,20 +982,38 @@ function closeDomainModal() {
 
 async function purchaseDomain() {
   var name = document.getElementById('modalDomainName').textContent;
+  var purchaseBtn = document.querySelector('#domainModal .modal-cta');
+  if (purchaseBtn) { purchaseBtn.textContent = 'Processing...'; purchaseBtn.disabled = true; }
   try {
-    var resp = await fetch(API + '/api/domains/purchase', {
+    // First check real-time availability
+    var checkResp = await fetch(API + '/api/godaddy/available/' + encodeURIComponent(name));
+    var checkData = await checkResp.json();
+    if (checkData.error || !checkData.available) {
+      if (typeof showToast === 'function') showToast('Domain not available: ' + (checkData.error || 'already taken'), 'error');
+      if (purchaseBtn) { purchaseBtn.textContent = 'Complete Purchase'; purchaseBtn.disabled = false; }
+      return;
+    }
+    // Purchase via GoDaddy API
+    var resp = await fetch(API + '/api/godaddy/purchase', {
       method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({domain: name})
+      headers: Object.assign({'Content-Type': 'application/json'}, authHeaders()),
+      body: JSON.stringify({ domain: name, period: 1, privacy: true })
     });
     var data = await resp.json();
-    if (data.checkout_url) {
+    if (data.error) {
+      if (typeof showToast === 'function') showToast('Purchase failed: ' + data.error, 'error');
+    } else if (data.checkout_url) {
       window.open(data.checkout_url, '_blank');
+      if (typeof showToast === 'function') showToast('Redirecting to checkout...', 'success');
+    } else {
+      if (typeof showToast === 'function') showToast('Domain purchased: ' + name, 'success');
     }
     closeDomainModal();
   } catch(e) {
     console.error('Purchase error:', e);
+    if (typeof showToast === 'function') showToast('Purchase failed. Try again.', 'error');
   }
+  if (purchaseBtn) { purchaseBtn.textContent = 'Complete Purchase'; purchaseBtn.disabled = false; }
 }
 
 /* ============================================
@@ -1629,6 +1647,72 @@ async function studioGenerate() {
     return;
   }
 
+  // ── FULL-STACK APP BUILDER (code mode with project-level prompts) ──
+  if (mode === 'code' && /\b(app|site|page|dashboard|build|create|website|landing|portfolio|widget|saas|ecommerce|store|pwa)\b/i.test(prompt)) {
+    try {
+      studioAddMessage('assistant', 'Building your project with SAL Builder...', { model: studioState.selectedModel, tier: studioState.selectedTier });
+      var template = (builderState.project && builderState.project.template) || 'landing';
+      var appResp = await fetch(API + '/api/builder/generate-app', {
+        method: 'POST',
+        headers: Object.assign({ 'Content-Type': 'application/json' }, authHeaders()),
+        body: JSON.stringify({ prompt: prompt, template: template, name: (builderState.project && builderState.project.name) || 'my-project' })
+      });
+      var appData = await appResp.json();
+      if (appData.error) {
+        studioAddMessage('assistant', 'Builder Error: ' + appData.error, { model: studioState.selectedModel, tier: studioState.selectedTier });
+      } else {
+        var genFiles = appData.files || [];
+        builderState.files = genFiles;
+        builderState.project = builderState.project || {};
+        builderState.project.name = appData.project || builderState.project.name;
+
+        var modelInfo = null;
+        Object.keys(studioState.tierModels).forEach(function(t) {
+          studioState.tierModels[t].forEach(function(m) { if (m.id === studioState.selectedModel) modelInfo = m; });
+        });
+        studioAddMessage('assistant', 'Project generated \u2014 ' + genFiles.length + ' file(s) created', {
+          model: modelInfo ? modelInfo.name : studioState.selectedModel,
+          tier: studioState.selectedTier,
+          cost: modelInfo ? modelInfo.cost_per_min / 60 : 0
+        });
+
+        builderRenderFileTree();
+        builderAddLog('success', 'Generated ' + genFiles.length + ' files');
+
+        // Show project panel with file tree
+        var resultHtml = '<div class="builder-gen-result">';
+        resultHtml += '<div style="font-weight:600;font-size:15px;margin-bottom:12px;color:var(--accent-gold);">Project Generated</div>';
+        resultHtml += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px;">';
+        genFiles.forEach(function(f, i) {
+          var ext = (f.name||'').split('.').pop().toLowerCase();
+          var color = ext==='html'?'#ef4444':ext==='css'?'#3b82f6':(ext==='js'||ext==='ts')?'#f59e0b':ext==='py'?'#22c55e':'#6B7280';
+          resultHtml += '<div class="builder-file-card" onclick="builderOpenFile(' + i + ')" style="background:var(--bg-secondary);border:1px solid var(--border-subtle);border-radius:8px;padding:10px 12px;cursor:pointer;transition:border-color 0.2s;">';
+          resultHtml += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">';
+          resultHtml += '<div style="width:8px;height:8px;border-radius:50%;background:' + color + '"></div>';
+          resultHtml += '<span style="font-weight:500;font-size:13px;">' + escapeHtml(f.name) + '</span>';
+          resultHtml += '</div>';
+          resultHtml += '<div style="font-size:11px;color:var(--text-muted);">' + formatFileSize(f.content ? f.content.length : 0) + '</div>';
+          resultHtml += '</div>';
+        });
+        resultHtml += '</div>';
+        resultHtml += '<div style="display:flex;gap:8px;margin-top:16px;flex-wrap:wrap;">';
+        resultHtml += '<button class="studio-action-btn" onclick="builderPublish(\'github\')"><svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23A11.509 11.509 0 0112 5.803c1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576C20.566 21.797 24 17.3 24 12c0-6.627-5.373-12-12-12z"/></svg> Push to GitHub</button>';
+        resultHtml += '<button class="studio-action-btn" onclick="builderPublish(\'vercel\')"><svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M12 1L1 22h22L12 1z"/></svg> Deploy Vercel</button>';
+        resultHtml += '<button class="studio-action-btn" onclick="builderPublish(\'render\')">Deploy Render</button>';
+        resultHtml += '<button class="studio-action-btn" onclick="builderPublish(\'download\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Download ZIP</button>';
+        resultHtml += '</div>';
+        resultHtml += '</div>';
+        showStudioResult(resultHtml);
+        if (studioState.viewMode === 'chat') studioToggleView('preview');
+      }
+    } catch(e) {
+      studioAddMessage('assistant', 'Build failed: ' + (e.message || 'Network error'), { model: studioState.selectedModel, tier: studioState.selectedTier });
+    }
+    studioState.generating = false;
+    restoreBtn();
+    return;
+  }
+
   // ── STANDARD MODES (image/video/audio/code) ──
   var payload = { prompt: prompt };
   payload.model = studioState.selectedModel;
@@ -1675,13 +1759,30 @@ async function studioGenerate() {
       } else if (mode === 'audio' && data.data) {
         resultHtml = '<audio src="' + data.data + '" controls autoplay style="width:100%;"></audio>';
       } else if (mode === 'code' && (data.code || data.data)) {
-        var codeContent = escapeHtml(data.code || data.data);
+        var rawCode = data.code || data.data;
+        var codeContent = escapeHtml(rawCode);
         resultHtml = '<pre style="background:#1a1a2e;color:#e0e0e0;padding:16px;border-radius:8px;overflow-x:auto;font-family:monospace;font-size:13px;line-height:1.5;max-height:500px;overflow-y:auto;"><code>' + codeContent + '</code></pre>';
-        // Track generated file in builderState
+        // Parse multi-file project or wrap single file
+        var parsedFiles = null;
+        try {
+          var jsonMatch = rawCode.match(/\{[\s\S]*"files"\s*:\s*\[[\s\S]*\]/m);
+          if (jsonMatch) {
+            var parsed = JSON.parse(jsonMatch[0]);
+            if (parsed && Array.isArray(parsed.files)) parsedFiles = parsed.files;
+          }
+        } catch (parseErr) { /* not a JSON multi-file response */ }
         var genFilename = data.filename || ('generated_' + Date.now() + '.txt');
         if (!Array.isArray(builderState.files)) builderState.files = [];
-        builderState.files.push({ name: genFilename, content: data.code || data.data, url: data.url || '' });
-        builderAddLog('success', 'Generated: ' + genFilename);
+        if (parsedFiles && parsedFiles.length) {
+          builderState.files = parsedFiles;
+          builderAddLog('success', 'Generated ' + parsedFiles.length + ' files');
+          if (typeof showToast === 'function') showToast('Generated ' + parsedFiles.length + ' files', 'success');
+        } else {
+          builderState.files.push({ name: genFilename, content: rawCode, url: data.url || '' });
+          builderAddLog('success', 'Generated: ' + genFilename);
+          if (typeof showToast === 'function') showToast('Generated: ' + genFilename, 'success');
+        }
+        builderRenderFileTree();
       }
       resultHtml += '<div style="display:flex;gap:8px;margin-top:12px;">';
       if (data.url) {
@@ -2642,7 +2743,7 @@ function renderAccountProfile() {
     + '<div class="account-usage-grid">'
     + '<div class="account-usage-card"><div class="account-usage-value">' + (user.credits_remaining || 0) + '</div><div class="account-usage-label">Credits Remaining</div></div>'
     + '<div class="account-usage-card"><div class="account-usage-value">' + (user.messages_sent || 0) + '</div><div class="account-usage-label">Messages Sent</div></div>'
-    + '<div class="account-usage-card"><div class="account-usage-value">' + (user.studio_generations || 0) + '</div><div class="account-usage-label">Studio Generations</div></div>'
+    + '<div class="account-usage-card"><div class="account-usage-value">' + (user.studio_generations || 0) + '</div><div class="account-usage-label">Builder Generations</div></div>'
     + '<div class="account-usage-card"><div class="account-usage-value">' + (user.compute_minutes || '0.0') + ' min</div><div class="account-usage-label">Compute Used</div></div>'
     + '</div>'
     + '</div>'
@@ -3155,6 +3256,118 @@ function builderAddLog(type, message) {
   }
 }
 
+function builderRenderFileTree() {
+  var filesList = document.getElementById('studioFilesList');
+  if (!filesList) return;
+  var files = builderState.files;
+  if (!files || !files.length) {
+    filesList.innerHTML = '<div class="studio-rs-empty">No files yet</div>';
+    return;
+  }
+  var html = '';
+  files.forEach(function(f, i) {
+    var name = f.name || 'file_' + i;
+    var ext = name.split('.').pop().toLowerCase();
+    var iconColor = '#6B7280';
+    if (ext === 'html') iconColor = '#ef4444';
+    else if (ext === 'css') iconColor = '#3b82f6';
+    else if (ext === 'js' || ext === 'ts') iconColor = '#f59e0b';
+    else if (ext === 'py') iconColor = '#22c55e';
+    else if (ext === 'json') iconColor = '#a855f7';
+    else if (ext === 'md') iconColor = '#06b6d4';
+    var active = builderState.activeFile === i ? ' active' : '';
+    html += '<div class="studio-rs-item file-item' + active + '" onclick="builderOpenFile(' + i + ')" style="cursor:pointer;">';
+    html += '<svg viewBox="0 0 24 24" fill="none" stroke="' + iconColor + '" stroke-width="1.5" width="12" height="12"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>';
+    html += '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;">' + escapeHtml(name) + '</span>';
+    html += '<span style="font-size:10px;color:var(--text-muted)">' + formatFileSize(f.content ? f.content.length : 0) + '</span>';
+    html += '</div>';
+  });
+  filesList.innerHTML = html;
+
+  // Update downloads list too
+  var dlList = document.getElementById('studioDownloadsList');
+  if (dlList && files.length > 0) {
+    var dlHtml = '';
+    files.forEach(function(f, i) {
+      dlHtml += '<div class="studio-rs-item" style="cursor:pointer;" onclick="builderDownloadFile(' + i + ')">';
+      dlHtml += '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="12" height="12"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>';
+      dlHtml += '<span>' + escapeHtml(f.name || 'file') + '</span>';
+      dlHtml += '</div>';
+    });
+    dlList.innerHTML = dlHtml;
+  }
+}
+
+function formatFileSize(bytes) {
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+  return (bytes / 1048576).toFixed(1) + ' MB';
+}
+
+function builderOpenFile(index) {
+  var files = builderState.files;
+  if (!files || !files[index]) return;
+  builderState.activeFile = index;
+  builderRenderFileTree();
+
+  var f = files[index];
+  var ext = (f.name || '').split('.').pop().toLowerCase();
+
+  // Show in preview panel
+  if (ext === 'html') {
+    // Render HTML preview
+    var previewHtml = '<div class="builder-preview-frame">';
+    previewHtml += '<div class="builder-preview-bar">';
+    previewHtml += '<div class="builder-preview-dots"><span style="background:#ef4444"></span><span style="background:#f59e0b"></span><span style="background:#22c55e"></span></div>';
+    previewHtml += '<div class="builder-preview-url">localhost:3000/' + escapeHtml(f.name) + '</div>';
+    previewHtml += '</div>';
+    previewHtml += '<iframe srcdoc="' + escapeAttr(f.content || '') + '" style="width:100%;height:calc(100% - 36px);border:none;background:#fff;border-radius:0 0 8px 8px;"></iframe>';
+    previewHtml += '</div>';
+    showStudioResult(previewHtml);
+    studioToggleView('preview');
+  } else {
+    // Show code
+    var codeContent = escapeHtml(f.content || '');
+    var codeHtml = '<div class="builder-code-view">';
+    codeHtml += '<div class="builder-code-header">';
+    codeHtml += '<span class="builder-code-filename">' + escapeHtml(f.name) + '</span>';
+    codeHtml += '<button class="builder-code-copy" onclick="builderCopyFile(' + index + ')">Copy</button>';
+    codeHtml += '</div>';
+    codeHtml += '<pre style="background:#0d1117;color:#e6edf3;padding:16px;border-radius:0 0 8px 8px;overflow:auto;font-family:\'SF Mono\',Menlo,monospace;font-size:13px;line-height:1.6;max-height:600px;margin:0;"><code>' + codeContent + '</code></pre>';
+    codeHtml += '</div>';
+    showStudioResult(codeHtml);
+    studioToggleView('preview');
+  }
+
+  // Update code section in right sidebar
+  var codeSection = document.getElementById('studioCodeSection');
+  if (codeSection) {
+    codeSection.innerHTML = '<pre style="background:#0d1117;color:#e6edf3;padding:8px;border-radius:6px;font-size:11px;line-height:1.4;max-height:200px;overflow:auto;margin:0;"><code>' + escapeHtml((f.content || '').substring(0, 2000)) + '</code></pre>';
+  }
+}
+
+function builderCopyFile(index) {
+  var files = builderState.files;
+  if (!files || !files[index]) return;
+  navigator.clipboard.writeText(files[index].content || '').then(function() {
+    if (typeof showToast === 'function') showToast('Copied to clipboard', 'success');
+  });
+}
+
+function builderDownloadFile(index) {
+  var files = builderState.files;
+  if (!files || !files[index]) return;
+  var f = files[index];
+  var blob = new Blob([f.content || ''], { type: 'text/plain' });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url;
+  a.download = f.name || 'file.txt';
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(function() { document.body.removeChild(a); URL.revokeObjectURL(url); }, 100);
+}
+
 async function builderPublish(target) {
   builderState.publishTarget = target;
   builderAddLog('info', 'Publishing to ' + target + '...');
@@ -3283,10 +3496,10 @@ function showOnboardingTour() {
   var steps = [
     { title: 'Welcome to SaintSal™ Labs', desc: 'The AI platform that searches, builds, creates, and deploys — all from one place. Let us show you around.', icon: '🤖' },
     { title: '7 Intelligence Verticals', desc: 'Search across specialized domains — Finance, Real Estate, Medical, Sports, News, Tech, and general AI search. Each vertical has its own expert AI context.', icon: '🔍' },
-    { title: 'SAL Studio', desc: 'Your full-stack creative suite. Generate images, video, audio, code, UI designs, and publish directly to the web — all with metered AI compute.', icon: '🎨' },
+    { title: 'SAL Builder', desc: 'Your full-stack builder. Build apps, sites, widgets, and social content. Generate images, video, audio, and code — deploy to Vercel, Render, or GitHub.', icon: '🎨' },
     { title: 'Medical Intelligence', desc: 'ICD-10 code lookup, NPI registry search, drug interactions, and clinical decision tools — powered by SaintAthena.', icon: '🏥' },
     { title: '88 Connectors', desc: 'Connect your entire stack — Slack, GitHub, Google, Stripe, Salesforce, and 83 more. OAuth and API key flows built in.', icon: '🔗' },
-    { title: 'You\u2019re Ready', desc: 'Start with a search, explore the Studio, or dive into any vertical. SaintSal\u2122 Labs adapts to how you work. Go build something great.', icon: '\uD83D\uDE80' }
+    { title: 'You\u2019re Ready', desc: 'Start with a search, explore the Builder, or dive into any vertical. SaintSal\u2122 Labs adapts to how you work. Go build something great.', icon: '\uD83D\uDE80' }
   ];
   
   var currentStep = 0;

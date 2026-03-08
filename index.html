@@ -1,6 +1,13 @@
 <!DOCTYPE html>
 <html lang="en" data-theme="dark">
 <head>
+<!-- Google Tag Manager -->
+<script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
+new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
+j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
+'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
+})(window,document,'script','dataLayer','GTM-5LR85NSG');</script>
+<!-- End Google Tag Manager -->
 <!--
    ______                            __
   / ____/___  ____ ___  ____  __  __/ /____  _____
@@ -73,6 +80,10 @@
     <link rel="stylesheet" href="medical.css">
 </head>
 <body>
+<!-- Google Tag Manager (noscript) -->
+<noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-5LR85NSG"
+height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
+<!-- End Google Tag Manager (noscript) -->
 
 <div class="app-shell">
   <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar()"></div>
@@ -130,7 +141,7 @@
       <div class="nav-section-label">Build</div>
       <div class="nav-item" data-view="studio" onclick="setView('studio')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/><line x1="12" y1="2" x2="12" y2="22" stroke-dasharray="2 4" opacity="0.3"/></svg>
-        Studio
+        Builder
       </div>
       <div class="nav-item" data-view="domains" onclick="setView('domains')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
@@ -225,7 +236,7 @@
           <p class="landing-subtitle">The AI platform that searches, builds, creates, and deploys — all from one place. 53 models. 88 connectors. Infinite possibility.</p>
           <div class="landing-cta-row">
             <button class="landing-cta-primary" onclick="navigate('chat')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> Start Searching</button>
-            <button class="landing-cta-secondary" onclick="navigate('studio')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg> Open Studio</button>
+            <button class="landing-cta-secondary" onclick="navigate('studio')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg> Open Builder</button>
           </div>
           <div class="landing-trust">US Patent #10,290,222 · 175+ Countries · HACP Protocol</div>
         </div>
@@ -270,12 +281,12 @@
           </div>
         </div>
         <div class="landing-section">
-          <div class="landing-section-label">Creation Engine</div>
+          <div class="landing-section-label">Builder Engine</div>
           <div class="landing-studio-showcase">
             <div class="landing-studio-hero">
-              <div class="landing-studio-title"><svg viewBox="0 0 24 24" fill="none" stroke="var(--accent-gold)" stroke-width="2" width="24" height="24"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg> SAL Studio</div>
-              <div class="landing-studio-desc">Full-stack builder. Generate images, video, audio, code, and UI designs. Publish to Vercel, Render, or GitHub in one click.</div>
-              <button class="landing-cta-gold" onclick="navigate('studio')">Launch Studio</button>
+              <div class="landing-studio-title"><svg viewBox="0 0 24 24" fill="none" stroke="var(--accent-gold)" stroke-width="2" width="24" height="24"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg> SAL Builder</div>
+              <div class="landing-studio-desc">Build full-stack apps, sites, widgets, and social content. Generate images, video, audio, code, and UI designs. Deploy to Vercel, Render, or GitHub in one click.</div>
+              <button class="landing-cta-gold" onclick="navigate('studio')">Launch Builder</button>
             </div>
             <div class="landing-studio-modes">
               <div class="landing-mode"><div class="landing-mode-dot" style="background:#3b82f6"></div>Images</div>
@@ -284,6 +295,7 @@
               <div class="landing-mode"><div class="landing-mode-dot" style="background:#f59e0b"></div>Code</div>
               <div class="landing-mode"><div class="landing-mode-dot" style="background:#ec4899"></div>Design</div>
               <div class="landing-mode"><div class="landing-mode-dot" style="background:#06b6d4"></div>Social</div>
+              <div class="landing-mode"><div class="landing-mode-dot" style="background:#ef4444"></div>Apps</div>
             </div>
           </div>
         </div>
@@ -581,7 +593,7 @@
           <div class="studio-sidebar-top">
             <div class="studio-sidebar-title">
               <svg viewBox="0 0 24 24" fill="none" stroke="var(--accent-gold)" stroke-width="2" stroke-linecap="round" width="16" height="16"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
-              <span>SAL Studio</span>
+              <span>SAL Builder</span>
             </div>
             <button class="studio-sidebar-toggle" onclick="toggleStudioSidebar()" title="Collapse sidebar">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" width="14" height="14"><polyline points="15 18 9 12 15 6"/></svg>
@@ -687,9 +699,9 @@
                 <div class="studio-showcase">
                   <div class="studio-showcase-title">
                     <svg viewBox="0 0 24 24" fill="none" stroke="var(--accent-gold)" stroke-width="1.5" stroke-linecap="round" width="24" height="24"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
-                    <span>SAL Studio</span>
+                    <span>SAL Builder</span>
                   </div>
-                  <div class="studio-showcase-sub">Create anything with AI — select a mode and describe what you want.</div>
+                  <div class="studio-showcase-sub">Build anything with AI. Full-stack apps, sites, widgets, social posts — describe what you want.</div>
                   <div class="studio-showcase-grid" id="studioShowcaseGrid">
                     <div class="studio-showcase-card" onclick="document.getElementById('studioPrompt').value='A cinematic photo of a futuristic city skyline at golden hour, neon reflections in rain puddles';document.getElementById('studioPrompt').focus()">
                       <div class="showcase-card-icon" style="background:rgba(59,130,246,0.15);color:#3b82f6">
@@ -1012,7 +1024,7 @@
               <div class="dash-activity-item">
                 <div class="dash-activity-dot" style="background:var(--accent-gold)"></div>
                 <div class="dash-activity-content">
-                  <div class="dash-activity-text">Generated image in <strong>Studio</strong></div>
+                  <div class="dash-activity-text">Generated image in <strong>Builder</strong></div>
                   <div class="dash-activity-time">5 hours ago</div>
                 </div>
               </div>
@@ -1079,7 +1091,7 @@
             </div>
             <div class="dash-pref-row">
               <div class="dash-pref-info">
-                <div class="dash-pref-name">Studio Completions</div>
+                <div class="dash-pref-name">Builder Completions</div>
                 <div class="dash-pref-desc">Notify when AI generations finish</div>
               </div>
               <div class="dash-toggle on" id="prefStudio" onclick="this.classList.toggle('on')">
@@ -1196,7 +1208,7 @@
     <div class="modal-toggle-row"><div class="modal-toggle-label">Privacy Protection<span>Hide your personal info from WHOIS</span></div><div class="mini-toggle on" onclick="this.classList.toggle('on')"><div class="mini-toggle-knob"></div></div></div>
     <div class="modal-toggle-row"><div class="modal-toggle-label">Auto-Renew<span>Automatically renew before expiration</span></div><div class="mini-toggle on" onclick="this.classList.toggle('on')"><div class="mini-toggle-knob"></div></div></div>
     <div class="modal-total"><span>Total</span><span id="modalDomainPrice">$29.99/yr</span></div>
-    <button class="modal-cta" onclick="closeDomainModal()">Complete Purchase</button>
+    <button class="modal-cta" onclick="purchaseDomain()">Complete Purchase</button>
   </div>
 </div>
 
@@ -1226,7 +1238,7 @@
 
 <div class="mobile-more-menu" id="mobileMoreMenu">
   <div class="mobile-more-grid">
-    <div class="mobile-more-item" onclick="navigate('studio');closeMobileMore()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>Studio</div>
+    <div class="mobile-more-item" onclick="navigate('studio');closeMobileMore()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>Builder</div>
     <div class="mobile-more-item" onclick="navigate('bizplan');closeMobileMore()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/></svg>Biz Plan</div>
     <div class="mobile-more-item" onclick="navigate('connectors');closeMobileMore()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="2"/></svg>Integrations</div>
     <div class="mobile-more-item" onclick="navigate('pricing');closeMobileMore()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/></svg>Pricing</div>
@@ -1269,7 +1281,7 @@ window.addEventListener('DOMContentLoaded', function() {
     </button>
     <button class="mobile-nav-item" data-view="studio" onclick="mobileNav('studio', this)">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/></svg>
-      Studio
+      Builder
     </button>
     <button class="mobile-nav-item" data-view="dashboard" onclick="mobileNav('dashboard', this)">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>

@@ -3984,10 +3984,68 @@ async def studio_publish_github(request: Request):
 
 @app.post("/api/studio/publish/vercel")
 async def studio_publish_vercel(request: Request):
-    """Deploy project to Vercel (stub — push to GitHub and instruct user to connect Vercel)."""
+    """Deploy project to Vercel using the Vercel API v13."""
+    import base64 as _b64
+    VERCEL_TOKEN = os.environ.get("VERCEL_API_ACCESS_TOKEN", "")
     try:
         body = await request.json()
-        return JSONResponse({"success": True, "url": "https://saintsallabs.vercel.app", "message": "Deployed to Vercel"})
+        files = body.get("files", [])
+        project = body.get("project") or {}
+        project_name = (project.get("name") or "saintsal-project").lower().replace(" ", "-")
+
+        if not VERCEL_TOKEN:
+            return JSONResponse({"error": "VERCEL_API_ACCESS_TOKEN not configured"}, status_code=500)
+
+        # Format files for Vercel API v13
+        vercel_files = []
+        for f in files:
+            fname = f.get("name") or "file.txt"
+            content = f.get("content") or ""
+            vercel_files.append({
+                "file": fname,
+                "data": content,
+                "encoding": "utf-8"
+            })
+
+        if not vercel_files:
+            vercel_files.append({
+                "file": "index.html",
+                "data": "<html><body><h1>SaintSal Labs</h1></body></html>",
+                "encoding": "utf-8"
+            })
+
+        payload = {
+            "name": project_name,
+            "files": vercel_files,
+            "target": "production",
+            "projectSettings": {
+                "framework": None
+            }
+        }
+
+        headers = {
+            "Authorization": f"Bearer {VERCEL_TOKEN}",
+            "Content-Type": "application/json"
+        }
+
+        async with httpx.AsyncClient(timeout=60) as client:
+            resp = await client.post(
+                "https://api.vercel.com/v13/deployments",
+                json=payload,
+                headers=headers
+            )
+            if resp.status_code not in (200, 201):
+                return JSONResponse({"error": f"Vercel API error {resp.status_code}: {resp.text}"}, status_code=502)
+            data = resp.json()
+            deploy_url = data.get("url") or data.get("alias", [""])[0] if data.get("alias") else ""
+            if deploy_url and not deploy_url.startswith("http"):
+                deploy_url = f"https://{deploy_url}"
+            return JSONResponse({
+                "success": True,
+                "url": deploy_url or f"https://{project_name}.vercel.app",
+                "deploymentId": data.get("id", ""),
+                "message": f"Deployed to Vercel: {deploy_url}"
+            })
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
 
@@ -4134,6 +4192,395 @@ async def studio_publish_download(request: Request):
         )
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
+
+# ── GoDaddy Domain Endpoints ────────────────────────────────────────────────
+
+@app.get("/api/godaddy/available/{domain}")
+async def godaddy_domain_available(domain: str):
+    """Check real-time domain availability via GoDaddy API."""
+    GODADDY_KEY = os.environ.get("GODADDY_API_KEY", "")
+    GODADDY_SECRET = os.environ.get("GODADDY_API_SECRET", "")
+    try:
+        if not GODADDY_KEY or not GODADDY_SECRET:
+            return JSONResponse({"error": "GoDaddy API credentials not configured"}, status_code=500)
+        headers = {
+            "Authorization": f"sso-key {GODADDY_KEY}:{GODADDY_SECRET}",
+            "Accept": "application/json"
+        }
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.get(
+                f"https://api.godaddy.com/v1/domains/available?domain={domain}&checkType=FAST",
+                headers=headers
+            )
+            if resp.status_code != 200:
+                return JSONResponse({"error": f"GoDaddy API error {resp.status_code}: {resp.text}"}, status_code=502)
+            data = resp.json()
+            return JSONResponse({
+                "domain": domain,
+                "available": data.get("available", False),
+                "price": data.get("price"),
+                "currency": data.get("currency", "USD"),
+                "period": data.get("period", 1),
+                "raw": data
+            })
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.post("/api/godaddy/purchase")
+async def godaddy_purchase_domain(request: Request):
+    """Purchase a domain via GoDaddy API."""
+    GODADDY_KEY = os.environ.get("GODADDY_API_KEY", "")
+    GODADDY_SECRET = os.environ.get("GODADDY_API_SECRET", "")
+    try:
+        body = await request.json()
+        domain = body.get("domain", "")
+        period = int(body.get("period", 1))
+        privacy = bool(body.get("privacy", False))
+
+        if not domain:
+            return JSONResponse({"error": "domain is required"}, status_code=400)
+        if not GODADDY_KEY or not GODADDY_SECRET:
+            return JSONResponse({"error": "GoDaddy API credentials not configured"}, status_code=500)
+
+        headers = {
+            "Authorization": f"sso-key {GODADDY_KEY}:{GODADDY_SECRET}",
+            "Content-Type": "application/json",
+            "Accept": "application/json"
+        }
+
+        default_contact = {
+            "addressMailing": {
+                "address1": "123 Main St",
+                "city": "Los Angeles",
+                "country": "US",
+                "postalCode": "90001",
+                "state": "CA"
+            },
+            "email": "admin@saintsallabs.com",
+            "nameFirst": "SaintSal",
+            "nameLast": "Labs",
+            "phone": "+1.3105550100"
+        }
+
+        payload = {
+            "consent": {
+                "agreedAt": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "agreedBy": "127.0.0.1",
+                "agreementKeys": ["DNRA"]
+            },
+            "contactAdmin": default_contact,
+            "contactBilling": default_contact,
+            "contactRegistrant": default_contact,
+            "contactTech": default_contact,
+            "domain": domain,
+            "nameServers": [],
+            "period": period,
+            "privacy": privacy,
+            "renewAuto": True
+        }
+
+        async with httpx.AsyncClient(timeout=30) as client:
+            resp = await client.post(
+                "https://api.godaddy.com/v1/domains/purchase",
+                json=payload,
+                headers=headers
+            )
+            if resp.status_code not in (200, 201, 202):
+                return JSONResponse({"error": f"GoDaddy purchase error {resp.status_code}: {resp.text}"}, status_code=502)
+            data = resp.json()
+            return JSONResponse({
+                "success": True,
+                "domain": domain,
+                "orderId": data.get("orderId"),
+                "itemCount": data.get("itemCount"),
+                "total": data.get("total"),
+                "currency": data.get("currency", "USD"),
+                "message": f"Domain {domain} purchased successfully",
+                "raw": data
+            })
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+# ── Social Media Publishing Endpoint ────────────────────────────────────────
+
+@app.post("/api/social/publish")
+async def social_publish(request: Request):
+    """Publish or format content for social media platforms."""
+    try:
+        body = await request.json()
+        platform = (body.get("platform") or "twitter").lower()
+        content = body.get("content") or ""
+        media_url = body.get("media_url") or ""
+
+        platform_instructions = {
+            "twitter": {
+                "name": "X (Twitter)",
+                "char_limit": 280,
+                "format": content[:280],
+                "connect_url": "https://developer.twitter.com/en/portal/dashboard",
+                "instructions": (
+                    "To publish to X/Twitter: (1) Create a Twitter Developer App at "
+                    "https://developer.twitter.com, (2) Generate API keys and Bearer Token, "
+                    "(3) Set env vars TWITTER_API_KEY, TWITTER_API_SECRET, TWITTER_ACCESS_TOKEN, "
+                    "TWITTER_ACCESS_SECRET, (4) Use POST /2/tweets with your content."
+                ),
+                "api_endpoint": "POST https://api.twitter.com/2/tweets",
+                "sample_payload": {"text": content[:280]}
+            },
+            "linkedin": {
+                "name": "LinkedIn",
+                "char_limit": 3000,
+                "format": content[:3000],
+                "connect_url": "https://www.linkedin.com/developers/apps",
+                "instructions": (
+                    "To publish to LinkedIn: (1) Create a LinkedIn App at "
+                    "https://www.linkedin.com/developers/apps, (2) Request the w_member_social scope, "
+                    "(3) Set env var LINKEDIN_ACCESS_TOKEN, (4) Use POST /v2/ugcPosts with your content."
+                ),
+                "api_endpoint": "POST https://api.linkedin.com/v2/ugcPosts",
+                "sample_payload": {
+                    "author": "urn:li:person:{PERSON_ID}",
+                    "lifecycleState": "PUBLISHED",
+                    "specificContent": {
+                        "com.linkedin.ugc.ShareContent": {
+                            "shareCommentary": {"text": content[:3000]},
+                            "shareMediaCategory": "NONE"
+                        }
+                    },
+                    "visibility": {"com.linkedin.ugc.MemberNetworkVisibility": "PUBLIC"}
+                }
+            },
+            "facebook": {
+                "name": "Facebook",
+                "char_limit": 63206,
+                "format": content[:63206],
+                "connect_url": "https://developers.facebook.com/apps",
+                "instructions": (
+                    "To publish to Facebook: (1) Create a Facebook App at "
+                    "https://developers.facebook.com, (2) Get a Page Access Token with "
+                    "pages_manage_posts permission, (3) Set env var FACEBOOK_PAGE_TOKEN and "
+                    "FACEBOOK_PAGE_ID, (4) Use POST /{page-id}/feed with your content."
+                ),
+                "api_endpoint": "POST https://graph.facebook.com/v18.0/{PAGE_ID}/feed",
+                "sample_payload": {"message": content[:63206], "access_token": "{FACEBOOK_PAGE_TOKEN}"}
+            }
+        }
+
+        info = platform_instructions.get(platform, platform_instructions["twitter"])
+
+        result = {
+            "success": True,
+            "platform": platform,
+            "platform_name": info["name"],
+            "formatted_content": info["format"],
+            "char_limit": info["char_limit"],
+            "char_count": len(content),
+            "media_url": media_url,
+            "connect_url": info["connect_url"],
+            "instructions": info["instructions"],
+            "api_endpoint": info["api_endpoint"],
+            "sample_payload": info["sample_payload"],
+            "status": "formatted",
+            "message": f"Content formatted for {info['name']}. Follow instructions to connect and publish."
+        }
+        return JSONResponse(result)
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+# ── Builder In-Memory Project Store ─────────────────────────────────────────
+_builder_projects: dict = {}
+
+
+# ── Builder Full-Stack Generate Endpoint ────────────────────────────────────
+
+@app.post("/api/builder/generate-app")
+async def builder_generate_app(request: Request):
+    """Generate a complete multi-file project using Grok-4 via XAI API."""
+    XAI_API_KEY = os.environ.get("XAI_API_KEY", "")
+    try:
+        body = await request.json()
+        template = body.get("template") or "landing"
+        prompt = body.get("prompt") or ""
+        name = (body.get("name") or "my-project").lower().replace(" ", "-")
+
+        if not XAI_API_KEY:
+            return JSONResponse({"error": "XAI_API_KEY not configured"}, status_code=500)
+        if not prompt:
+            return JSONResponse({"error": "prompt is required"}, status_code=400)
+
+        template_guides = {
+            "landing": "a beautiful marketing landing page with hero, features, CTA, and footer sections",
+            "dashboard": "an admin dashboard with sidebar navigation, stats cards, charts, and data tables",
+            "saas": "a SaaS web app with authentication UI, pricing page, dashboard, and onboarding flow",
+            "ecommerce": "an e-commerce store with product grid, cart, checkout flow, and product detail pages",
+            "pwa": "a Progressive Web App with service worker, manifest, offline support, and mobile-first design",
+            "widget": "an embeddable JavaScript widget with configuration options and a demo page",
+            "api": "a REST API server with Python/FastAPI including models, routes, auth middleware, and documentation",
+            "portfolio": "a personal portfolio site with about, projects, skills, and contact sections"
+        }
+
+        template_description = template_guides.get(template, template_guides["landing"])
+
+        system_prompt = (
+            "You are a full-stack developer. Generate a complete project with multiple files. "
+            "Output JSON with a 'files' array where each item has 'name' (filepath like 'index.html', "
+            "'styles.css', 'app.js', 'server.py') and 'content' (the full file content). "
+            "Generate a real, production-ready project. Include ALL necessary files. "
+            "Do not truncate file contents. Output only valid JSON, no markdown fences."
+        )
+
+        user_message = (
+            f"Generate {template_description}.\n\n"
+            f"Project name: {name}\n"
+            f"Additional requirements: {prompt}\n\n"
+            "Return a JSON object with a 'files' array. Each file needs 'name' and 'content' fields."
+        )
+
+        headers = {
+            "Authorization": f"Bearer {XAI_API_KEY}",
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "model": "grok-4",
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_message}
+            ],
+            "temperature": 0.7,
+            "max_tokens": 32000
+        }
+
+        async with httpx.AsyncClient(timeout=120) as client:
+            resp = await client.post(
+                "https://api.x.ai/v1/chat/completions",
+                json=payload,
+                headers=headers
+            )
+            if resp.status_code != 200:
+                return JSONResponse({"error": f"XAI API error {resp.status_code}: {resp.text}"}, status_code=502)
+
+            data = resp.json()
+            raw_content = data["choices"][0]["message"]["content"]
+
+        # Parse the JSON from the AI response
+        import re as _re
+        # Strip markdown code fences if present
+        raw_content = _re.sub(r'^```(?:json)?\s*', '', raw_content.strip(), flags=_re.IGNORECASE)
+        raw_content = _re.sub(r'```\s*$', '', raw_content.strip())
+        try:
+            parsed = json.loads(raw_content)
+        except json.JSONDecodeError:
+            # Try to extract JSON object from the response
+            match = _re.search(r'\{.*\}', raw_content, _re.DOTALL)
+            if match:
+                parsed = json.loads(match.group(0))
+            else:
+                return JSONResponse({"error": "AI did not return valid JSON", "raw": raw_content[:500]}, status_code=502)
+
+        files = parsed.get("files", [])
+        if not files:
+            return JSONResponse({"error": "AI returned no files", "raw": raw_content[:500]}, status_code=502)
+
+        # Store in memory
+        _builder_projects[name] = {"name": name, "template": template, "files": files}
+
+        return JSONResponse({
+            "success": True,
+            "name": name,
+            "template": template,
+            "files": files,
+            "file_count": len(files),
+            "message": f"Generated {len(files)} files for project '{name}'"
+        })
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+# ── Builder Save / Load Project Endpoints ───────────────────────────────────
+
+@app.post("/api/builder/save-project")
+async def builder_save_project(request: Request):
+    """Save project files to disk under /tmp/sal_projects/{name}/."""
+    try:
+        body = await request.json()
+        name = (body.get("name") or "unnamed-project").lower().replace(" ", "-")
+        files = body.get("files", [])
+
+        if not files:
+            return JSONResponse({"error": "files array is required and must not be empty"}, status_code=400)
+
+        project_dir = Path("/tmp/sal_projects") / name
+        project_dir.mkdir(parents=True, exist_ok=True)
+
+        saved = []
+        for f in files:
+            fname = f.get("name") or "file.txt"
+            content = f.get("content") or ""
+            # Resolve relative to project dir, prevent path traversal
+            file_path = (project_dir / fname).resolve()
+            if not str(file_path).startswith(str(project_dir.resolve())):
+                continue  # Skip unsafe paths
+            file_path.parent.mkdir(parents=True, exist_ok=True)
+            file_path.write_text(content, encoding="utf-8")
+            saved.append(fname)
+
+        # Also update in-memory store
+        _builder_projects[name] = {"name": name, "files": files}
+
+        return JSONResponse({
+            "success": True,
+            "name": name,
+            "path": str(project_dir),
+            "saved_files": saved,
+            "file_count": len(saved),
+            "message": f"Saved {len(saved)} files to /tmp/sal_projects/{name}/"
+        })
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.get("/api/builder/load-project/{name}")
+async def builder_load_project(name: str):
+    """Load project files from disk at /tmp/sal_projects/{name}/."""
+    try:
+        project_dir = Path("/tmp/sal_projects") / name
+        if not project_dir.exists():
+            # Try in-memory store
+            if name in _builder_projects:
+                proj = _builder_projects[name]
+                return JSONResponse({
+                    "success": True,
+                    "name": name,
+                    "source": "memory",
+                    "files": proj.get("files", []),
+                    "file_count": len(proj.get("files", []))
+                })
+            return JSONResponse({"error": f"Project '{name}' not found"}, status_code=404)
+
+        files = []
+        for file_path in sorted(project_dir.rglob("*")):
+            if file_path.is_file():
+                rel_name = str(file_path.relative_to(project_dir))
+                try:
+                    content = file_path.read_text(encoding="utf-8")
+                except Exception:
+                    content = ""  # Skip binary files
+                files.append({"name": rel_name, "content": content})
+
+        return JSONResponse({
+            "success": True,
+            "name": name,
+            "source": "disk",
+            "path": str(project_dir),
+            "files": files,
+            "file_count": len(files)
+        })
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
 
 if __name__ == "__main__":
     import uvicorn
