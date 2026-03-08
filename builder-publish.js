@@ -91,6 +91,47 @@ function renderBuilderProjectPanel() {
   html += '</div>';
   html += _bppSectionEnd();
 
+  /* ── 2b. Files ── */
+  html += _bppSectionStart('Files', _iconFile());
+  html += '<div id="bppFilesList" style="display:flex;flex-direction:column;gap:2px;">';
+  var files = (s.files && s.files.length) ? s.files : [];
+  if (files.length === 0) {
+    html += '<div style="font-size:12px;color:var(--text-muted);padding:8px 0;">No files yet. Generate code or select a template.</div>';
+  } else {
+    files.forEach(function(f, i) {
+      var name = f.name || 'file_' + i;
+      var ext = name.split('.').pop().toLowerCase();
+      var iconColor = '#6B7280';
+      if (ext === 'html') iconColor = '#ef4444';
+      else if (ext === 'css') iconColor = '#3b82f6';
+      else if (ext === 'js' || ext === 'ts') iconColor = '#f59e0b';
+      else if (ext === 'py') iconColor = '#22c55e';
+      else if (ext === 'json') iconColor = '#a855f7';
+      else if (ext === 'md') iconColor = '#06b6d4';
+      var active = (s.activeFile === i) ? 'background:rgba(255,255,255,0.06);' : '';
+      html += '<div onclick="builderOpenFile(' + i + ')" '
+            + 'style="display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:8px;cursor:pointer;transition:all 0.15s;' + active + '" '
+            + 'onmouseenter="this.style.background=\'rgba(255,255,255,0.06)\'" '
+            + 'onmouseleave="this.style.background=\'' + (active ? 'rgba(255,255,255,0.06)' : 'transparent') + '\'">';
+      html += '<svg viewBox="0 0 24 24" fill="none" stroke="' + iconColor + '" stroke-width="1.5" width="13" height="13"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>';
+      html += '<span style="flex:1;font-size:12px;color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + escapeHtml(name) + '</span>';
+      html += '<span style="font-size:10px;color:var(--text-muted);">' + _bppFormatSize(f.content ? f.content.length : 0) + '</span>';
+      html += '</div>';
+    });
+  }
+  html += '</div>';
+  if (files.length > 0) {
+    html += '<div style="display:flex;gap:8px;margin-top:8px;">';
+    html += '<button onclick="builderDownloadAllFiles()" '
+          + 'style="flex:1;background:var(--bg-secondary);border:none;color:var(--text-primary);padding:8px;border-radius:10px;cursor:pointer;font-size:12px;font-weight:600;font-family:\'Inter\',sans-serif;transition:all 0.2s;display:flex;align-items:center;justify-content:center;gap:6px;" '
+          + 'onmouseenter="this.style.opacity=\'0.8\'" onmouseleave="this.style.opacity=\'1\'">' + _iconDownload('var(--text-muted)').replace('width="18"', 'width="13"').replace('height="18"', 'height="13"') + ' Download All</button>';
+    html += '<button onclick="builderExportCode()" '
+          + 'style="flex:1;background:var(--bg-secondary);border:none;color:var(--text-primary);padding:8px;border-radius:10px;cursor:pointer;font-size:12px;font-weight:600;font-family:\'Inter\',sans-serif;transition:all 0.2s;display:flex;align-items:center;justify-content:center;gap:6px;" '
+          + 'onmouseenter="this.style.opacity=\'0.8\'" onmouseleave="this.style.opacity=\'1\'">' + _iconCode().replace('var(--accent-gold)', 'var(--text-muted)') + ' View Code</button>';
+    html += '</div>';
+  }
+  html += _bppSectionEnd();
+
   /* ── 3. Publishing Pipeline ── */
   html += _bppSectionStart('Publishing Pipeline', _iconUpload());
   html += '<div style="display:flex;flex-direction:column;gap:8px;" id="bppPublishCards">';
@@ -385,6 +426,9 @@ function _iconRender(color) {
 function _iconDownload(color) {
   color = color || '#f59e0b';
   return '<svg viewBox="0 0 24 24" fill="none" stroke="' + color + '" stroke-width="2" width="18" height="18"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>';
+}
+function _iconFile() {
+  return '<svg viewBox="0 0 24 24" fill="none" stroke="var(--accent-gold)" stroke-width="2" width="14" height="14"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>';
 }
 
 function _statusDot(state) {
@@ -1269,6 +1313,52 @@ function builderToggleEnvVisibility(btn) {
     valInput.type = 'password';
     btn.title = 'Show value';
   }
+}
+
+/* ============================================================
+   FILE FORMAT & DOWNLOAD HELPERS (Project panel)
+   ============================================================ */
+function _bppFormatSize(bytes) {
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+  return (bytes / 1048576).toFixed(1) + ' MB';
+}
+
+function builderDownloadAllFiles() {
+  var s = window.builderState || {};
+  if (!s.files || !s.files.length) {
+    if (typeof showToast === 'function') showToast('No files to download', 'error');
+    return;
+  }
+  // Trigger the download ZIP flow
+  builderPublish('download');
+}
+
+function builderExportCode() {
+  var s = window.builderState || {};
+  if (!s.files || !s.files.length) {
+    if (typeof showToast === 'function') showToast('No code to export', 'error');
+    return;
+  }
+  // Show the active file code, or first file if none active
+  var idx = (s.activeFile !== undefined && s.activeFile !== null) ? s.activeFile : 0;
+  if (typeof builderOpenFile === 'function') {
+    builderOpenFile(idx);
+  }
+}
+
+/* ── Also update right sidebar elements for backward compatibility ── */
+var _origRenderFileTree = window.builderRenderFileTree;
+if (typeof _origRenderFileTree === 'function') {
+  window.builderRenderFileTree = function() {
+    _origRenderFileTree();
+    // Also refresh Project panel Files section if it's visible
+    var bppFiles = document.getElementById('bppFilesList');
+    if (bppFiles && document.getElementById('studioProjectPanel') &&
+        document.getElementById('studioProjectPanel').style.display !== 'none') {
+      studioShowProjectPanel();
+    }
+  };
 }
 
 /* ── end of builder-publish.js ── */
