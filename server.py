@@ -1450,7 +1450,7 @@ ENGAGEMENT_CONTENT = {
             {"title": "GitHub Copilot Workspace Goes GA", "image": "https://images.unsplash.com/photo-1618401471353-b98afee0b2eb?w=400&h=240&fit=crop", "category": "Dev Tools", "time": "5h ago", "summary": "GitHub's AI coding assistant can now plan, edit, and test across entire repos."},
         ],
         "ctas": [
-            {"id": "builder", "icon": "zap", "title": "Build Something", "subtitle": "Open SAL Studio and let AI generate full-stack apps from your description.", "cta_text": "Open Studio", "color": "#d4a017"},
+            {"id": "builder", "icon": "zap", "title": "Build Something", "subtitle": "Open SAL Builder and let AI generate full-stack apps from your description.", "cta_text": "Open Builder", "color": "#d4a017"},
             {"id": "trending", "icon": "trending", "title": "Trending Repos", "subtitle": "Discover the hottest open-source projects and AI tools on GitHub.", "cta_text": "Explore", "color": "#7c3aed"},
         ],
     },
