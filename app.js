@@ -3283,7 +3283,13 @@ function updateAuthUI(loggedIn) {
     const name = currentUser.full_name || currentUser.email.split('@')[0];
     const tier = (currentUser.plan_tier || 'free').toUpperCase();
     
-    avatarEls.forEach(function(el) { el.textContent = initial; });
+    avatarEls.forEach(function(el) {
+      if (currentUser.avatar_url) {
+        el.innerHTML = '<img src="' + currentUser.avatar_url + '" style="width:100%;height:100%;border-radius:50%;object-fit:cover;">';
+      } else {
+        el.textContent = initial;
+      }
+    });
     if (userNameEl) userNameEl.textContent = name;
     if (userPlanBadge) {
       userPlanBadge.textContent = tier;
@@ -3580,52 +3586,79 @@ function renderAccountProfile() {
   var plan = user.plan_tier || 'free';
   var planColors = { free: '#6B7280', starter: '#10B981', pro: '#8B5CF6', teams: '#F59E0B', enterprise: '#EF4444' };
   var planColor = planColors[plan] || '#6B7280';
+  var initial = (user.full_name || user.email || 'U').charAt(0).toUpperCase();
+  var limit = user.credits_limit || 100;
+  var remaining = user.credits_remaining || 0;
+  var used = limit - remaining;
+  var pct = limit > 0 ? Math.min(100, Math.round((used / limit) * 100)) : 0;
+  var barColor = pct > 85 ? '#ef4444' : pct > 60 ? '#f59e0b' : 'var(--accent-green)';
   
-  container.innerHTML = '<div class="account-profile">'
-    + '<div class="account-header">'
-    + '<div class="account-avatar">' + (user.avatar_url ? '<img src="' + user.avatar_url + '" alt="avatar">' : '<svg viewBox="0 0 24 24" fill="none" stroke="var(--gold)" stroke-width="2" width="40" height="40"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>') + '</div>'
-    + '<div class="account-info">'
-    + '<h2 class="account-name">' + (user.full_name || user.email || 'SaintSal User') + '</h2>'
-    + '<span class="account-plan-badge" style="background:' + planColor + '">' + plan.charAt(0).toUpperCase() + plan.slice(1) + ' Plan</span>'
+  container.innerHTML = '<div class="account-profile" style="max-width:640px;margin:0 auto;padding:24px 16px;overflow-y:auto;height:100%;">' 
+    // ── Profile Header with Avatar Upload ──
+    + '<div style="display:flex;align-items:center;gap:16px;margin-bottom:28px;">'
+    + '<div class="profile-avatar-wrap" style="position:relative;cursor:pointer;" onclick="document.getElementById(\'avatarUpload\').click()">'
+    + '<div style="width:72px;height:72px;border-radius:50%;background:linear-gradient(135deg,rgba(212,175,55,0.2),rgba(0,255,136,0.1));display:flex;align-items:center;justify-content:center;border:2px solid var(--accent-gold);overflow:hidden;">' 
+    + (user.avatar_url ? '<img src="' + user.avatar_url + '" style="width:100%;height:100%;object-fit:cover;">' : '<span style="font-size:28px;font-weight:700;color:var(--accent-gold);">' + initial + '</span>') 
+    + '</div>'
+    + '<div style="position:absolute;bottom:0;right:0;width:24px;height:24px;border-radius:50%;background:var(--accent-gold);display:flex;align-items:center;justify-content:center;border:2px solid var(--bg-primary);"><svg viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2.5" width="12" height="12"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></div>'
+    + '<input type="file" id="avatarUpload" accept="image/*" style="display:none" onchange="handleAvatarUpload(this)">'
+    + '</div>'
+    + '<div style="flex:1;">'
+    + '<div style="font-size:20px;font-weight:700;color:var(--text-primary);">' + (user.full_name || user.email.split('@')[0]) + '</div>'
+    + '<div style="font-size:13px;color:var(--text-muted);margin-top:2px;">' + (user.email || '') + '</div>'
+    + '<div style="display:flex;gap:8px;margin-top:8px;align-items:center;">'
+    + '<span style="padding:3px 10px;border-radius:4px;font-size:11px;font-weight:700;letter-spacing:0.5px;background:' + planColor + ';color:#fff;">' + plan.toUpperCase() + '</span>'
+    + '<span style="font-size:11px;color:var(--text-muted);">Member since ' + (user.created_at ? new Date(user.created_at).toLocaleDateString('en-US',{month:'short',year:'numeric'}) : 'Today') + '</span>'
+    + '</div></div></div>'
+
+    // ── Credits & Usage Bar ──
+    + '<div style="background:var(--bg-secondary);border-radius:12px;padding:16px;margin-bottom:16px;">'
+    + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">'
+    + '<span style="font-size:13px;font-weight:600;color:var(--text-primary);">Credits</span>'
+    + '<span id="accountCreditsUsed" style="font-size:12px;color:var(--text-muted);">' + used + ' / ' + limit + ' used</span>'
+    + '</div>'
+    + '<div style="height:8px;background:var(--bg-tertiary);border-radius:4px;overflow:hidden;">'
+    + '<div id="accountUsageBar" style="height:100%;width:' + pct + '%;background:' + barColor + ';border-radius:4px;transition:width 0.5s ease;"></div>'
+    + '</div>'
+    + '<div style="display:flex;justify-content:space-between;margin-top:8px;">'
+    + '<span style="font-size:11px;color:var(--text-muted);">' + remaining + ' remaining</span>'
+    + '<span style="font-size:11px;color:var(--text-muted);">' + limit + ' total</span>'
     + '</div>'
     + '</div>'
-    
-    // Usage section
-    + '<div class="account-section">'
-    + '<h3 class="account-section-title">Usage This Month</h3>'
-    + '<div class="account-usage-grid">'
-    + '<div class="account-usage-card"><div class="account-usage-value">' + (user.credits_remaining || 0) + '</div><div class="account-usage-label">Credits Remaining</div></div>'
-    + '<div class="account-usage-card"><div class="account-usage-value">' + (user.messages_sent || 0) + '</div><div class="account-usage-label">Messages Sent</div></div>'
-    + '<div class="account-usage-card"><div class="account-usage-value">' + (user.studio_generations || 0) + '</div><div class="account-usage-label">Builder Generations</div></div>'
-    + '<div class="account-usage-card"><div class="account-usage-value">' + (user.compute_minutes || '0.0') + ' min</div><div class="account-usage-label">Compute Used</div></div>'
+
+    // ── Upgrade CTA (shown when credits low) ──
+    + '<div id="accountUpgradeCta" style="display:' + (remaining < limit * 0.15 && plan === 'free' ? 'flex' : 'none') + ';background:linear-gradient(135deg,rgba(212,175,55,0.1),rgba(139,92,246,0.08));border:1px solid rgba(212,175,55,0.3);border-radius:12px;padding:14px 16px;margin-bottom:16px;align-items:center;gap:12px;">'
+    + '<div style="flex-shrink:0;"><svg viewBox="0 0 24 24" fill="none" stroke="var(--accent-gold)" stroke-width="2" width="24" height="24"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg></div>'
+    + '<div style="flex:1;"><div style="font-size:13px;font-weight:600;color:var(--accent-gold);">Running low on credits</div><div style="font-size:12px;color:var(--text-muted);margin-top:2px;">Upgrade to Pro for 1,000 credits/month + premium models</div></div>'
+    + '<button onclick="navigate(\'pricing\')" style="background:var(--accent-gold);color:#000;border:none;padding:8px 16px;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;">Upgrade</button>'
     + '</div>'
+
+    // ── Usage Stats Grid ──
+    + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;">'
+    + '<div style="background:var(--bg-secondary);border-radius:10px;padding:14px;"><div class="account-usage-value" style="font-size:22px;font-weight:700;color:var(--text-primary);">' + remaining + '</div><div style="font-size:11px;color:var(--text-muted);margin-top:4px;">Credits Left</div></div>'
+    + '<div style="background:var(--bg-secondary);border-radius:10px;padding:14px;"><div class="account-usage-value" style="font-size:22px;font-weight:700;color:var(--text-primary);">' + (user.monthly_requests || 0) + '</div><div style="font-size:11px;color:var(--text-muted);margin-top:4px;">Requests This Month</div></div>'
+    + '<div style="background:var(--bg-secondary);border-radius:10px;padding:14px;"><div class="account-usage-value" style="font-size:22px;font-weight:700;color:var(--text-primary);">' + (parseFloat(user.total_compute_minutes) || 0).toFixed(1) + ' min</div><div style="font-size:11px;color:var(--text-muted);margin-top:4px;">Compute Time</div></div>'
+    + '<div style="background:var(--bg-secondary);border-radius:10px;padding:14px;"><div class="account-usage-value" style="font-size:22px;font-weight:700;color:var(--text-primary);">$' + (parseFloat(user.current_month_spend) || 0).toFixed(2) + '</div><div style="font-size:11px;color:var(--text-muted);margin-top:4px;">Month Spend</div></div>'
     + '</div>'
-    
-    // Billing section
-    + '<div class="account-section">'
-    + '<h3 class="account-section-title">Billing</h3>'
-    + '<div class="account-billing">'
-    + '<div class="account-billing-row"><span>Current Plan</span><span style="color:' + planColor + ';font-weight:600">' + plan.charAt(0).toUpperCase() + plan.slice(1) + '</span></div>'
-    + '<div class="account-billing-row"><span>Next Billing Date</span><span>' + (user.next_billing || 'N/A') + '</span></div>'
-    + '<button class="btn-gold" onclick="toggleBilling()">Manage Subscription</button>'
+
+    // ── Plan & Billing ──
+    + '<div style="background:var(--bg-secondary);border-radius:12px;padding:16px;margin-bottom:16px;">'
+    + '<div style="font-size:13px;font-weight:600;color:var(--text-primary);margin-bottom:12px;">Plan & Billing</div>'
+    + '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border-subtle);"><span style="font-size:13px;color:var(--text-muted);">Current Plan</span><span style="font-size:13px;font-weight:600;color:' + planColor + ';">' + plan.charAt(0).toUpperCase() + plan.slice(1) + '</span></div>'
+    + '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border-subtle);"><span style="font-size:13px;color:var(--text-muted);">Compute Tier</span><span style="font-size:13px;font-weight:600;color:var(--text-primary);">' + (user.compute_tier || 'mini').replace('_',' ') + '</span></div>'
+    + '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;"><span style="font-size:13px;color:var(--text-muted);">Wallet Balance</span><span style="font-size:13px;font-weight:600;color:var(--accent-green);">$' + (parseFloat(user.wallet_balance) || 0).toFixed(2) + '</span></div>'
+    + '<button onclick="navigate(\'pricing\')" style="background:transparent;border:1px solid var(--accent-gold);color:var(--accent-gold);padding:8px 16px;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;margin-top:12px;width:100%;">Manage Plan</button>'
     + '</div>'
+
+    // ── Settings ──
+    + '<div style="background:var(--bg-secondary);border-radius:12px;padding:16px;margin-bottom:16px;">'
+    + '<div style="font-size:13px;font-weight:600;color:var(--text-primary);margin-bottom:12px;">Settings</div>'
+    + '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border-subtle);"><span style="font-size:13px;color:var(--text-muted);">Email</span><span style="font-size:13px;color:var(--text-primary);">' + (user.email || 'Not set') + '</span></div>'
+    + '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;"><span style="font-size:13px;color:var(--text-muted);">Default Compute</span><select onchange="setDefaultTier(this.value)" style="background:var(--bg-tertiary);border:1px solid var(--border-subtle);color:var(--text-primary);padding:6px 10px;border-radius:6px;font-size:12px;"><option value="mini"' + ((user.compute_tier||'mini')==='mini'?' selected':'') + '>Mini $0.05/min</option><option value="pro"' + ((user.compute_tier||'')==='pro'?' selected':'') + '>Pro $0.25/min</option><option value="max"' + ((user.compute_tier||'')==='max'?' selected':'') + '>Max $0.75/min</option><option value="max_pro"' + ((user.compute_tier||'')==='max_pro'?' selected':'') + '>MaxPro $1/min</option></select></div>'
     + '</div>'
-    
-    // Settings section
-    + '<div class="account-section">'
-    + '<h3 class="account-section-title">Settings</h3>'
-    + '<div class="account-settings">'
-    + '<div class="account-setting-row"><span>Email</span><span>' + (user.email || 'Not set') + '</span></div>'
-    + '<div class="account-setting-row"><span>Theme</span><button class="btn-outline-sm" onclick="toggleTheme()">Toggle Dark/Light</button></div>'
-    + '<div class="account-setting-row"><span>Default Compute Tier</span><select class="account-select" onchange="setDefaultTier(this.value)"><option value="mini">Mini ($0.05/min)</option><option value="pro">Pro ($0.25/min)</option><option value="max">Max ($0.75/min)</option><option value="max_pro">MaxPro ($1.00/min)</option></select></div>'
-    + '</div>'
-    + '</div>'
-    
-    // Danger zone
-    + '<div class="account-section account-danger">'
-    + '<h3 class="account-section-title">Account</h3>'
-    + '<button class="btn-outline-danger" onclick="handleLogout()">Sign Out</button>'
-    + '</div>'
+
+    // ── Sign Out ──
+    + '<button onclick="handleLogout()" style="background:transparent;border:1px solid rgba(239,68,68,0.4);color:#ef4444;padding:10px 16px;border-radius:8px;font-size:13px;font-weight:500;cursor:pointer;width:100%;">Sign Out</button>'
     + '</div>';
     
   // Fetch fresh usage data
@@ -3633,18 +3666,31 @@ function renderAccountProfile() {
 }
 
 function fetchAccountUsage() {
-  var token = localStorage.getItem('sal_token');
-  if (!token) return;
-  fetch('/api/auth/usage', { headers: { 'Authorization': 'Bearer ' + token } })
+  if (!sessionToken) return;
+  fetch(API + '/api/auth/profile', { headers: authHeaders() })
     .then(function(r) { return r.json(); })
     .then(function(data) {
-      if (data && !data.error) {
-        // Update usage cards with real data
+      if (data && data.user) {
+        var u = data.user;
         var cards = document.querySelectorAll('.account-usage-value');
-        if (cards[0]) cards[0].textContent = data.credits_remaining || 0;
-        if (cards[1]) cards[1].textContent = data.messages_sent || 0;
-        if (cards[2]) cards[2].textContent = data.studio_generations || 0;
-        if (cards[3]) cards[3].textContent = (data.compute_minutes || '0.0') + ' min';
+        if (cards[0]) cards[0].textContent = u.credits_remaining || 0;
+        if (cards[1]) cards[1].textContent = u.monthly_requests || 0;
+        if (cards[2]) cards[2].textContent = Math.round(u.total_compute_minutes || 0);
+        if (cards[3]) cards[3].textContent = '$' + (parseFloat(u.current_month_spend) || 0).toFixed(2);
+        // Update credits bar
+        var limit = u.credits_limit || 100;
+        var remaining = u.credits_remaining || 0;
+        var used = limit - remaining;
+        var pct = limit > 0 ? Math.min(100, Math.round((used / limit) * 100)) : 0;
+        var usageBarEl = document.getElementById('accountUsageBar');
+        if (usageBarEl) usageBarEl.style.width = pct + '%';
+        var creditsUsedEl = document.getElementById('accountCreditsUsed');
+        if (creditsUsedEl) creditsUsedEl.textContent = used + ' / ' + limit + ' credits used';
+        // Show upgrade CTA if credits low
+        var upgradeCta = document.getElementById('accountUpgradeCta');
+        if (upgradeCta) {
+          upgradeCta.style.display = (remaining < limit * 0.15 && u.plan_tier === 'free') ? 'flex' : 'none';
+        }
       }
     })
     .catch(function() {});
@@ -3652,6 +3698,47 @@ function fetchAccountUsage() {
 
 function setDefaultTier(tier) {
   localStorage.setItem('sal_default_tier', tier);
+}
+
+async function handleAvatarUpload(input) {
+  if (!input.files || !input.files[0]) return;
+  var file = input.files[0];
+  if (file.size > 5 * 1024 * 1024) { showToast('Image too large (max 5MB)', 'error'); return; }
+  if (!file.type.startsWith('image/')) { showToast('Please select an image file', 'error'); return; }
+  
+  var formData = new FormData();
+  formData.append('avatar', file);
+  
+  try {
+    showToast('Uploading...', 'info');
+    var resp = await fetch(API + '/api/auth/avatar', {
+      method: 'POST',
+      headers: sessionToken ? { 'Authorization': 'Bearer ' + sessionToken } : {},
+      body: formData
+    });
+    var data = await resp.json();
+    if (data.success && data.avatar_url) {
+      if (currentUser) currentUser.avatar_url = data.avatar_url;
+      // Update sidebar avatars
+      document.querySelectorAll('.user-avatar, .topbar-avatar').forEach(function(el) {
+        el.innerHTML = '<img src="' + data.avatar_url + '" style="width:100%;height:100%;border-radius:50%;object-fit:cover;">';
+      });
+      // Re-render profile
+      window.__salUser = currentUser;
+      renderAccountProfile();
+      // Save to session
+      _authStore.set('saintsal_session', JSON.stringify({
+        access_token: sessionToken,
+        refresh_token: refreshToken,
+        user: currentUser
+      }));
+      showToast('Profile picture updated', 'success');
+    } else {
+      showToast(data.error || 'Upload failed', 'error');
+    }
+  } catch (e) {
+    showToast('Upload failed: ' + e.message, 'error');
+  }
 }
 
 
