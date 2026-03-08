@@ -5358,6 +5358,146 @@ async def studio_transcribe_audio(request: Request):
     return JSONResponse({"error": "Transcription failed — no STT provider available"}, status_code=500)
 
 
+# ── ElevenLabs TTS — Text-to-Speech for chat responses ────────────────────────
+
+@app.post("/api/tts")
+async def text_to_speech(request: Request):
+    """Convert text to speech using ElevenLabs eleven_multilingual_v2.
+    Returns base64 audio data.
+    Supports 17 languages with auto-detection."""
+    body = await request.json()
+    text = body.get("text", "")
+    voice_id = body.get("voice_id", "JBFqnCBsd6RMkjVDRZzb")  # Default: George
+    model_id = body.get("model_id", "eleven_multilingual_v2")
+    output_format = body.get("output_format", "mp3_44100_128")
+
+    if not text or len(text.strip()) < 1:
+        return JSONResponse({"error": "Text required"}, status_code=400)
+
+    el_key = os.environ.get("ELEVENLABS_API_KEY", "")
+    if not el_key:
+        return JSONResponse({"error": "ElevenLabs API key not configured"}, status_code=500)
+
+    # Truncate very long text to prevent timeout (ElevenLabs limit ~5000 chars)
+    if len(text) > 4500:
+        text = text[:4500] + "..."
+
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            resp = await client.post(
+                f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}",
+                headers={
+                    "xi-api-key": el_key,
+                    "Content-Type": "application/json",
+                    "Accept": "audio/mpeg",
+                },
+                json={
+                    "text": text,
+                    "model_id": model_id,
+                    "voice_settings": {
+                        "stability": 0.5,
+                        "similarity_boost": 0.75,
+                        "style": 0.0,
+                        "use_speaker_boost": True,
+                    },
+                    "output_format": output_format,
+                },
+            )
+            if resp.status_code == 200:
+                audio_bytes = resp.content
+                b64 = base64.b64encode(audio_bytes).decode()
+                return JSONResponse({
+                    "audio": f"data:audio/mpeg;base64,{b64}",
+                    "format": "mp3",
+                    "voice_id": voice_id,
+                    "model_id": model_id,
+                    "chars": len(text),
+                })
+            else:
+                err = resp.text[:300]
+                print(f"[TTS] ElevenLabs error {resp.status_code}: {err}")
+                return JSONResponse({"error": f"TTS failed: {resp.status_code}"}, status_code=resp.status_code)
+    except Exception as e:
+        print(f"[TTS] Error: {e}")
+        return JSONResponse({"error": f"TTS error: {str(e)[:200]}"}, status_code=500)
+
+
+# ── ElevenLabs Webhook Receiver ───────────────────────────────────────────────
+
+@app.post("/api/webhooks/elevenlabs")
+async def elevenlabs_webhook(request: Request):
+    """Receive webhook callbacks from ElevenLabs.
+    Events: transcription_completed, voice_removal_notice.
+    Payloads are HMAC-signed with ElevenLabs-Signature header."""
+    import hmac
+    import hashlib
+
+    body_bytes = await request.body()
+    signature = request.headers.get("ElevenLabs-Signature", "")
+    webhook_secret = os.environ.get("ELEVENLABS_WEBHOOK_SECRET", "")
+
+    # Verify HMAC signature if secret is configured
+    if webhook_secret and signature:
+        expected = hmac.new(
+            webhook_secret.encode(), body_bytes, hashlib.sha256
+        ).hexdigest()
+        if not hmac.compare_digest(expected, signature):
+            print("[ElevenLabs Webhook] Signature mismatch")
+            return JSONResponse({"error": "Invalid signature"}, status_code=401)
+
+    try:
+        payload = json.loads(body_bytes)
+    except json.JSONDecodeError:
+        return JSONResponse({"error": "Invalid JSON"}, status_code=400)
+
+    event_type = payload.get("type", payload.get("event", "unknown"))
+    print(f"[ElevenLabs Webhook] Event: {event_type}")
+    print(f"[ElevenLabs Webhook] Payload keys: {list(payload.keys())}")
+
+    if event_type == "transcription_completed":
+        # Handle transcription completion
+        transcript_text = payload.get("text", payload.get("transcript", ""))
+        language = payload.get("language_code", "auto")
+        print(f"[ElevenLabs Webhook] Transcription ({language}): {transcript_text[:200]}")
+        # Could store to Supabase, trigger GHL workflow, etc.
+
+    elif event_type == "voice_removal_notice":
+        voice_id = payload.get("voice_id", "")
+        print(f"[ElevenLabs Webhook] Voice removal notice: {voice_id}")
+
+    # Always return 200 to acknowledge receipt
+    return JSONResponse({"received": True, "event": event_type})
+
+
+# ── ElevenLabs Conversational AI signed URL ───────────────────────────────────
+
+@app.get("/api/voice/signed-url")
+async def get_voice_signed_url():
+    """Get a signed URL for ElevenLabs Conversational AI WebSocket.
+    This keeps the API key server-side — client never sees it."""
+    el_key = os.environ.get("ELEVENLABS_API_KEY", "")
+    agent_id = os.environ.get("ELEVENLABS_AGENT_ID_KEY", os.environ.get("ELEVENLABS_AGENT_ID", ""))
+
+    if not el_key or not agent_id:
+        return JSONResponse({"error": "ElevenLabs not configured"}, status_code=500)
+
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.get(
+                f"https://api.elevenlabs.io/v1/convai/conversation/get_signed_url?agent_id={agent_id}",
+                headers={"xi-api-key": el_key},
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                return JSONResponse({"signed_url": data.get("signed_url", "")})
+            else:
+                print(f"[Voice] Signed URL error {resp.status_code}: {resp.text[:200]}")
+                return JSONResponse({"error": f"Could not get signed URL: {resp.status_code}"}, status_code=resp.status_code)
+    except Exception as e:
+        print(f"[Voice] Signed URL error: {e}")
+        return JSONResponse({"error": str(e)[:200]}, status_code=500)
+
+
 if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 8000))

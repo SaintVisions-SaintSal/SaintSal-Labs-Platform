@@ -5320,3 +5320,69 @@ ul, ol { list-style: none; }
   .bc-tm-grid { grid-template-columns: 1fr; }
   .bc-footer { flex-direction: column; text-align: center; }
 }
+
+/* ============================================================
+   VOICE ENGINE — Mic Recording, TTS, Accessibility
+   ============================================================ */
+
+/* ── Chat Mic Recording State ── */
+.prompt-mic.recording {
+  background: rgba(239, 68, 68, .15);
+  color: #ef4444;
+  animation: micPulse 1.2s ease-in-out infinite;
+}
+.prompt-mic.recording svg {
+  stroke: #ef4444;
+}
+@keyframes micPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, .3); }
+  50% { box-shadow: 0 0 0 8px rgba(239, 68, 68, 0); }
+}
+
+/* ── TTS Speaker Button on Messages ── */
+.msg-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  padding-top: 6px;
+}
+.tts-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  border: 1px solid rgba(255,255,255,.08);
+  background: transparent;
+  color: var(--text-muted, #777);
+  cursor: pointer;
+  transition: all .2s ease;
+  flex-shrink: 0;
+}
+.tts-btn:hover {
+  color: var(--accent-gold, #D4AF37);
+  border-color: rgba(212,175,55,.25);
+  background: rgba(212,175,55,.06);
+}
+.tts-btn.tts-loading {
+  color: var(--accent-gold, #D4AF37);
+  animation: ttsPulse 1s ease-in-out infinite;
+}
+.tts-btn.tts-playing {
+  color: var(--accent-green, #10b981);
+  border-color: rgba(16,185,129,.3);
+  background: rgba(16,185,129,.08);
+}
+@keyframes ttsPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: .4; }
+}
+
+/* ── Studio Mic Recording State ── */
+.studio-mic-btn.recording {
+  background: rgba(239, 68, 68, .15);
+  color: #ef4444;
+  animation: micPulse 1.2s ease-in-out infinite;
+}

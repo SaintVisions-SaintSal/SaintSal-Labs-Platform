@@ -698,6 +698,11 @@ function finalizeResponse(answerEl, rawText, typingEl, sources) {
   isStreaming = false;
   document.getElementById('sendBtn').disabled = false;
 
+  // Inject TTS speaker button on SAL's response
+  if (rawText && typeof addTTSButton === 'function') {
+    addTTSButton(answerEl, rawText);
+  }
+
   // Scroll to bottom
   var threadArea = document.getElementById('chatThreadArea');
   threadArea.scrollTop = threadArea.scrollHeight;
@@ -3526,7 +3531,9 @@ function showToast(message, type) {
 /* ============================================
    VOICE AI
    ============================================ */
-var voiceState = { active: false, transcript: '', agentId: null };
+// Voice AI state moved to voice-engine.js (voiceAI object)
+// toggleVoice replaced by toggleVoiceAI in voice-engine.js
+var _voiceViewState = { active: false, transcript: '', agentId: null };
 
 function toggleVoice() {
   var orb = document.getElementById('voiceOrb');
