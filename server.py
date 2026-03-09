@@ -2230,7 +2230,7 @@ async def research_status():
 # GEMINI CHAT — Google Gemini for multimodal chat (Pro+ tier)
 # ═══════════════════════════════════════════════════════════════════════════════
 
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", os.environ.get("STITCH_API_KEY", ""))
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", os.environ.get("STITCH_API_KEY", STITCH_API_KEY))
 
 async def gemini_chat(query: str, history: list = None, system_prompt: str = "") -> dict:
     """Call Gemini API for multimodal chat."""
