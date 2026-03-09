@@ -5664,3 +5664,121 @@ ul, ol { list-style: none; }
   background: #000;
   transform: translateX(20px);
 }
+
+/* ============================================================================
+   CONVERSATION SIDEBAR — Recent chats with rename/delete
+   ============================================================================ */
+.recent-conv-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  margin: 2px 8px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+  position: relative;
+}
+.recent-conv-item:hover {
+  background: rgba(255,255,255,0.06);
+}
+.recent-conv-item.conv-active {
+  background: rgba(16,185,129,0.12);
+}
+.recent-conv-icon {
+  font-size: 14px;
+  flex-shrink: 0;
+  width: 20px;
+  text-align: center;
+}
+.recent-conv-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+.recent-conv-title {
+  font-size: 13px;
+  color: rgba(255,255,255,0.8);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.3;
+}
+.recent-conv-meta {
+  font-size: 11px;
+  color: rgba(255,255,255,0.35);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.recent-conv-menu {
+  background: none;
+  border: none;
+  color: rgba(255,255,255,0.25);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  opacity: 0;
+  transition: opacity 0.15s, color 0.15s;
+  flex-shrink: 0;
+}
+.recent-conv-item:hover .recent-conv-menu {
+  opacity: 1;
+}
+.recent-conv-menu:hover {
+  color: rgba(255,255,255,0.7);
+  background: rgba(255,255,255,0.08);
+}
+
+/* Context Menu */
+.conv-context-menu {
+  position: fixed;
+  background: #1a1a2e;
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 10px;
+  padding: 4px;
+  z-index: 1000;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+  min-width: 140px;
+}
+.conv-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  color: rgba(255,255,255,0.8);
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.conv-menu-item:hover {
+  background: rgba(255,255,255,0.08);
+}
+.conv-menu-delete {
+  color: #ef4444;
+}
+.conv-menu-delete:hover {
+  background: rgba(239,68,68,0.12);
+}
+
+/* Modal overlay for rename (shared with other modals) */
+.modal-overlay#renameModal,
+.modal-overlay#savePromptModal {
+  display: flex;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.6);
+  z-index: 300;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(4px);
+}
+.modal-card {
+  background: #1a1a2e;
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 16px;
+  padding: 24px;
+  box-shadow: 0 16px 48px rgba(0,0,0,0.5);
+  width: 90%;
+}

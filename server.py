@@ -137,31 +137,73 @@ GOOGLE_MAPS_KEY = os.environ.get("GOOGLE_MAPS_KEY", "AIzaSyA2RxjYuME6mEa1-Sb-8Zf
 # ─── System Prompts by Vertical ───────────────────────────────────────────────
 
 SYSTEM_PROMPTS = {
-    "search": """You are SaintSal™, an AI search and research assistant powered by HACP™ (Human-AI Connection Protocol, Patent #10,290,222). You are built by Saint Vision Technologies.
+    "search": """You are SaintSal™, an AI assistant powered by HACP™ (Human-AI Connection Protocol, Patent #10,290,222). Built by Saint Vision Technologies.
 
-Your approach: Search the web, synthesize information, and provide accurate, cited answers. Always cite your sources with [1], [2] etc. Be concise but thorough. Format responses with clear headers and bullet points when helpful.
+CRITICAL RULES — follow these without exception:
+1. EXECUTE, never guide. When a user asks you to do something, DO IT. Never respond with "here's how you could do it" or "here are the steps." Deliver the actual finished product.
+2. If they say "write me a business plan" — WRITE THE FULL BUSINESS PLAN. If they say "create a marketing strategy" — CREATE IT. If they ask "what's the price of Bitcoin" — give them the exact price and analysis.
+3. Use the web search results provided to give CURRENT, ACCURATE data with citations [1], [2] etc.
+4. Go deep. Give substance, numbers, specifics. No filler, no fluff, no "consider doing X." Just do X.
+5. Format with clean markdown — headers, bullet points, bold key data. Make it scannable and professional.
+6. You are the expert. The user is paying for results, not suggestions. Deliver like a top-tier consultant who does the work, not one who tells the client what work to do.
+7. If the user asks you to research something, deliver a COMPLETE research report with findings, data, analysis, and conclusions.
+8. If the user asks you to build, create, write, draft, or generate anything — deliver the COMPLETE finished artifact.
 
-You represent Responsible Intelligence — accurate, ethical, human-centered AI.""",
+You represent Responsible Intelligence — accurate, ethical, human-centered AI that DELIVERS.""",
 
     "sports": """You are SaintSal™ Sports, an AI sports analyst powered by HACP™ (Human-AI Connection Protocol, Patent #10,290,222).
 
-Your approach: Provide live scores, game analysis, player stats, injury updates, trade rumors, and expert predictions. Cover NFL, NBA, MLB, NHL, MLS, UFC, boxing, college sports, and international events. Always cite sources with [1], [2] etc. Be energetic but factual.""",
+CRITICAL: EXECUTE, don't guide. Deliver actual scores, stats, and analysis — not directions to find them.
+- Give EXACT scores, standings, and stats from search results. Cite with [1], [2] etc.
+- Run full game breakdowns with key plays, player performances, and momentum shifts.
+- Deliver injury reports with specific timelines and impact analysis.
+- Trade rumors: name the players, teams, reported packages, and likelihood.
+- Predictions: give your actual pick with reasoning, not "factors to consider."
+- Cover NFL, NBA, MLB, NHL, MLS, UFC, boxing, college, and international.
+
+Be energetic, authoritative, and specific. Numbers, names, dates — always.""",
 
     "news": """You are SaintSal™ News, an AI news analyst powered by HACP™ (Human-AI Connection Protocol, Patent #10,290,222).
 
-Your approach: Provide breaking news, analysis, and context on current events. Cover politics, world affairs, business, technology, science, and culture. Always cite sources with [1], [2] etc. Be balanced, factual, and provide multiple perspectives.""",
+CRITICAL: EXECUTE, don't guide. Deliver the actual news briefing — not tips on how to stay informed.
+- Lead with WHAT HAPPENED: who, what, where, when, why. Hard facts first.
+- Include direct quotes and specific data points from sources. Cite with [1], [2] etc.
+- Provide context: how this connects to the bigger picture and why it matters.
+- Give multiple perspectives where relevant but take a clear analytical position.
+- Cover politics, world affairs, business, tech, science, and culture.
+
+Be direct, factual, and thorough. Deliver a newsroom-quality briefing every time.""",
 
     "tech": """You are SaintSal™ Tech, an AI technology analyst powered by HACP™ (Human-AI Connection Protocol, Patent #10,290,222).
 
-Your approach: Cover AI/ML developments, product launches, developer tools, startups, funding rounds, open source, and technical deep-dives. Always cite sources with [1], [2] etc. Be precise and technically accurate.""",
-
+CRITICAL: EXECUTE, don't guide. Deliver actual technical analysis and breakdowns — not suggestions to "look into" something.
+- Give SPECIFIC details: model names, version numbers, benchmark scores, pricing, release dates.
+- AI/ML: architecture details, training data, performance comparisons, real-world implications.
+- Products: exact specs, pricing tiers, competitive positioning, who should use it.
+- Startups/Funding: round size, valuation, investors, what they're building, market fit.
+- Code and technical concepts: explain with real examples, not abstractions.
+- Cite with [1], [2] etc. Be precise and technically rigorous.""",
 
     "realestate": """You are SaintSal™ Real Estate, an AI real estate investment analyst powered by HACP™ (Human-AI Connection Protocol, Patent #10,290,222).
 
-Your approach: Provide property analysis, investment deal evaluation, market insights, comparables, rental estimates, and distressed property intelligence. Cover residential, multifamily, commercial properties, foreclosures, pre-foreclosures, tax liens, and NODs. Always cite sources with [1], [2] etc. Include cap rates, cash-on-cash returns, and relevant financial metrics. Disclaimer: This is not investment advice.""",
+CRITICAL: EXECUTE, don't guide. Deliver actual property analysis and investment calculations — not advice to "consider" factors.
+- Run the numbers: cap rates, cash-on-cash returns, NOI, DSCR, GRM. Show the math.
+- Pull real comps, rental estimates, and market data from search results. Cite with [1], [2] etc.
+- Distressed properties: give specific addresses, auction dates, estimated equity positions when available.
+- Market analysis: median prices, inventory levels, days on market, appreciation trends — actual data.
+- Investment deals: run a full pro forma with purchase price, rehab costs, ARV, holding costs, and projected returns.
+- Disclaimer: This is for informational purposes and does not constitute investment advice.""",
+
     "finance": """You are SaintSal™ Finance, an AI financial analyst powered by HACP™ (Human-AI Connection Protocol, Patent #10,290,222).
 
-Your approach: Provide market analysis, stock insights, crypto updates, economic indicators, earnings reports, and investment research. Always cite sources with [1], [2] etc. Include relevant data points and numbers. Disclaimer: This is not financial advice.""",
+CRITICAL: EXECUTE, don't guide. Deliver actual market data and financial analysis — not tips on how to research.
+- Give EXACT prices, changes, percentages, and volume from search results. Cite with [1], [2] etc.
+- Stocks: current price, 52-week range, P/E, EPS, market cap, recent catalysts, analyst consensus.
+- Crypto: exact price, 24h change, market cap, trading volume, on-chain metrics when available.
+- Earnings: actual vs. expected, revenue, guidance, key takeaways from the call.
+- Economic data: exact figures for CPI, employment, GDP, Fed decisions with dates.
+- Portfolio analysis: run actual allocations, risk metrics, and rebalancing recommendations with numbers.
+- Disclaimer: This is for informational purposes and does not constitute financial advice.""",
 }
 
 # ─── Tavily Web Search ────────────────────────────────────────────────────────
@@ -388,8 +430,9 @@ async def chat(request: Request):
     pplx_result = None
 
     if use_search and query:
-        # If Perplexity is available and intent is research, use it as primary
-        if intent == "research" and PPLX_API_KEY:
+        # Fire Perplexity for ANY query that needs research context (not just "research" intent)
+        # This ensures action queries like "write me a business plan" get real data
+        if PPLX_API_KEY and needs_research(query):
             pplx_result = await perplexity_research(query)
 
         # Always do Tavily search as well for source pills
@@ -496,7 +539,207 @@ async def chat(request: Request):
     return StreamingResponse(generate(), media_type="text/event-stream")
 
 
+# ============================================================================
+# CONVERSATIONS — Full persistence (save, load, list, rename, delete)
+# ============================================================================
+import hashlib
 
+CONVERSATIONS_DIR = Path("conversations_data")
+CONVERSATIONS_DIR.mkdir(exist_ok=True)
+
+def _user_conv_dir(user_id: str) -> Path:
+    """Get or create a user's conversation directory."""
+    d = CONVERSATIONS_DIR / user_id
+    d.mkdir(exist_ok=True)
+    return d
+
+def _generate_title(messages: list) -> str:
+    """Auto-generate a conversation title from the first user message."""
+    for msg in messages:
+        if msg.get("role") == "user":
+            text = msg["content"].strip()
+            if len(text) > 60:
+                text = text[:57].rsplit(" ", 1)[0] + "..."
+            return text
+    return "New Conversation"
+
+def _summarize_for_preview(messages: list) -> str:
+    """Get last assistant message preview."""
+    for msg in reversed(messages):
+        if msg.get("role") == "assistant":
+            text = msg["content"].strip()
+            import re
+            text = re.sub(r'[#*`\[\]()]', '', text)
+            if len(text) > 120:
+                text = text[:117].rsplit(" ", 1)[0] + "..."
+            return text
+    return ""
+
+
+@app.post("/api/conversations")
+async def save_conversation(request: Request, authorization: str = Header(None)):
+    """Save or update a conversation."""
+    user = verify_token(authorization)
+    if not user:
+        raise HTTPException(status_code=401, detail="Sign in to save conversations")
+    
+    body = await request.json()
+    conv_id = body.get("id") or str(uuid.uuid4())
+    messages = body.get("messages", [])
+    title = body.get("title") or _generate_title(messages)
+    vertical = body.get("vertical", "search")
+    conv_type = body.get("type", "chat")  # "chat" or "builder"
+    
+    user_dir = _user_conv_dir(user["id"])
+    conv_file = user_dir / f"{conv_id}.json"
+    
+    created_at = datetime.now().isoformat()
+    if conv_file.exists():
+        try:
+            existing = json.loads(conv_file.read_text())
+            created_at = existing.get("created_at", created_at)
+        except Exception:
+            pass
+    
+    conv_data = {
+        "id": conv_id,
+        "user_id": user["id"],
+        "title": title,
+        "type": conv_type,
+        "vertical": vertical,
+        "messages": messages,
+        "message_count": len(messages),
+        "preview": _summarize_for_preview(messages),
+        "created_at": created_at,
+        "updated_at": datetime.now().isoformat(),
+    }
+    
+    conv_file.write_text(json.dumps(conv_data, ensure_ascii=False))
+    
+    return {
+        "id": conv_id,
+        "title": title,
+        "message_count": len(messages),
+        "updated_at": conv_data["updated_at"],
+    }
+
+
+@app.get("/api/conversations")
+async def list_conversations(
+    request: Request,
+    authorization: str = Header(None),
+    conv_type: str = "chat",
+    limit: int = 50,
+    offset: int = 0,
+):
+    """List user's conversations (most recent first)."""
+    user = verify_token(authorization)
+    if not user:
+        raise HTTPException(status_code=401, detail="Sign in to view conversations")
+    
+    user_dir = _user_conv_dir(user["id"])
+    conversations = []
+    
+    for f in user_dir.glob("*.json"):
+        try:
+            data = json.loads(f.read_text())
+            if data.get("type", "chat") != conv_type:
+                continue
+            conversations.append({
+                "id": data["id"],
+                "title": data.get("title", "Untitled"),
+                "type": data.get("type", "chat"),
+                "vertical": data.get("vertical", "search"),
+                "message_count": data.get("message_count", 0),
+                "preview": data.get("preview", ""),
+                "created_at": data.get("created_at", ""),
+                "updated_at": data.get("updated_at", ""),
+            })
+        except Exception:
+            continue
+    
+    conversations.sort(key=lambda c: c.get("updated_at", ""), reverse=True)
+    
+    return {
+        "conversations": conversations[offset:offset + limit],
+        "total": len(conversations),
+    }
+
+
+@app.get("/api/conversations/{conv_id}")
+async def get_conversation(conv_id: str, authorization: str = Header(None)):
+    """Load a full conversation with all messages."""
+    user = verify_token(authorization)
+    if not user:
+        raise HTTPException(status_code=401, detail="Sign in to view conversations")
+    
+    user_dir = _user_conv_dir(user["id"])
+    conv_file = user_dir / f"{conv_id}.json"
+    
+    if not conv_file.exists():
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    
+    try:
+        data = json.loads(conv_file.read_text())
+        if data.get("user_id") != user["id"]:
+            raise HTTPException(status_code=403, detail="Access denied")
+        return data
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(status_code=500, detail="Failed to load conversation")
+
+
+@app.patch("/api/conversations/{conv_id}")
+async def update_conversation(conv_id: str, request: Request, authorization: str = Header(None)):
+    """Update conversation title or metadata."""
+    user = verify_token(authorization)
+    if not user:
+        raise HTTPException(status_code=401, detail="Sign in required")
+    
+    body = await request.json()
+    user_dir = _user_conv_dir(user["id"])
+    conv_file = user_dir / f"{conv_id}.json"
+    
+    if not conv_file.exists():
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    
+    data = json.loads(conv_file.read_text())
+    if data.get("user_id") != user["id"]:
+        raise HTTPException(status_code=403, detail="Access denied")
+    
+    if "title" in body:
+        data["title"] = body["title"]
+    if "messages" in body:
+        data["messages"] = body["messages"]
+        data["message_count"] = len(body["messages"])
+        data["preview"] = _summarize_for_preview(body["messages"])
+    
+    data["updated_at"] = datetime.now().isoformat()
+    conv_file.write_text(json.dumps(data, ensure_ascii=False))
+    
+    return {"id": conv_id, "title": data["title"], "updated_at": data["updated_at"]}
+
+
+@app.delete("/api/conversations/{conv_id}")
+async def delete_conversation(conv_id: str, authorization: str = Header(None)):
+    """Delete a conversation."""
+    user = verify_token(authorization)
+    if not user:
+        raise HTTPException(status_code=401, detail="Sign in required")
+    
+    user_dir = _user_conv_dir(user["id"])
+    conv_file = user_dir / f"{conv_id}.json"
+    
+    if not conv_file.exists():
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    
+    data = json.loads(conv_file.read_text())
+    if data.get("user_id") != user["id"]:
+        raise HTTPException(status_code=403, detail="Access denied")
+    
+    conv_file.unlink()
+    return {"deleted": True, "id": conv_id}
 
 
 # ─── WebSocket Chat with Real-Time Streaming ──────────────────────────────────
@@ -2155,18 +2398,27 @@ RESEARCH_SIGNALS = [
 ]
 
 def needs_research(query: str) -> bool:
-    """Auto-detect if a query needs live web research via Perplexity."""
+    """Auto-detect if a query needs live web research via Perplexity.
+    AGGRESSIVE: almost everything gets research context to INFORM execution.
+    Only skip for pure greetings / tiny queries."""
     q = query.lower().strip()
-    # Direct research requests
+    # Skip trivial greetings
+    trivial = ["hi", "hello", "hey", "thanks", "thank you", "ok", "bye", "good morning", "good night", "gm", "gn"]
+    if q in trivial or len(q.split()) < 2:
+        return False
+    # Direct research signals — always yes
     if any(sig in q for sig in RESEARCH_SIGNALS):
         return True
-    # Questions about real-world things
-    if q.endswith("?") and len(q.split()) > 3:
+    # Questions — always yes
+    if q.endswith("?") and len(q.split()) > 2:
         return True
-    # If it looks like a factual query vs a creative/action request
-    action_words = ["create", "generate", "build", "make", "write me", "draft", "design", "help me with"]
+    # Action queries ALSO get research — "write me a business plan" needs market data
+    action_words = ["create", "generate", "build", "make", "write", "draft", "design", "help me", "plan", "prepare", "develop"]
     if any(q.startswith(a) for a in action_words):
-        return False
+        return True
+    # Anything with 4+ words probably needs context
+    if len(q.split()) >= 4:
+        return True
     return False
 
 

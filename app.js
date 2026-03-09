@@ -9,6 +9,13 @@ var isStreaming = false;
 var isAnnual = false;
 var sidebarOpen = false;
 
+// ─── Conversation Persistence State ───────────────────────────────────────────
+var currentConvId = null;        // Active conversation ID (null = new unsaved)
+var convAutoSaveTimer = null;    // Debounce timer for auto-save
+var convListCache = [];          // Cached sidebar conversation list
+var anonSessionData = null;      // Temp data for non-logged-in users
+var ANON_STORAGE_KEY = 'sal_anon_session';
+
 var verticalNames = {
   search: 'Search', sports: 'Sports', news: 'News', tech: 'Tech', finance: 'Finance', realestate: 'Real Estate', medical: 'Medical'
 };
@@ -39,6 +46,12 @@ function navigate(view) {
 }
 
 function setView(view) {
+  // If leaving Builder with unsaved work and not logged in, prompt to save
+  if (currentView === 'studio' && view !== 'studio' && !sessionToken) {
+    if (typeof studioState !== 'undefined' && studioState.messages && studioState.messages.length >= 2) {
+      showSavePrompt();
+    }
+  }
   Object.values(views).forEach(function(v) { if(v) v.classList.remove('active'); });
   if (views[view]) { views[view].classList.add('active'); currentView = view; }
 
@@ -729,6 +742,8 @@ function finalizeResponse(answerEl, rawText, typingEl, sources, intent) {
   if (rawText) {
     answerEl.innerHTML = formatMarkdown(rawText);
     chatHistory.push({ role: 'assistant', content: rawText });
+    // AUTO-SAVE: persist conversation after every AI response
+    triggerAutoSave();
   }
   isStreaming = false;
   document.getElementById('sendBtn').disabled = false;
@@ -897,11 +912,18 @@ function backToDiscover() {
 }
 
 function newChat() {
+  // If not logged in and has work, show save prompt
+  if (!sessionToken && chatHistory.length >= 2) {
+    showSavePrompt();
+  }
   chatHistory = [];
+  currentConvId = null;  // Reset conversation ID for fresh start
   document.getElementById('chatMessages').innerHTML = '';
   backToDiscover();
   if (currentView !== 'chat') navigate('chat');
   loadDiscover(currentVertical);
+  // Re-render sidebar to clear active highlight
+  renderConversationSidebar(convListCache);
 }
 
 /* ============================================
@@ -1853,6 +1875,10 @@ function renderStudioControls() {
 // Add message to Studio chat
 function studioAddMessage(role, content, meta, customHtml) {
   studioState.messages.push({ role: role, content: content, meta: meta || {} });
+  // Auto-save Builder conversations after assistant responses
+  if (role === 'assistant' && studioState.messages.length >= 2) {
+    triggerBuilderAutoSave();
+  }
   var container = document.getElementById('studioMessages');
   if (!container) return;
   // Remove welcome if present
@@ -3064,6 +3090,8 @@ function initAuth() {
       updateAuthUI(true);
       // Verify session is still valid
       refreshProfile();
+      // Load saved conversations into sidebar
+      setTimeout(function() { loadConversationList(); }, 800);
     } catch (e) {
       clearSession();
     }
@@ -3083,6 +3111,11 @@ function saveSession(user, session) {
     user: user
   }));
   updateAuthUI(true);
+  // Load saved conversations into sidebar + migrate any anonymous work
+  setTimeout(function() {
+    loadConversationList();
+    migrateAnonSession();
+  }, 500);
 }
 
 function clearSession() {
@@ -4702,4 +4735,437 @@ function savePersonalitySettings() {
       showToast('Saved locally', 'info');
     });
 }
+
+
+/* ============================================================================
+   CONVERSATION PERSISTENCE — Auto-save, load, rename, delete, anonymous temp
+   ============================================================================ */
+
+// ─── Save conversation to backend ───────────────────────────────────────────
+function saveConversation(opts) {
+  opts = opts || {};
+  if (!sessionToken || !currentUser) {
+    // Not logged in — save to localStorage as temp
+    saveAnonSession();
+    return Promise.resolve(null);
+  }
+  if (chatHistory.length < 2 && !opts.force) return Promise.resolve(null);
+
+  var payload = {
+    messages: chatHistory,
+    vertical: currentVertical,
+    type: opts.type || 'chat',
+  };
+  if (currentConvId) payload.id = currentConvId;
+  if (opts.title) payload.title = opts.title;
+
+  return fetch(API + '/api/conversations', {
+    method: 'POST',
+    headers: authHeaders(),
+    body: JSON.stringify(payload),
+  })
+    .then(function(r) {
+      if (!r.ok) throw new Error('Save failed');
+      return r.json();
+    })
+    .then(function(data) {
+      currentConvId = data.id;
+      // Update sidebar
+      loadConversationList();
+      return data;
+    })
+    .catch(function(e) {
+      console.error('[Conv] Save error:', e);
+      return null;
+    });
+}
+
+// ─── Auto-save after each AI response (debounced 2s) ─────────────────────────
+function triggerAutoSave() {
+  if (convAutoSaveTimer) clearTimeout(convAutoSaveTimer);
+  convAutoSaveTimer = setTimeout(function() {
+    saveConversation();
+  }, 2000);
+}
+
+// ─── Builder auto-save (separate from chat) ────────────────────────────────
+var builderConvId = null;
+var builderSaveTimer = null;
+
+function triggerBuilderAutoSave() {
+  if (builderSaveTimer) clearTimeout(builderSaveTimer);
+  builderSaveTimer = setTimeout(function() {
+    saveBuilderConversation();
+  }, 3000);
+}
+
+function saveBuilderConversation() {
+  if (!sessionToken || !currentUser) {
+    // Save builder work to localStorage for anon users
+    try {
+      localStorage.setItem('sal_builder_session', JSON.stringify({
+        messages: studioState.messages,
+        saved_at: new Date().toISOString(),
+      }));
+    } catch(e) {}
+    return;
+  }
+  if (studioState.messages.length < 2) return;
+
+  var payload = {
+    messages: studioState.messages,
+    vertical: 'builder',
+    type: 'builder',
+  };
+  if (builderConvId) payload.id = builderConvId;
+
+  fetch(API + '/api/conversations', {
+    method: 'POST',
+    headers: authHeaders(),
+    body: JSON.stringify(payload),
+  })
+    .then(function(r) { return r.ok ? r.json() : null; })
+    .then(function(data) {
+      if (data) builderConvId = data.id;
+    })
+    .catch(function() {});
+}
+
+// ─── Load conversation list into sidebar ────────────────────────────────────
+function loadConversationList(convType) {
+  if (!sessionToken || !currentUser) return;
+  convType = convType || 'chat';
+
+  fetch(API + '/api/conversations?conv_type=' + convType + '&limit=30', {
+    headers: authHeaders(),
+  })
+    .then(function(r) { return r.ok ? r.json() : { conversations: [] }; })
+    .then(function(data) {
+      convListCache = data.conversations || [];
+      renderConversationSidebar(convListCache);
+    })
+    .catch(function() {});
+}
+
+// ─── Render conversation list in sidebar "Recent" section ───────────────────
+function renderConversationSidebar(convs) {
+  var container = document.getElementById('recentChats');
+  if (!container) return;
+
+  if (!convs || convs.length === 0) {
+    container.innerHTML = '<div style="padding:8px 16px;color:rgba(255,255,255,0.35);font-size:12px;">No saved conversations yet</div>';
+    return;
+  }
+
+  var html = '';
+  convs.forEach(function(c) {
+    var isActive = c.id === currentConvId ? ' conv-active' : '';
+    var timeAgo = formatTimeAgo(c.updated_at);
+    var icon = c.vertical === 'search' ? '🔍' : c.vertical === 'sports' ? '⚽' : c.vertical === 'news' ? '📰' : c.vertical === 'tech' ? '💻' : c.vertical === 'finance' ? '📈' : c.vertical === 'realestate' ? '🏠' : '💬';
+    html += '<div class="recent-conv-item' + isActive + '" data-conv-id="' + c.id + '" onclick="loadConversation(\'' + c.id + '\')" title="' + escapeHtml(c.title) + '">';
+    html += '<div class="recent-conv-icon">' + icon + '</div>';
+    html += '<div class="recent-conv-text">';
+    html += '<div class="recent-conv-title">' + escapeHtml(c.title) + '</div>';
+    html += '<div class="recent-conv-meta">' + c.message_count + ' msgs · ' + timeAgo + '</div>';
+    html += '</div>';
+    html += '<button class="recent-conv-menu" onclick="event.stopPropagation();showConvMenu(\'' + c.id + '\',this)" title="Options">';
+    html += '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg>';
+    html += '</button>';
+    html += '</div>';
+  });
+  container.innerHTML = html;
+}
+
+function escapeHtml(text) {
+  var d = document.createElement('div');
+  d.textContent = text || '';
+  return d.innerHTML;
+}
+
+function formatTimeAgo(dateStr) {
+  if (!dateStr) return '';
+  var now = new Date();
+  var then = new Date(dateStr);
+  var diff = Math.floor((now - then) / 1000);
+  if (diff < 60) return 'just now';
+  if (diff < 3600) return Math.floor(diff / 60) + 'm ago';
+  if (diff < 86400) return Math.floor(diff / 3600) + 'h ago';
+  if (diff < 604800) return Math.floor(diff / 86400) + 'd ago';
+  return then.toLocaleDateString();
+}
+
+// ─── Load a saved conversation ──────────────────────────────────────────────
+function loadConversation(convId) {
+  if (!sessionToken) return;
+
+  fetch(API + '/api/conversations/' + convId, {
+    headers: authHeaders(),
+  })
+    .then(function(r) {
+      if (!r.ok) throw new Error('Not found');
+      return r.json();
+    })
+    .then(function(data) {
+      // Set state
+      currentConvId = data.id;
+      chatHistory = data.messages || [];
+
+      // Switch to correct vertical if different
+      if (data.vertical && data.vertical !== currentVertical) {
+        switchVertical(data.vertical);
+      }
+
+      // Render messages
+      var chatArea = document.getElementById('chatMessages');
+      chatArea.innerHTML = '';
+
+      chatHistory.forEach(function(msg) {
+        var div = document.createElement('div');
+        div.className = msg.role === 'user' ? 'chat-msg user-msg' : 'chat-msg ai-msg';
+        if (msg.role === 'assistant') {
+          div.innerHTML = '<div class="ai-msg-content">' + formatMarkdown(msg.content) + '</div>';
+        } else {
+          div.innerHTML = '<div class="user-msg-content">' + escapeHtml(msg.content) + '</div>';
+        }
+        chatArea.appendChild(div);
+      });
+
+      // Show thread area
+      document.getElementById('discoverArea').classList.add('hidden');
+      document.getElementById('chatThreadArea').classList.add('active');
+      if (currentView !== 'chat') navigate('chat');
+
+      // Scroll to bottom
+      chatArea.scrollTop = chatArea.scrollHeight;
+
+      // Highlight in sidebar
+      renderConversationSidebar(convListCache);
+
+      // Close mobile sidebar
+      if (sidebarOpen) toggleSidebar();
+    })
+    .catch(function(e) {
+      console.error('[Conv] Load error:', e);
+      showToast('Could not load conversation', 'error');
+    });
+}
+
+// ─── Conversation context menu (rename / delete) ────────────────────────────
+function showConvMenu(convId, btnEl) {
+  // Remove existing menu
+  var existing = document.getElementById('convContextMenu');
+  if (existing) existing.remove();
+
+  var menu = document.createElement('div');
+  menu.id = 'convContextMenu';
+  menu.className = 'conv-context-menu';
+  menu.innerHTML =
+    '<div class="conv-menu-item" onclick="renameConversation(\'' + convId + '\')">' +
+    '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>' +
+    ' Rename</div>' +
+    '<div class="conv-menu-item conv-menu-delete" onclick="deleteConversation(\'' + convId + '\')">' +
+    '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>' +
+    ' Delete</div>';
+
+  document.body.appendChild(menu);
+
+  // Position near the button
+  var rect = btnEl.getBoundingClientRect();
+  menu.style.top = rect.bottom + 4 + 'px';
+  menu.style.left = Math.min(rect.left, window.innerWidth - 160) + 'px';
+
+  // Close on click outside
+  setTimeout(function() {
+    document.addEventListener('click', function closeMenu() {
+      menu.remove();
+      document.removeEventListener('click', closeMenu);
+    }, { once: true });
+  }, 10);
+}
+
+function renameConversation(convId) {
+  var existing = document.getElementById('convContextMenu');
+  if (existing) existing.remove();
+
+  var conv = convListCache.find(function(c) { return c.id === convId; });
+  var currentTitle = conv ? conv.title : '';
+
+  // Show rename modal
+  var overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.id = 'renameModal';
+  overlay.innerHTML =
+    '<div class="modal-card" style="max-width:400px;">' +
+    '<h3 style="margin:0 0 12px;color:#fff;font-size:16px;">Rename Conversation</h3>' +
+    '<input type="text" id="renameInput" value="' + escapeHtml(currentTitle) + '" style="width:100%;padding:10px 12px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);border-radius:8px;color:#fff;font-size:14px;outline:none;" />' +
+    '<div style="display:flex;gap:8px;margin-top:16px;justify-content:flex-end;">' +
+    '<button onclick="document.getElementById(\'renameModal\').remove()" style="padding:8px 16px;background:rgba(255,255,255,0.1);border:none;border-radius:8px;color:#fff;cursor:pointer;">Cancel</button>' +
+    '<button onclick="confirmRename(\'' + convId + '\')" style="padding:8px 16px;background:#10B981;border:none;border-radius:8px;color:#fff;cursor:pointer;font-weight:600;">Save</button>' +
+    '</div></div>';
+  document.body.appendChild(overlay);
+  overlay.addEventListener('click', function(e) { if (e.target === overlay) overlay.remove(); });
+
+  var inp = document.getElementById('renameInput');
+  inp.focus();
+  inp.select();
+  inp.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') confirmRename(convId);
+    if (e.key === 'Escape') overlay.remove();
+  });
+}
+
+function confirmRename(convId) {
+  var title = document.getElementById('renameInput').value.trim();
+  if (!title) return;
+  var modal = document.getElementById('renameModal');
+  if (modal) modal.remove();
+
+  fetch(API + '/api/conversations/' + convId, {
+    method: 'PATCH',
+    headers: authHeaders(),
+    body: JSON.stringify({ title: title }),
+  })
+    .then(function(r) { return r.json(); })
+    .then(function() {
+      showToast('Renamed', 'success');
+      loadConversationList();
+    })
+    .catch(function() { showToast('Rename failed', 'error'); });
+}
+
+function deleteConversation(convId) {
+  var existing = document.getElementById('convContextMenu');
+  if (existing) existing.remove();
+
+  if (!confirm('Delete this conversation? This cannot be undone.')) return;
+
+  fetch(API + '/api/conversations/' + convId, {
+    method: 'DELETE',
+    headers: authHeaders(),
+  })
+    .then(function(r) {
+      if (!r.ok) throw new Error('Delete failed');
+      return r.json();
+    })
+    .then(function() {
+      // If deleting current conversation, start fresh
+      if (convId === currentConvId) {
+        currentConvId = null;
+        chatHistory = [];
+        document.getElementById('chatMessages').innerHTML = '';
+        backToDiscover();
+      }
+      showToast('Conversation deleted', 'success');
+      loadConversationList();
+    })
+    .catch(function() { showToast('Delete failed', 'error'); });
+}
+
+// ─── Anonymous temp-save (localStorage) ─────────────────────────────────────
+function saveAnonSession() {
+  if (chatHistory.length < 1) return;
+  var data = {
+    messages: chatHistory,
+    vertical: currentVertical,
+    type: 'chat',
+    saved_at: new Date().toISOString(),
+  };
+  try {
+    localStorage.setItem(ANON_STORAGE_KEY, JSON.stringify(data));
+  } catch(e) {}
+}
+
+function getAnonSession() {
+  try {
+    var raw = localStorage.getItem(ANON_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch(e) { return null; }
+}
+
+function clearAnonSession() {
+  try { localStorage.removeItem(ANON_STORAGE_KEY); } catch(e) {}
+}
+
+// After login, migrate anon session to saved conversation
+function migrateAnonSession() {
+  var anon = getAnonSession();
+  if (!anon || !anon.messages || anon.messages.length < 2) return;
+  if (!sessionToken || !currentUser) return;
+
+  // Save the anonymous session as a real conversation
+  fetch(API + '/api/conversations', {
+    method: 'POST',
+    headers: authHeaders(),
+    body: JSON.stringify({
+      messages: anon.messages,
+      vertical: anon.vertical || 'search',
+      type: anon.type || 'chat',
+    }),
+  })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data && data.id) {
+        showToast('Previous session saved', 'success');
+        clearAnonSession();
+        loadConversationList();
+      }
+    })
+    .catch(function() {});
+}
+
+// ─── Save-before-leave popup for unsigned users ─────────────────────────────
+function showSavePrompt() {
+  // Only show if there's unsaved work and user is NOT logged in
+  if (sessionToken || chatHistory.length < 2) return;
+
+  var overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.id = 'savePromptModal';
+  overlay.innerHTML =
+    '<div class="modal-card" style="max-width:420px;text-align:center;">' +
+    '<div style="font-size:40px;margin-bottom:12px;">💾</div>' +
+    '<h3 style="margin:0 0 8px;color:#fff;font-size:18px;">Don\'t lose your work!</h3>' +
+    '<p style="color:rgba(255,255,255,0.6);font-size:14px;margin:0 0 20px;">Sign in or create an account to save this conversation and access it anytime.</p>' +
+    '<div style="display:flex;gap:10px;justify-content:center;">' +
+    '<button onclick="document.getElementById(\'savePromptModal\').remove()" style="padding:10px 20px;background:rgba(255,255,255,0.1);border:none;border-radius:10px;color:#fff;cursor:pointer;font-size:14px;">Maybe Later</button>' +
+    '<button onclick="document.getElementById(\'savePromptModal\').remove();navigate(\'account\');" style="padding:10px 20px;background:linear-gradient(135deg,#10B981,#059669);border:none;border-radius:10px;color:#fff;cursor:pointer;font-size:14px;font-weight:600;">Sign In to Save</button>' +
+    '</div></div>';
+  document.body.appendChild(overlay);
+  overlay.addEventListener('click', function(e) { if (e.target === overlay) overlay.remove(); });
+}
+
+// ─── Before-unload warning ──────────────────────────────────────────────────
+window.addEventListener('beforeunload', function(e) {
+  // If not logged in and has work (chat or builder), save to localStorage and warn
+  var hasUnsavedChat = chatHistory.length >= 2;
+  var hasUnsavedBuilder = studioState && studioState.messages && studioState.messages.length >= 2;
+  
+  if (!sessionToken && (hasUnsavedChat || hasUnsavedBuilder)) {
+    if (hasUnsavedChat) saveAnonSession();
+    if (hasUnsavedBuilder) {
+      try { localStorage.setItem('sal_builder_session', JSON.stringify({ messages: studioState.messages, saved_at: new Date().toISOString() })); } catch(ex) {}
+    }
+    e.preventDefault();
+    e.returnValue = 'You have unsaved work. Sign in to save your conversations.';
+  }
+  // If logged in, do a sync final save via XHR (sendBeacon can't carry auth headers)
+  if (sessionToken && hasUnsavedChat) {
+    var xhr = new XMLHttpRequest();
+    xhr.open('POST', API + '/api/conversations', false); // synchronous
+    xhr.setRequestHeader('Content-Type', 'application/json');
+    xhr.setRequestHeader('Authorization', 'Bearer ' + sessionToken);
+    try {
+      xhr.send(JSON.stringify({ id: currentConvId, messages: chatHistory, vertical: currentVertical, type: 'chat' }));
+    } catch(ex) {}
+  }
+  if (sessionToken && hasUnsavedBuilder) {
+    var xhr2 = new XMLHttpRequest();
+    xhr2.open('POST', API + '/api/conversations', false);
+    xhr2.setRequestHeader('Content-Type', 'application/json');
+    xhr2.setRequestHeader('Authorization', 'Bearer ' + sessionToken);
+    try {
+      xhr2.send(JSON.stringify({ id: builderConvId, messages: studioState.messages, vertical: 'builder', type: 'builder' }));
+    } catch(ex) {}
+  }
+});
 
