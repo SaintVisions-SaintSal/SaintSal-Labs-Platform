@@ -157,9 +157,9 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
       <div class="nav-divider"></div>
 
       <div class="nav-section-label">Intelligence</div>
-      <div class="nav-item" data-vertical="search" onclick="switchVertical('search',this)">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-        WarRoom
+      <div class="nav-item" data-view="career" onclick="navigate('career')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>
+        Career Suite
         <span class="nav-badge">PRO</span>
       </div>
       <div class="nav-item" data-view="voice" onclick="setView('voice')">
@@ -426,7 +426,7 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
             <div class="card-tier-name">Pro</div>
             <div class="card-price"><span class="card-price-amount" data-monthly="$97" data-annual="$970">$97</span><span class="card-price-period" data-monthly="/mo" data-annual="/yr">/mo</span></div>
             <div class="card-desc">The Main Character</div>
-            <div class="card-tagline">Full power. WarRoom, Voice AI, SAL Max — where serious operators live.</div>
+            <div class="card-tagline">Full power. Career Suite, Voice AI, SAL Max — where serious operators live.</div>
             <div class="card-features">
               <div class="card-feature"><svg class="card-feature-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>SAL Mini + Pro + Max</div>
               <div class="card-feature"><svg class="card-feature-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Unlimited messages</div>
@@ -449,7 +449,7 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
               <div class="card-feature"><svg class="card-feature-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Up to 5 seats</div>
               <div class="card-feature"><svg class="card-feature-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Shared agents + Team analytics</div>
               <div class="card-feature"><svg class="card-feature-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>GHL CRM integration</div>
-              <div class="card-feature"><svg class="card-feature-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>WarRoom + Voice AI</div>
+              <div class="card-feature"><svg class="card-feature-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Career Suite + Voice AI</div>
             </div>
             <a class="card-cta" href="https://buy.stripe.com/fZufZi5QG9Hr2Ej4HWbjW09" data-monthly-link="https://buy.stripe.com/fZufZi5QG9Hr2Ej4HWbjW09" data-annual-link="https://buy.stripe.com/fZufZi5QG9Hr2Ej4HWbjW09" target="_blank" rel="noopener noreferrer">Build Your Team</a>
           </div>
@@ -483,7 +483,7 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
                 <tr><td>SAL Max</td><td><span class="check-no">❌</span></td><td><span class="check-no">❌</span></td><td><span class="check-yes">✅</span></td><td><span class="check-yes">✅</span></td><td><span class="check-yes">✅</span></td></tr>
                 <tr><td>SAL Max Fast</td><td><span class="check-no">❌</span></td><td><span class="check-no">❌</span></td><td><span class="check-no">❌</span></td><td><span class="check-yes">✅</span></td><td><span class="check-yes">✅</span></td></tr>
                 <tr><td>Compute Minutes</td><td>100</td><td>500</td><td>2,000</td><td>10,000</td><td>Unlimited</td></tr>
-                <tr><td>WarRoom</td><td><span class="check-no">❌</span></td><td><span class="check-no">❌</span></td><td><span class="check-yes">✅</span></td><td><span class="check-yes">✅</span></td><td><span class="check-yes">✅</span></td></tr>
+                <tr><td>Career Suite</td><td><span class="check-no">❌</span></td><td><span class="check-no">❌</span></td><td><span class="check-yes">✅</span></td><td><span class="check-yes">✅</span></td><td><span class="check-yes">✅</span></td></tr>
                 <tr><td>Voice AI</td><td><span class="check-no">❌</span></td><td><span class="check-no">❌</span></td><td><span class="check-yes">✅</span></td><td><span class="check-yes">✅</span></td><td><span class="check-yes">✅</span></td></tr>
                 <tr><td>GHL Builder</td><td><span class="check-no">❌</span></td><td><span class="check-no">❌</span></td><td><span class="check-no">❌</span></td><td><span class="check-yes">✅</span></td><td><span class="check-yes">✅</span></td></tr>
                 <tr><td>Team Seats</td><td>1</td><td>1</td><td>1</td><td>5</td><td>Custom</td></tr>
@@ -1040,6 +1040,12 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
       <div class="app-footer">SaintSal™ <span class="footer-labs-green">LABS</span> · Responsible Intelligence · Patent #10,290,222 · <a href="https://www.perplexity.ai/computer" target="_blank" rel="noopener noreferrer">Created with Perplexity Computer</a></div>
     </div>
 
+    <!-- Career Suite View -->
+    <div class="view career-view" id="careerView">
+      <div id="careerSuiteRoot"></div>
+      <div class="app-footer">SaintSal™ <span class="footer-labs-green">LABS</span> · Responsible Intelligence · Patent #10,290,222 · <a href="https://www.perplexity.ai/computer" target="_blank" rel="noopener noreferrer">Created with Perplexity Computer</a></div>
+    </div>
+
   </div><!-- end main-content -->
 </div><!-- end app-shell -->
 
@@ -1101,6 +1107,7 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
     <script src="voice-engine.js"></script>
     <script src="builder-publish.js"></script>
     <script src="admin-fulfillment.js"></script>
+    <script src="career-suite.js"></script>
 
 
     <!-- Social Composer Modal -->

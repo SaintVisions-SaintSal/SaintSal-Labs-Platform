@@ -7236,6 +7236,370 @@ async def get_voice_signed_url():
         return JSONResponse({"error": str(e)[:200]}, status_code=500)
 
 
+# ───────────────────────────────────────────────────────────────────────────────
+# CAREER SUITE — v7.30.0
+# Job search, resume builder, digital cards, interview prep, AI coaching
+# Replaces WarRoom
+# ───────────────────────────────────────────────────────────────────────────────
+
+CAREER_COACH_SYSTEM = """You are SAL™, SaintSal™ Labs' elite AI Career Coach — a synthesis of:
+- Top executive recruiter (Goldman Sachs, McKinsey, FAANG placement specialist)
+- Career strategist for Fortune 500 executives and startup founders
+- Negotiation expert (salary, equity, offers)
+- Interview coach (behavioral, technical, case study, panel)
+
+Your role: Give DIRECT, ACTIONABLE career advice. No fluff. Lead with the answer.
+When asked about interviews: give specific questions AND model answers.
+When asked about salary: give real numbers and negotiation scripts.
+When asked about career moves: give strategic frameworks.
+Context: User is on SaintSal™ Career Suite — they have access to job search, resume tools, and GoHighLevel CRM."""
+
+_job_tracker_store: dict = {}  # In-memory; in prod use Supabase
+
+def _extract_company_from_title(title: str, url: str) -> str:
+    parts = title.split(" at ") if " at " in title else title.split(" - ")
+    return parts[-1].strip() if len(parts) > 1 else url.split("/")[2].replace("www.", "") if "://" in url else "Unknown"
+
+def _extract_source(url: str) -> str:
+    domains = {"linkedin.com":"LinkedIn","indeed.com":"Indeed","glassdoor.com":"Glassdoor",
+               "lever.co":"Lever","greenhouse.io":"Greenhouse","ziprecruiter.com":"ZipRecruiter",
+               "dice.com":"Dice","monster.com":"Monster","wellfound.com":"Wellfound"}
+    for domain, name in domains.items():
+        if domain in url: return name
+    return "Job Board"
+
+@app.get("/api/career/jobs/search")
+async def career_search_jobs(
+    query: str,
+    location: str = "",
+    job_type: str = "",
+    remote: bool = False,
+    page: int = 1
+):
+    """Search jobs via Exa semantic search with Tavily fallback."""
+    search_query = f"{query} job"
+    if location: search_query += f" {location}"
+    if job_type: search_query += f" {job_type}"
+    if remote: search_query += " remote"
+
+    exa_key = os.environ.get("EXA_API_KEY", "")
+    tavily_key = os.environ.get("TAVILY_API_KEY", "")
+
+    # Try Exa first
+    if exa_key:
+        try:
+            async with httpx.AsyncClient(timeout=15) as client:
+                r = await client.post("https://api.exa.ai/search",
+                    headers={"x-api-key": exa_key, "Content-Type": "application/json"},
+                    json={"query": search_query, "numResults": 10, "type": "neural", "useAutoprompt": True,
+                          "includeDomains": ["linkedin.com","indeed.com","glassdoor.com","lever.co","greenhouse.io","workday.com","ziprecruiter.com","dice.com","wellfound.com"],
+                          "contents": {"text": {"maxCharacters": 500}}})
+                if r.status_code == 200:
+                    data = r.json()
+                    jobs = []
+                    for item in data.get("results", []):
+                        jobs.append({"id": str(uuid.uuid4())[:8], "title": item.get("title", "").replace(" - LinkedIn", "").replace(" | Indeed", ""),
+                            "company": _extract_company_from_title(item.get("title", ""), item.get("url", "")),
+                            "location": location or "See listing", "url": item.get("url", ""),
+                            "snippet": (item.get("text", "")[:300] + "...") if item.get("text") else "",
+                            "published": item.get("publishedDate", ""), "source": _extract_source(item.get("url", "")),
+                            "remote": remote or "remote" in item.get("text", "").lower(), "saved": False})
+                    return {"jobs": jobs, "total": len(jobs), "query": query, "provider": "Exa"}
+        except Exception as e:
+            print(f"[Career] Exa search error: {e}")
+
+    # Tavily fallback
+    if tavily_key:
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                r = await client.post("https://api.tavily.com/search",
+                    json={"api_key": tavily_key, "query": f"{query} job openings {location}", "search_depth": "basic", "max_results": 8})
+                data = r.json()
+                jobs = [{"id": str(uuid.uuid4())[:8], "title": res.get("title", ""),
+                    "company": _extract_company_from_title(res.get("title", ""), res.get("url", "")),
+                    "location": location or "See listing", "url": res.get("url", ""),
+                    "snippet": res.get("content", "")[:300], "published": "",
+                    "source": _extract_source(res.get("url", "")), "remote": remote, "saved": False
+                } for res in data.get("results", [])]
+                return {"jobs": jobs, "total": len(jobs), "query": query, "provider": "Tavily"}
+        except Exception as e:
+            print(f"[Career] Tavily search error: {e}")
+
+    # AI fallback — use Perplexity Sonar
+    pplx_key = os.environ.get("PPLX_API_KEY", "")
+    if pplx_key:
+        try:
+            async with httpx.AsyncClient(timeout=20) as client:
+                r = await client.post("https://api.perplexity.ai/chat/completions",
+                    headers={"Authorization": f"Bearer {pplx_key}", "Content-Type": "application/json"},
+                    json={"model": "sonar-pro", "messages": [{"role": "user", "content": f"Find current job openings for: {search_query}. Return title, company, location, and URL for each."}]})
+                if r.status_code == 200:
+                    text = r.json().get("choices", [{}])[0].get("message", {}).get("content", "")
+                    return {"jobs": [{"id": "ai-1", "title": query, "company": "Various", "location": location or "Multiple",
+                        "url": "", "snippet": text[:500], "source": "AI Search", "remote": remote, "saved": False}],
+                        "total": 1, "query": query, "provider": "AI"}
+        except: pass
+
+    return {"jobs": [], "total": 0, "query": query, "error": "No search provider available"}
+
+
+@app.get("/api/career/company-intel")
+async def career_company_intel(company: str):
+    """AI company research for interview prep."""
+    anthropic_key = os.environ.get("ANTHROPIC_API_KEY", "")
+    apollo_key = os.environ.get("APOLLO_API_KEY", "")
+    org_data = {}
+
+    # Apollo enrichment
+    if apollo_key:
+        try:
+            async with httpx.AsyncClient(timeout=12) as client:
+                r = await client.post("https://api.apollo.io/v1/organizations/search",
+                    headers={"Content-Type": "application/json"},
+                    json={"api_key": apollo_key, "q_organization_name": company, "page": 1, "per_page": 1})
+                if r.status_code == 200:
+                    org_data = r.json().get("organizations", [{}])[0]
+        except Exception as e:
+            print(f"[Career] Apollo error: {e}")
+
+    prompt = f"""Research this company for interview prep:
+Company: {company}
+Data: {json.dumps(org_data, default=str)[:500] if org_data else 'Limited data'}
+
+Return JSON:
+{{"overview": "2-3 sentence overview", "culture_points": ["3-4 bullet points"],
+"interview_tips": ["4-5 specific tips"], "questions_to_ask": ["3-4 smart questions"],
+"recent_news": "notable developments", "industry": "sector", "size": "company size"}}
+Return ONLY valid JSON."""
+
+    if anthropic_key:
+        try:
+            async with httpx.AsyncClient(timeout=30) as client:
+                r = await client.post("https://api.anthropic.com/v1/messages",
+                    headers={"x-api-key": anthropic_key, "anthropic-version": "2023-06-01", "content-type": "application/json"},
+                    json={"model": "claude-sonnet-4-20250514", "max_tokens": 800, "messages": [{"role": "user", "content": prompt}]})
+                if r.status_code == 200:
+                    text = r.json().get("content", [{}])[0].get("text", "{}")
+                    intel = json.loads(text)
+                    return {"company": company, "intel": intel}
+        except Exception as e:
+            print(f"[Career] Company intel AI error: {e}")
+
+    return {"company": company, "intel": {"overview": "Research unavailable.", "interview_tips": [], "questions_to_ask": []}}
+
+
+@app.post("/api/career/resume/ai-enhance")
+async def career_resume_enhance(request: Request):
+    """AI-enhance resume content."""
+    body = await request.json()
+    anthropic_key = os.environ.get("ANTHROPIC_API_KEY", "")
+    if not anthropic_key:
+        return JSONResponse({"error": "AI not configured"}, status_code=500)
+
+    prompt = f"""You are a top-tier executive resume writer (Goldman Sachs, McKinsey level).
+Enhance this resume content. Make bullets achievement-oriented with metrics.
+
+Name: {body.get('full_name','')}
+Title: {body.get('title','')}
+Summary: {body.get('summary','')}
+Experience: {json.dumps(body.get('experience',[])[:3])}
+Skills: {', '.join(body.get('skills',[])[:15])}
+
+Return JSON:
+{{"enhanced_summary": "powerful 3-sentence professional summary",
+"enhanced_bullets": {{"0": ["bullet1", "bullet2", "bullet3"]}},
+"ats_keywords": ["10 ATS keywords"],
+"skills_categorized": {{"Technical": [], "Leadership": [], "Domain": []}},
+"cover_letter_opener": "compelling first paragraph"}}
+Return ONLY valid JSON."""
+
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            r = await client.post("https://api.anthropic.com/v1/messages",
+                headers={"x-api-key": anthropic_key, "anthropic-version": "2023-06-01", "content-type": "application/json"},
+                json={"model": "claude-sonnet-4-20250514", "max_tokens": 1200, "messages": [{"role": "user", "content": prompt}]})
+            if r.status_code == 200:
+                text = r.json().get("content", [{}])[0].get("text", "{}")
+                return {"status": "success", "enhanced": json.loads(text)}
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+    return {"status": "error", "error": "AI enhancement failed"}
+
+
+@app.post("/api/career/coach/chat")
+async def career_coach_chat(request: Request):
+    """SAL Career Coach — interview prep, salary negotiation, career path."""
+    body = await request.json()
+    message = body.get("message", "")
+    anthropic_key = os.environ.get("ANTHROPIC_API_KEY", "")
+    if not anthropic_key:
+        return JSONResponse({"error": "AI not configured"}, status_code=500)
+
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            r = await client.post("https://api.anthropic.com/v1/messages",
+                headers={"x-api-key": anthropic_key, "anthropic-version": "2023-06-01", "content-type": "application/json"},
+                json={"model": "claude-sonnet-4-20250514", "max_tokens": 1000, "system": CAREER_COACH_SYSTEM,
+                      "messages": [{"role": "user", "content": message}]})
+            if r.status_code == 200:
+                text = r.json().get("content", [{}])[0].get("text", "")
+                return {"response": text}
+    except Exception as e:
+        return {"response": f"Coach temporarily unavailable: {str(e)[:100]}"}
+    return {"response": "Coach unavailable. Try again."}
+
+
+@app.post("/api/career/coach/interview-prep")
+async def career_interview_prep(request: Request):
+    """Generate targeted interview prep package."""
+    body = await request.json()
+    company = body.get("company", "")
+    role = body.get("role", "")
+    interview_type = body.get("interview_type", "behavioral")
+    anthropic_key = os.environ.get("ANTHROPIC_API_KEY", "")
+
+    prompt = f"""Create a complete interview prep package:
+Company: {company}, Role: {role}, Type: {interview_type}
+
+Return JSON:
+{{"likely_questions": [{{"question": "...", "why_they_ask": "...", "model_answer": "..."}}],
+"star_examples": ["3 STAR method story starters"],
+"salary_range": {{"low": 0, "mid": 0, "high": 0, "currency": "USD", "note": "..."}},
+"negotiation_script": "exact script for when they make an offer",
+"red_flags_to_watch": ["3 red flags"],
+"day_of_checklist": ["8 items"]}}
+Return ONLY valid JSON."""
+
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            r = await client.post("https://api.anthropic.com/v1/messages",
+                headers={"x-api-key": anthropic_key, "anthropic-version": "2023-06-01", "content-type": "application/json"},
+                json={"model": "claude-sonnet-4-20250514", "max_tokens": 1500, "messages": [{"role": "user", "content": prompt}]})
+            if r.status_code == 200:
+                text = r.json().get("content", [{}])[0].get("text", "{}")
+                return {"status": "success", "prep": json.loads(text), "company": company, "role": role}
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+    return {"status": "error", "error": "Interview prep generation failed"}
+
+
+@app.post("/api/career/signature/generate")
+async def career_generate_signature(request: Request):
+    """Generate professional HTML email signature."""
+    body = await request.json()
+    name = body.get("name", "")
+    title = body.get("title", "")
+    company = body.get("company", "")
+    email = body.get("email", "")
+    phone = body.get("phone", "")
+    website = body.get("website", "")
+    linkedin = body.get("linkedin", "")
+    accent = body.get("accent_color", "#4F8EF7")
+    dark = body.get("banner_color", "#0D0F14")
+
+    sig_html = f"""<table cellpadding="0" cellspacing="0" border="0" style="font-family:Arial,sans-serif;font-size:13px;color:#333;max-width:520px">
+  <tr><td style="padding:0 0 12px 0"><table cellpadding="0" cellspacing="0" border="0" style="width:100%"><tr>
+    <td style="vertical-align:top"><div style="font-size:16px;font-weight:800;color:{dark};margin-bottom:1px">{name}</div>
+    <div style="font-size:12px;color:{accent};font-weight:600;text-transform:uppercase;letter-spacing:0.5px">{title} · {company}</div></td>
+  </tr></table></td></tr>
+  <tr><td style="border-top:2px solid {accent};padding:10px 0 0 0"><table cellpadding="0" cellspacing="0" border="0"><tr>
+    <td style="padding-right:20px;font-size:11px;color:#666">✉ <a href="mailto:{email}" style="color:{accent};text-decoration:none">{email}</a></td>
+    <td style="font-size:11px;color:#666">📞 <a href="tel:{phone}" style="color:#333;text-decoration:none">{phone}</a></td>
+  </tr>{f'<tr><td colspan="2" style="padding-top:4px;font-size:11px;color:#666">🌐 <a href="{website}" style="color:{accent};text-decoration:none">{website}</a>{f" | <a href='{linkedin}' style='color:{accent};text-decoration:none'>LinkedIn</a>" if linkedin else ""}</td></tr>' if website else ''}
+  </table></td></tr>
+  <tr><td style="padding-top:10px"><div style="background:linear-gradient(90deg,{dark},{accent}22);border-radius:4px;padding:6px 12px;display:inline-block">
+    <span style="font-size:9px;color:#fff;letter-spacing:2px;text-transform:uppercase;font-weight:600">Powered by SaintSal™ AI</span></div></td></tr>
+</table>"""
+
+    return {"signature_html": sig_html}
+
+
+@app.post("/api/career/cards/generate")
+async def career_generate_card(request: Request):
+    """Generate digital business card with QR code."""
+    body = await request.json()
+    name = body.get("name", "")
+    title = body.get("title", "")
+    company = body.get("company", "")
+    email = body.get("email", "")
+    phone = body.get("phone", "")
+    website = body.get("website", "")
+    linkedin = body.get("linkedin", "")
+    tagline = body.get("tagline", "")
+    accent = body.get("accent_color", "#4F8EF7")
+    template = body.get("template", "executive")
+    card_id = str(uuid.uuid4())[:8]
+
+    card_html = f"""<div style="font-family:Georgia,serif;background:linear-gradient(135deg,#0D0F14 60%,{accent}22);border:1px solid {accent}44;border-radius:16px;padding:28px 32px;width:380px;color:#fff;box-shadow:0 20px 60px rgba(0,0,0,0.5);position:relative;overflow:hidden;">
+  <div style="position:absolute;top:0;right:0;width:100px;height:100px;background:{accent}22;border-radius:0 16px 0 100%"></div>
+  <div style="font-size:11px;letter-spacing:3px;color:{accent};text-transform:uppercase;margin-bottom:8px">{company}</div>
+  <div style="font-size:26px;font-weight:700;margin-bottom:4px">{name}</div>
+  <div style="font-size:13px;color:#aaa;margin-bottom:20px">{title}</div>
+  {f'<div style="font-size:11px;color:{accent};font-style:italic;margin-bottom:20px">"{tagline}"</div>' if tagline else ''}
+  <div style="font-size:11px;line-height:2;color:#ccc">
+    <div>✉ {email}</div><div>📞 {phone}</div>
+    {f'<div>🌐 {website}</div>' if website else ''}
+    {f'<div>in {linkedin}</div>' if linkedin else ''}
+  </div>
+</div>"""
+
+    # Generate vCard data
+    vcard = f"BEGIN:VCARD\nVERSION:3.0\nFN:{name}\nTITLE:{title}\nORG:{company}\nEMAIL:{email}\nTEL:{phone}\nURL:{website}\nNOTE:{tagline}\nEND:VCARD"
+    import base64 as _b64
+    vcard_b64 = _b64.b64encode(vcard.encode()).decode()
+
+    return {"card_id": card_id, "card_html": card_html, "vcard_b64": vcard_b64, "template": template}
+
+
+@app.get("/api/career/backgrounds/templates")
+async def career_background_templates():
+    """Return professional video background templates."""
+    return {"templates": [
+        {"id": "executive_office", "name": "Executive Office", "desc": "Dark, prestigious boardroom", "gradient": "linear-gradient(135deg, #0D0F14 0%, #1a1f2e 50%, #0f1621 100%)", "tier": "free"},
+        {"id": "modern_startup", "name": "Modern Startup", "desc": "Clean, bright tech vibe", "gradient": "linear-gradient(120deg, #e0e7ff 0%, #f0f4ff 50%, #dde4ff 100%)", "tier": "free"},
+        {"id": "power_blue", "name": "Power Blue", "desc": "Corporate blue authority", "gradient": "linear-gradient(135deg, #1e3a5f 0%, #2d5986 50%, #1a3352 100%)", "tier": "free"},
+        {"id": "saintsalai", "name": "SaintSal™ Brand", "desc": "Official branded background", "gradient": "linear-gradient(135deg, #0D0F14 0%, #0d1a2e 40%, #1a0d2e 100%)", "tier": "starter"},
+        {"id": "library_warm", "name": "Library Scholar", "desc": "Warm bookshelf aesthetic", "gradient": "linear-gradient(160deg, #2c1810 0%, #3d2314 50%, #1a0f08 100%)", "tier": "starter"},
+        {"id": "minimal_white", "name": "Minimal Studio", "desc": "Clean white studio", "gradient": "linear-gradient(180deg, #f8f9fa 0%, #ffffff 100%)", "tier": "free"},
+        {"id": "finance_dark", "name": "Finance Dark", "desc": "Wall Street meets Silicon Valley", "gradient": "linear-gradient(135deg, #0a0a0a 0%, #1c1c1c 50%, #111118 100%)", "tier": "pro"},
+        {"id": "tech_gradient", "name": "Tech Aurora", "desc": "Dynamic tech-forward gradient", "gradient": "linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%)", "tier": "pro"}
+    ]}
+
+
+@app.post("/api/career/tracker/add")
+async def career_tracker_add(request: Request):
+    """Add job to tracker."""
+    body = await request.json()
+    job_id = str(uuid.uuid4())[:8]
+    from datetime import datetime as _dt
+    _job_tracker_store[job_id] = {
+        "id": job_id, "job_title": body.get("job_title", ""), "company": body.get("company", ""),
+        "url": body.get("url", ""), "status": body.get("status", "wishlist"),
+        "notes": body.get("notes", ""), "added_at": _dt.now().isoformat()
+    }
+    return {"status": "success", "job_id": job_id, "job": _job_tracker_store[job_id]}
+
+@app.get("/api/career/tracker/all")
+async def career_tracker_all():
+    """Get all tracked jobs as Kanban."""
+    jobs = list(_job_tracker_store.values())
+    return {"kanban": {
+        "wishlist": [j for j in jobs if j["status"] == "wishlist"],
+        "applied": [j for j in jobs if j["status"] == "applied"],
+        "interview": [j for j in jobs if j["status"] == "interview"],
+        "offer": [j for j in jobs if j["status"] == "offer"],
+        "rejected": [j for j in jobs if j["status"] == "rejected"]
+    }, "total": len(jobs)}
+
+@app.put("/api/career/tracker/{job_id}/status")
+async def career_tracker_update(job_id: str, request: Request):
+    body = await request.json()
+    if job_id not in _job_tracker_store:
+        return JSONResponse({"error": "Job not found"}, status_code=404)
+    _job_tracker_store[job_id]["status"] = body.get("status", "wishlist")
+    return {"status": "success", "job": _job_tracker_store[job_id]}
+
+
 if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 8000))

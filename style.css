@@ -6657,3 +6657,25 @@ ul, ol { list-style: none; }
   color: #ef4444;
   animation: pulse-dot 1.5s infinite;
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   Career Suite v1.0
+   ═══════════════════════════════════════════════════════════════════════════════ */
+@keyframes csSpin {
+  to { transform: rotate(360deg); }
+}
+
+.career-view {
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Career Suite scrollbar */
+#careerSuiteRoot ::-webkit-scrollbar { width: 4px; height: 4px; }
+#careerSuiteRoot ::-webkit-scrollbar-track { background: transparent; }
+#careerSuiteRoot ::-webkit-scrollbar-thumb { background: var(--border-subtle, #333); border-radius: 4px; }
+
+/* Responsive */
+@media (max-width: 640px) {
+  #careerSuiteRoot { padding: 12px 10px 100px !important; }
+}

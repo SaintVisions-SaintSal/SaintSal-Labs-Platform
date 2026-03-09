@@ -34,7 +34,8 @@ var views = {
   dashboard: document.getElementById('dashboardView'),
   landing: document.getElementById('landingView'),
   personality: document.getElementById('personalityView'),
-  admin: document.getElementById('adminView')
+  admin: document.getElementById('adminView'),
+  career: document.getElementById('careerView')
 };
 
 /* ============================================
@@ -85,6 +86,9 @@ function setView(view) {
   if (view === 'admin') {
     setTimeout(renderAdminDashboard, 50);
   }
+  if (view === 'career') {
+    setTimeout(initCareerSuite, 50);
+  }
 
   // Update sidebar active for non-vertical views
   document.querySelectorAll('.nav-item[data-view]').forEach(function(item) {
@@ -100,7 +104,7 @@ function setView(view) {
     document.getElementById('topbarBreadcrumb').innerHTML = '<span>' + (verticalNames[currentVertical] || 'Search') + '</span>';
   } else {
     document.querySelectorAll('.nav-item[data-vertical]').forEach(function(i) { i.classList.remove('active'); });
-    var breadcrumbMap = { pricing:'Pricing', welcome:'Welcome', account:'Account', studio:'Builder', domains:'Domains & SSL', launchpad:'Business Center', connectors:'Integrations', bizplan:'Business Plan', voice:'Voice AI', dashboard:'Dashboard', landing:'Home', personality:'SAL Personality' };
+    var breadcrumbMap = { pricing:'Pricing', welcome:'Welcome', account:'Account', studio:'Builder', domains:'Domains & SSL', launchpad:'Business Center', connectors:'Integrations', bizplan:'Business Plan', voice:'Voice AI', dashboard:'Dashboard', landing:'Home', personality:'SAL Personality', career:'Career Suite' };
     document.getElementById('topbarBreadcrumb').innerHTML = '<span>' + (breadcrumbMap[view] || view) + '</span>';
   }
 
