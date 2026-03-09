@@ -48,7 +48,8 @@ function navigate(view) {
 function setView(view) {
   // If leaving Builder with unsaved work and not logged in, prompt to save
   if (currentView === 'studio' && view !== 'studio' && !sessionToken) {
-    if (typeof studioState !== 'undefined' && studioState.messages && studioState.messages.length >= 2) {
+    var bMsgs = (typeof builderChatState !== 'undefined' && builderChatState.messages.length > 0) ? builderChatState.messages : (typeof studioState !== 'undefined' && studioState.messages ? studioState.messages : []);
+    if (bMsgs.length >= 2) {
       showSavePrompt();
     }
   }
@@ -4892,20 +4893,22 @@ function triggerBuilderAutoSave() {
 }
 
 function saveBuilderConversation() {
+  // Use new builderChatState if available, fallback to old studioState
+  var msgs = (typeof builderChatState !== 'undefined' && builderChatState.messages.length > 0) ? builderChatState.messages : studioState.messages;
   if (!sessionToken || !currentUser) {
     // Save builder work to localStorage for anon users
     try {
       localStorage.setItem('sal_builder_session', JSON.stringify({
-        messages: studioState.messages,
+        messages: msgs,
         saved_at: new Date().toISOString(),
       }));
     } catch(e) {}
     return;
   }
-  if (studioState.messages.length < 2) return;
+  if (msgs.length < 2) return;
 
   var payload = {
-    messages: studioState.messages,
+    messages: msgs,
     vertical: 'builder',
     type: 'builder',
   };
@@ -5230,12 +5233,13 @@ function showSavePrompt() {
 window.addEventListener('beforeunload', function(e) {
   // If not logged in and has work (chat or builder), save to localStorage and warn
   var hasUnsavedChat = chatHistory.length >= 2;
-  var hasUnsavedBuilder = studioState && studioState.messages && studioState.messages.length >= 2;
+  var builderMsgs = (typeof builderChatState !== 'undefined' && builderChatState.messages.length > 0) ? builderChatState.messages : (studioState && studioState.messages ? studioState.messages : []);
+  var hasUnsavedBuilder = builderMsgs.length >= 2;
   
   if (!sessionToken && (hasUnsavedChat || hasUnsavedBuilder)) {
     if (hasUnsavedChat) saveAnonSession();
     if (hasUnsavedBuilder) {
-      try { localStorage.setItem('sal_builder_session', JSON.stringify({ messages: studioState.messages, saved_at: new Date().toISOString() })); } catch(ex) {}
+      try { localStorage.setItem('sal_builder_session', JSON.stringify({ messages: builderMsgs, saved_at: new Date().toISOString() })); } catch(ex) {}
     }
     e.preventDefault();
     e.returnValue = 'You have unsaved work. Sign in to save your conversations.';
@@ -5256,8 +5260,357 @@ window.addEventListener('beforeunload', function(e) {
     xhr2.setRequestHeader('Content-Type', 'application/json');
     xhr2.setRequestHeader('Authorization', 'Bearer ' + sessionToken);
     try {
-      xhr2.send(JSON.stringify({ id: builderConvId, messages: studioState.messages, vertical: 'builder', type: 'builder' }));
+      xhr2.send(JSON.stringify({ id: builderConvId, messages: builderMsgs, vertical: 'builder', type: 'builder' }));
     } catch(ex) {}
   }
 });
 
+
+/* ═══════════════════════════════════════════════════════════════════
+   v7.27.0 — UNIFIED BUILDER CHAT (replaces old studioGenerate)
+   ═══════════════════════════════════════════════════════════════════ */
+
+var builderChatState = {
+  messages: [],      // {role, content, html, intent}
+  generating: false,
+  files: [],         // Generated code files
+  currentProject: null,
+  convId: null,
+};
+
+function builderNewChat() {
+  builderChatState.messages = [];
+  builderChatState.files = [];
+  builderChatState.generating = false;
+  builderChatState.currentProject = null;
+  var msgs = document.getElementById('builderMessages');
+  if (msgs) {
+    msgs.innerHTML = document.getElementById('builderWelcome') ? '' : '';
+    // Recreate welcome
+    msgs.innerHTML = '<div class="builder-welcome" id="builderWelcome">' +
+      '<div class="builder-welcome-icon"><svg viewBox="0 0 24 24" fill="none" stroke="var(--accent-gold)" stroke-width="1.5" width="48" height="48"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg></div>' +
+      '<div class="builder-welcome-title">What do you want to build?</div>' +
+      '<div class="builder-welcome-sub">Images, videos, audio, full-stack apps, social content, documents — just describe it. SAL executes with all APIs.</div>' +
+      '<div class="builder-quick-actions">' +
+        '<button class="builder-quick-btn" onclick="builderQuickPrompt(\'Make me a logo for a modern AI startup called NovaMind\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg><span>Generate a logo</span></button>' +
+        '<button class="builder-quick-btn" onclick="builderQuickPrompt(\'Build me a modern SaaS landing page with hero, features, pricing, and dark theme\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg><span>Build a landing page</span></button>' +
+        '<button class="builder-quick-btn" onclick="builderQuickPrompt(\'Create an Instagram post about AI innovation in business\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M4 4l11.733 16h4.267l-11.733-16zM4 20l6.768-6.768M15.232 11.232L20 4"/></svg><span>Create a social post</span></button>' +
+        '<button class="builder-quick-btn" onclick="builderQuickPrompt(\'Generate a professional voiceover: Welcome to SaintSal Labs.\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg><span>Generate audio</span></button>' +
+      '</div></div>';
+  }
+  if (typeof showToast === 'function') showToast('New builder chat started', 'info');
+}
+
+function builderQuickPrompt(text) {
+  var el = document.getElementById('builderPrompt');
+  if (el) { el.value = text; el.focus(); }
+  builderSend();
+}
+
+async function builderSend() {
+  if (builderChatState.generating) return;
+  var promptEl = document.getElementById('builderPrompt');
+  if (!promptEl || !promptEl.value.trim()) return;
+  var prompt = promptEl.value.trim();
+  promptEl.value = '';
+  promptEl.style.height = 'auto';
+
+  builderChatState.generating = true;
+  var sendBtn = document.getElementById('builderSendBtn');
+  if (sendBtn) { sendBtn.disabled = true; sendBtn.classList.add('generating'); }
+  var restoreBtn = function() {
+    if (sendBtn) { sendBtn.disabled = false; sendBtn.classList.remove('generating'); }
+    builderChatState.generating = false;
+  };
+
+  // Hide welcome
+  var welcome = document.getElementById('builderWelcome');
+  if (welcome) welcome.style.display = 'none';
+
+  // Add user message
+  builderChatState.messages.push({ role: 'user', content: prompt });
+  var msgs = document.getElementById('builderMessages');
+  var userMsg = document.createElement('div');
+  userMsg.className = 'builder-msg builder-msg-user';
+  userMsg.innerHTML = '<div class="builder-msg-content">' + escapeHtml(prompt) + '</div>';
+  msgs.appendChild(userMsg);
+
+  // Create assistant message container
+  var asstMsg = document.createElement('div');
+  asstMsg.className = 'builder-msg builder-msg-assistant';
+  msgs.appendChild(asstMsg);
+
+  // Phase indicator
+  var phaseEl = document.createElement('div');
+  phaseEl.className = 'builder-phase';
+  phaseEl.innerHTML = '<div class="builder-phase-spinner"></div><span>SAL is thinking...</span>';
+  asstMsg.appendChild(phaseEl);
+
+  // Content container
+  var contentEl = document.createElement('div');
+  contentEl.className = 'builder-msg-content';
+  asstMsg.appendChild(contentEl);
+
+  msgs.scrollTop = msgs.scrollHeight;
+
+  var rawText = '';
+  var buffer = '';
+
+  function handleEvent(data) {
+    if (data.type === 'intent') {
+      var intentLabels = { image: 'Image Generation', video: 'Video', audio: 'Audio', social: 'Social Media', code: 'Building', deploy: 'Deploy', research: 'Research', design: 'Design', chat: 'Chat', document: 'Document' };
+      var intentColors = { image: '#f59e0b', video: '#8b5cf6', audio: '#06b6d4', social: '#E4405F', code: '#22c55e', deploy: '#10b981', research: '#3b82f6', design: '#ec4899', chat: 'var(--accent-gold)', document: '#6366f1' };
+      if (data.intent !== 'chat') {
+        var badge = document.createElement('div');
+        badge.className = 'builder-intent-badge';
+        badge.style.background = (intentColors[data.intent] || 'var(--accent-gold)') + '22';
+        badge.style.color = intentColors[data.intent] || 'var(--accent-gold)';
+        badge.style.border = '1px solid ' + (intentColors[data.intent] || 'var(--accent-gold)') + '44';
+        badge.textContent = intentLabels[data.intent] || data.intent;
+        asstMsg.insertBefore(badge, phaseEl);
+      }
+    } else if (data.type === 'phase') {
+      phaseEl.querySelector('span').textContent = data.message || data.phase || 'Processing...';
+      phaseEl.style.display = 'flex';
+    } else if (data.type === 'image') {
+      phaseEl.style.display = 'none';
+      var imgHtml = '<img class="builder-inline-image" src="' + (data.data || data.url) + '" alt="Generated image" onclick="window.open(this.src,\'_blank\')">';
+      imgHtml += '<div style="display:flex;gap:6px;margin-top:6px;">';
+      if (data.url) imgHtml += '<button class="builder-action-btn" onclick="downloadStudioMedia(\'' + escapeAttr(data.url) + '\',\'generated-image.png\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Download</button>';
+      imgHtml += '<button class="builder-action-btn" onclick="builderQuickPrompt(\'Refine the image — make it more professional and polished\')">Refine</button>';
+      imgHtml += '</div>';
+      if (data.provider) imgHtml += '<div style="font-size:10px;color:var(--text-muted);margin-top:4px;">via ' + escapeHtml(data.provider) + '</div>';
+      contentEl.innerHTML += imgHtml;
+    } else if (data.type === 'audio') {
+      phaseEl.style.display = 'none';
+      var audioHtml = '<audio class="builder-inline-audio" src="' + (data.data || data.url) + '" controls></audio>';
+      if (data.url) audioHtml += '<div style="margin-top:4px;"><button class="builder-action-btn" onclick="downloadStudioMedia(\'' + escapeAttr(data.url) + '\',\'generated-audio.mp3\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Download</button></div>';
+      contentEl.innerHTML += audioHtml;
+    } else if (data.type === 'video_storyboard') {
+      phaseEl.style.display = 'none';
+      contentEl.innerHTML += '<div class="builder-storyboard">' + formatMarkdown(data.storyboard || '') + '</div>';
+      if (data.provider) contentEl.innerHTML += '<div style="font-size:10px;color:var(--text-muted);">Storyboard via ' + escapeHtml(data.provider) + '</div>';
+    } else if (data.type === 'social') {
+      phaseEl.style.display = 'none';
+      var socialHtml = '<div class="builder-social-result">';
+      socialHtml += '<div class="builder-social-header"><span style="font-weight:600;font-size:13px;">' + escapeHtml((data.platform || 'Social').charAt(0).toUpperCase() + (data.platform || '').slice(1)) + ' Content</span></div>';
+      if (data.image && data.image.data) {
+        socialHtml += '<img class="builder-inline-image" src="' + data.image.data + '" alt="Social media image" style="border-radius:0;">';
+      }
+      if (data.caption) {
+        socialHtml += '<div class="builder-social-caption">' + escapeHtml(data.caption) + '</div>';
+      }
+      if (data.hashtags && data.hashtags.length) {
+        socialHtml += '<div class="builder-social-hashtags">';
+        data.hashtags.forEach(function(tag) {
+          var cleanTag = tag.startsWith('#') ? tag : '#' + tag;
+          socialHtml += '<span class="builder-social-hashtag">' + escapeHtml(cleanTag) + '</span>';
+        });
+        socialHtml += '</div>';
+      }
+      socialHtml += '<div style="display:flex;gap:6px;padding:10px 14px;border-top:1px solid var(--border-subtle);">';
+      socialHtml += '<button class="builder-action-btn primary" onclick="navigator.clipboard.writeText(document.querySelector(\'.builder-social-caption\').textContent).then(function(){showToast(\'Caption copied\',\'success\')})">Copy Caption</button>';
+      if (data.image && data.image.url) socialHtml += '<button class="builder-action-btn" onclick="downloadStudioMedia(\'' + escapeAttr(data.image.url) + '\',\'social-image.png\')">Download Image</button>';
+      socialHtml += '</div></div>';
+      contentEl.innerHTML += socialHtml;
+    } else if (data.type === 'code_files') {
+      phaseEl.style.display = 'none';
+      builderChatState.files = data.files || [];
+      var codeHtml = '<div class="builder-code-preview">';
+      
+      // Live preview
+      var htmlFile = data.files.find(function(f) { return /\.html$/i.test(f.name); });
+      var cssFile = data.files.find(function(f) { return /\.css$/i.test(f.name); });
+      if (htmlFile) {
+        var previewContent = htmlFile.content || '';
+        if (cssFile && previewContent.indexOf('<link') > -1) {
+          previewContent = previewContent.replace(/<link[^>]*href=["']style\.css["'][^>]*>/i, '<style>' + (cssFile.content || '') + '</style>');
+        }
+        if (cssFile && previewContent.indexOf('</head>') > -1 && previewContent.indexOf(cssFile.content) === -1) {
+          previewContent = previewContent.replace('</head>', '<style>' + (cssFile.content || '') + '</style></head>');
+        }
+        var blob = new Blob([previewContent], { type: 'text/html' });
+        var blobUrl = URL.createObjectURL(blob);
+        codeHtml += '<div class="builder-code-preview-header">';
+        codeHtml += '<div class="builder-code-preview-dots"><span style="background:#ef4444"></span><span style="background:#f59e0b"></span><span style="background:#22c55e"></span></div>';
+        codeHtml += '<span class="builder-code-preview-label">Live Preview</span>';
+        codeHtml += '<button class="builder-action-btn" style="font-size:10px;padding:2px 8px;" onclick="var f=this.closest(\'.builder-code-preview\').querySelector(\'iframe\');f.style.height=f.style.height===\'400px\'?\'700px\':\'400px\'">Expand</button>';
+        codeHtml += '</div>';
+        codeHtml += '<iframe src="' + blobUrl + '" style="width:100%;height:400px;border:none;background:#fff;"></iframe>';
+      }
+      
+      // File tags
+      codeHtml += '<div class="builder-code-files">';
+      data.files.forEach(function(f, i) {
+        var ext = (f.name || '').split('.').pop().toLowerCase();
+        var color = ext === 'html' ? '#ef4444' : ext === 'css' ? '#3b82f6' : (ext === 'js' || ext === 'ts') ? '#f59e0b' : ext === 'py' ? '#22c55e' : '#6B7280';
+        codeHtml += '<span class="builder-code-file-tag" onclick="builderViewFile(' + i + ')"><span class="builder-code-file-dot" style="background:' + color + '"></span>' + escapeHtml(f.name) + '</span>';
+      });
+      codeHtml += '</div>';
+      
+      // Actions
+      codeHtml += '<div class="builder-code-actions">';
+      codeHtml += '<button class="builder-action-btn" onclick="builderQuickPrompt(\'Iterate — \')">Refine</button>';
+      codeHtml += '<button class="builder-action-btn" onclick="builderPublish(\'vercel\')"><svg viewBox="0 0 24 24" fill="currentColor" width="12" height="12"><path d="M12 1L1 22h22L12 1z"/></svg> Vercel</button>';
+      codeHtml += '<button class="builder-action-btn" onclick="builderPublish(\'github\')">GitHub</button>';
+      codeHtml += '<button class="builder-action-btn" onclick="builderPublish(\'render\')">Render</button>';
+      codeHtml += '<button class="builder-action-btn" onclick="builderPublish(\'download\')">Download ZIP</button>';
+      codeHtml += '</div></div>';
+      if (data.model) codeHtml += '<div style="font-size:10px;color:var(--text-muted);margin-top:4px;">Built with ' + escapeHtml(data.model) + '</div>';
+      contentEl.innerHTML += codeHtml;
+    } else if (data.type === 'deploy_ready') {
+      phaseEl.style.display = 'none';
+      var deployHtml = '<div class="builder-deploy-grid">';
+      deployHtml += '<div class="builder-deploy-card" onclick="builderPublish(\'vercel\')"><svg viewBox="0 0 24 24" fill="var(--text-primary)" width="20" height="20"><path d="M12 1L1 22h22L12 1z"/></svg><div><div style="font-weight:600;font-size:13px;">Vercel</div><div style="font-size:11px;color:var(--text-muted);">Frontend, zero-config</div></div></div>';
+      deployHtml += '<div class="builder-deploy-card" onclick="builderPublish(\'render\')"><span style="font-size:18px;font-weight:900;color:var(--accent-green);">R</span><div><div style="font-weight:600;font-size:13px;">Render</div><div style="font-size:11px;color:var(--text-muted);">Full-stack, backends</div></div></div>';
+      deployHtml += '<div class="builder-deploy-card" onclick="builderPublish(\'github\')"><svg viewBox="0 0 24 24" fill="var(--text-primary)" width="20" height="20"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23A11.509 11.509 0 0112 5.803c1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576C20.566 21.797 24 17.3 24 12c0-6.627-5.373-12-12-12z"/></svg><div><div style="font-weight:600;font-size:13px;">GitHub</div><div style="font-size:11px;color:var(--text-muted);">Push to your repo</div></div></div>';
+      deployHtml += '<div class="builder-deploy-card" onclick="builderPublish(\'download\')"><svg viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2" width="20" height="20"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg><div><div style="font-weight:600;font-size:13px;">Download ZIP</div><div style="font-size:11px;color:var(--text-muted);">All project files</div></div></div>';
+      deployHtml += '</div>';
+      contentEl.innerHTML += deployHtml;
+    } else if (data.type === 'citations') {
+      var citHtml = '<div class="builder-citations">';
+      (data.citations || []).forEach(function(url) {
+        try {
+          var domain = new URL(url).hostname.replace('www.', '');
+          citHtml += '<a href="' + escapeAttr(url) + '" target="_blank" rel="noopener" class="builder-citation-link">' + escapeHtml(domain) + '</a>';
+        } catch(e) {}
+      });
+      citHtml += '</div>';
+      contentEl.innerHTML += citHtml;
+    } else if (data.type === 'text') {
+      phaseEl.style.display = 'none';
+      rawText += data.content || '';
+      contentEl.innerHTML = contentEl.innerHTML.replace(/<div class="builder-msg-text-stream">[^]*?<\/div>$/, '') ;
+      // Only update the text portion, keep media above
+      var existingMedia = contentEl.querySelectorAll('.builder-inline-image, .builder-inline-audio, .builder-code-preview, .builder-social-result, .builder-deploy-grid, .builder-storyboard, .builder-citations');
+      var textDiv = contentEl.querySelector('.builder-msg-text-stream');
+      if (!textDiv) {
+        textDiv = document.createElement('div');
+        textDiv.className = 'builder-msg-text-stream';
+        contentEl.appendChild(textDiv);
+      }
+      textDiv.innerHTML = formatMarkdown(rawText);
+    } else if (data.type === 'done') {
+      phaseEl.style.display = 'none';
+      builderChatState.messages.push({ role: 'assistant', content: rawText || contentEl.textContent });
+      // Auto-save
+      triggerBuilderAutoSave();
+    }
+    msgs.scrollTop = msgs.scrollHeight;
+  }
+
+  // SSE fetch
+  try {
+    var resp = await fetch(API + '/api/builder/chat', {
+      method: 'POST',
+      headers: Object.assign({ 'Content-Type': 'application/json' }, authHeaders()),
+      body: JSON.stringify({
+        message: prompt,
+        history: builderChatState.messages.slice(-10),
+        attached_files: builderAttachedFiles || [],
+      }),
+    });
+    if (!resp.ok) throw new Error('API error: ' + resp.status);
+    var reader = resp.body.getReader();
+    var decoder = new TextDecoder();
+
+    async function processStream() {
+      while (true) {
+        var result = await reader.read();
+        if (result.done) break;
+        buffer += decoder.decode(result.value, { stream: true });
+        var lines = buffer.split('\n');
+        buffer = lines.pop();
+        for (var i = 0; i < lines.length; i++) {
+          var line = lines[i].trim();
+          if (!line.startsWith('data: ')) continue;
+          var jsonStr = line.slice(6);
+          if (jsonStr === '[DONE]') return;
+          try { handleEvent(JSON.parse(jsonStr)); } catch(e) {}
+        }
+      }
+      // Final
+      if (rawText) {
+        builderChatState.messages.push({ role: 'assistant', content: rawText });
+        triggerBuilderAutoSave();
+      }
+    }
+    await processStream();
+  } catch(e) {
+    console.error('Builder chat error:', e);
+    phaseEl.style.display = 'none';
+    contentEl.innerHTML += '<div style="color:#ef4444;font-size:13px;">Connection error. Please try again.</div>';
+  }
+
+  restoreBtn();
+  // Clear attachments
+  if (typeof clearBuilderUploads === 'function') clearBuilderUploads();
+}
+
+function builderViewFile(index) {
+  var files = builderChatState.files;
+  if (!files || !files[index]) return;
+  var f = files[index];
+  var popup = window.open('', '_blank', 'width=800,height=600');
+  popup.document.write('<html><head><title>' + escapeHtml(f.name) + '</title><style>body{background:#1a1a2e;color:#e0e0e0;font-family:monospace;padding:20px;white-space:pre-wrap;font-size:13px;line-height:1.5;}</style></head><body>' + escapeHtml(f.content || '') + '</body></html>');
+  popup.document.close();
+}
+
+// Voice input for Builder
+var builderMicActive = false;
+var builderMicRecognition = null;
+
+function toggleBuilderMic() {
+  if (builderMicActive) {
+    if (builderMicRecognition) builderMicRecognition.stop();
+    builderMicActive = false;
+    var btn = document.getElementById('builderMicBtn');
+    if (btn) btn.classList.remove('recording');
+    return;
+  }
+  var SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SpeechRecognition) {
+    if (typeof showToast === 'function') showToast('Speech recognition not supported in this browser', 'error');
+    return;
+  }
+  builderMicRecognition = new SpeechRecognition();
+  builderMicRecognition.continuous = false;
+  builderMicRecognition.interimResults = true;
+  builderMicRecognition.lang = 'en-US';
+  
+  builderMicActive = true;
+  var btn = document.getElementById('builderMicBtn');
+  if (btn) btn.classList.add('recording');
+  
+  var promptEl = document.getElementById('builderPrompt');
+  var finalTranscript = '';
+  
+  builderMicRecognition.onresult = function(event) {
+    var interim = '';
+    for (var i = event.resultIndex; i < event.results.length; i++) {
+      if (event.results[i].isFinal) {
+        finalTranscript += event.results[i][0].transcript;
+      } else {
+        interim += event.results[i][0].transcript;
+      }
+    }
+    if (promptEl) promptEl.value = finalTranscript + interim;
+  };
+  builderMicRecognition.onend = function() {
+    builderMicActive = false;
+    if (btn) btn.classList.remove('recording');
+    if (finalTranscript && promptEl) {
+      promptEl.value = finalTranscript;
+      promptEl.focus();
+    }
+  };
+  builderMicRecognition.onerror = function() {
+    builderMicActive = false;
+    if (btn) btn.classList.remove('recording');
+  };
+  builderMicRecognition.start();
+}
+
+// Override the old studioGenerate to route to new builderSend
+var _origStudioGenerate = typeof studioGenerate === 'function' ? studioGenerate : null;
+studioGenerate = function() { return builderSend(); };

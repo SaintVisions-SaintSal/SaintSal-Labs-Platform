@@ -5518,6 +5518,382 @@ async def social_publish(request: Request):
 _builder_projects: dict = {}
 
 
+# ── v7.27.0 UNIFIED BUILDER CHAT — One Chat, Full AI Orchestration ─────────
+
+BUILDER_CHAT_SYSTEM = """You are SAL™, the AI Builder Engine for SaintSal™ Labs. You are an elite full-stack AI that EXECUTES — you never give guides or directions.
+
+## YOUR CAPABILITIES:
+- **Images**: Generate images (DALL-E 3, Grok Imagine) — logos, banners, product shots, social graphics
+- **Video**: Create video storyboards and scenes
+- **Audio/TTS**: Generate speech and voiceovers (ElevenLabs)
+- **Code**: Build full-stack web apps, landing pages, PWAs, widgets, APIs — complete working code
+- **Design**: Create UI designs and prototypes (Google Stitch)
+- **Social Media**: Generate platform-optimized posts with images, captions, hashtags
+- **Documents**: Generate professional documents, presentations, reports
+- **Deploy**: Push code to GitHub, deploy to Vercel or Render, download as ZIP
+- **Research**: Deep web research using Perplexity + Tavily
+
+## HOW YOU RESPOND:
+- For IMAGE requests: Generate the image and return it inline. No placeholders.
+- For CODE requests: Write complete, production-ready code. All files.
+- For SOCIAL requests: Generate image + caption + hashtags for the platform.
+- For DEPLOY requests: Push code and return the live URL.
+- For RESEARCH: Search the web and return real, cited results.
+- For GENERAL CHAT: Answer like the smartest engineer in the room.
+
+## RULES:
+1. NEVER say "I can't" — you CAN. You have ALL the APIs.
+2. NEVER give instructions to the user on how to do something — YOU DO IT.
+3. Respond conversationally but execute immediately.
+4. When generating code, output ALL files in a JSON block: ```json\n{"files": [{"name": "index.html", "content": "..."}, ...]}\n```
+5. Keep responses concise but complete.
+"""
+
+
+def _detect_builder_intent(message: str) -> str:
+    """Detect what the user wants from their message."""
+    import re as _re
+    msg = message.lower().strip()
+    # Image generation
+    if any(w in msg for w in ['generate image', 'create image', 'make image', 'draw', 'logo', 'banner', 'illustration', 'picture of', 'photo of', 'graphic of', 'design a logo', 'make me a logo', 'generate a logo', 'create a graphic', 'make a banner', 'poster', 'icon design', 'album art', 'cover art', 'avatar', 'profile picture', 'thumbnail image']):
+        return 'image'
+    if _re.search(r'\b(image|img|pic|photo|picture)\b.*\b(of|for|with|showing)\b', msg):
+        return 'image'
+    # Video
+    if any(w in msg for w in ['generate video', 'create video', 'make video', 'video of', 'animate', 'animation', 'motion graphics', 'cinematic', 'short film', 'clip of', 'reel', 'product video']):
+        return 'video'
+    # Audio
+    if any(w in msg for w in ['voiceover', 'voice over', 'text to speech', 'tts', 'narrat', 'read aloud', 'generate audio', 'make audio', 'podcast intro', 'jingle']):
+        return 'audio'
+    # Social
+    if any(w in msg for w in ['post to', 'social media', 'instagram post', 'linkedin post', 'tweet', 'facebook post', 'tiktok', 'youtube thumbnail', 'social content', 'post for instagram', 'post for linkedin', 'post for twitter', 'post for x', 'share on']):
+        return 'social'
+    # Code/Build
+    if any(w in msg for w in ['build me', 'build a', 'create a website', 'create a web', 'create an app', 'landing page', 'make a site', 'make a website', 'make a page', 'make an app', 'build website', 'build app', 'code a', 'write code', 'html page', 'react app', 'next.js', 'saas', 'ecommerce', 'portfolio', 'dashboard app', 'widget', 'pwa', 'chrome extension']):
+        return 'code'
+    if _re.search(r'\b(build|create|make|code|develop|write)\b.*\b(app|site|page|website|frontend|backend|api|widget|dashboard|form|calculator)\b', msg):
+        return 'code'
+    # Deploy
+    if any(w in msg for w in ['deploy', 'publish', 'push to github', 'push to vercel', 'push to render', 'go live', 'make it live', 'ship it']):
+        return 'deploy'
+    # Design
+    if any(w in msg for w in ['design a ui', 'ui design', 'wireframe', 'mockup', 'prototype', 'stitch design']):
+        return 'design'
+    # Research
+    if any(w in msg for w in ['research', 'look up', 'find out', 'what is the', 'who is', 'how does', 'compare', 'analyze', 'market research', 'competitor analysis']):
+        return 'research'
+    # Document
+    if any(w in msg for w in ['write a document', 'create a doc', 'business plan', 'pitch deck', 'report', 'whitepaper', 'proposal', 'resume', 'cover letter']):
+        return 'document'
+    return 'chat'
+
+
+async def _builder_generate_image_inline(prompt: str) -> dict:
+    """Generate an image and return base64 data or URL."""
+    import base64 as _b64
+    xai_key = os.environ.get("XAI_API_KEY", "")
+    if xai_key:
+        try:
+            async with httpx.AsyncClient(timeout=60.0) as hc:
+                resp = await hc.post("https://api.x.ai/v1/images/generations",
+                    headers={"Authorization": f"Bearer {xai_key}", "Content-Type": "application/json"},
+                    json={"model": "grok-2-image", "prompt": prompt, "n": 1, "response_format": "b64_json"})
+                if resp.status_code == 200:
+                    data = resp.json()
+                    if data.get("data"):
+                        b64 = data["data"][0].get("b64_json", "")
+                        if b64:
+                            fname = f"builder_img_{uuid.uuid4().hex[:8]}.png"
+                            fpath = os.path.join("studio_media", "images", fname)
+                            os.makedirs(os.path.dirname(fpath), exist_ok=True)
+                            with open(fpath, "wb") as f:
+                                f.write(_b64.b64decode(b64))
+                            return {"success": True, "url": f"/api/studio/media/images/{fname}", "data": f"data:image/png;base64,{b64}", "provider": "Grok Imagine"}
+        except Exception as e:
+            print(f"[Builder] xAI image error: {e}")
+    openai_key = os.environ.get("OPENAI_API_KEY", "")
+    if openai_key:
+        try:
+            async with httpx.AsyncClient(timeout=60.0) as hc:
+                resp = await hc.post("https://api.openai.com/v1/images/generations",
+                    headers={"Authorization": f"Bearer {openai_key}", "Content-Type": "application/json"},
+                    json={"model": "dall-e-3", "prompt": prompt, "n": 1, "size": "1024x1024", "response_format": "b64_json"})
+                if resp.status_code == 200:
+                    data = resp.json()
+                    if data.get("data"):
+                        b64 = data["data"][0].get("b64_json", "")
+                        revised = data["data"][0].get("revised_prompt", "")
+                        if b64:
+                            fname = f"builder_img_{uuid.uuid4().hex[:8]}.png"
+                            fpath = os.path.join("studio_media", "images", fname)
+                            os.makedirs(os.path.dirname(fpath), exist_ok=True)
+                            with open(fpath, "wb") as f:
+                                f.write(_b64.b64decode(b64))
+                            return {"success": True, "url": f"/api/studio/media/images/{fname}", "data": f"data:image/png;base64,{b64}", "provider": "DALL-E 3", "revised_prompt": revised}
+        except Exception as e:
+            print(f"[Builder] DALL-E error: {e}")
+    return {"success": False, "error": "No image generation API available"}
+
+
+async def _builder_generate_video_inline(prompt: str) -> dict:
+    xai_key = os.environ.get("XAI_API_KEY", "")
+    storyboard = ""
+    provider = ""
+    if xai_key:
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as hc:
+                resp = await hc.post("https://api.x.ai/v1/chat/completions",
+                    headers={"Authorization": f"Bearer {xai_key}", "Content-Type": "application/json"},
+                    json={"model": "grok-3-mini", "messages": [{"role": "user", "content": f"Create a detailed video storyboard for: '{prompt}'. Include scenes, camera movements, timing, mood."}], "temperature": 0.7})
+                if resp.status_code == 200:
+                    storyboard = resp.json().get("choices", [{}])[0].get("message", {}).get("content", "")
+                    provider = "Grok"
+        except Exception as e:
+            print(f"[Builder] xAI video storyboard error: {e}")
+    if not storyboard:
+        result = await _builder_ai_call(BUILDER_CHAT_SYSTEM, f"Create a detailed video storyboard for: '{prompt}'.", "claude", 4000)
+        storyboard = result['text']
+        provider = result['model_used']
+    job_id = str(uuid.uuid4())[:8]
+    return {"storyboard": storyboard, "job_id": job_id, "provider": provider, "message": f"Video storyboard created via {provider}. Full video rendering requires a dedicated video API (Sora/Runway)."}
+
+
+async def _builder_generate_audio_inline(prompt: str) -> dict:
+    import base64 as _b64
+    el_key = os.environ.get("ELEVENLABS_API_KEY", "")
+    if el_key:
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as hc:
+                resp = await hc.post("https://api.elevenlabs.io/v1/text-to-speech/21m00Tcm4TlvDq8ikWAM",
+                    headers={"xi-api-key": el_key, "Content-Type": "application/json", "Accept": "audio/mpeg"},
+                    json={"text": prompt, "model_id": "eleven_turbo_v2_5", "voice_settings": {"stability": 0.5, "similarity_boost": 0.75}})
+                if resp.status_code == 200:
+                    audio_bytes = resp.content
+                    fname = f"builder_audio_{uuid.uuid4().hex[:8]}.mp3"
+                    fpath = os.path.join("studio_media", "audio", fname)
+                    os.makedirs(os.path.dirname(fpath), exist_ok=True)
+                    with open(fpath, "wb") as f:
+                        f.write(audio_bytes)
+                    b64 = _b64.b64encode(audio_bytes).decode()
+                    return {"success": True, "url": f"/api/studio/media/audio/{fname}", "data": f"data:audio/mpeg;base64,{b64}", "provider": "ElevenLabs"}
+        except Exception as e:
+            print(f"[Builder] ElevenLabs TTS error: {e}")
+    return {"success": False, "error": "No TTS API available"}
+
+
+async def _builder_generate_social_inline(message: str) -> dict:
+    import re as _re
+    msg_lower = message.lower()
+    platform = "linkedin"
+    for p in ["instagram", "twitter", "x ", "facebook", "tiktok", "youtube", "snapchat"]:
+        if p in msg_lower:
+            platform = "twitter" if p == "x " else p
+            break
+    spec = SOCIAL_PLATFORM_SPECS.get(platform, SOCIAL_PLATFORM_SPECS.get("linkedin", {"name": platform, "max_chars": 3000, "style_hint": "professional", "image_size": "1200x627", "aspect": "1.91:1"}))
+    caption_prompt = f"""Generate a {spec['name']} post about: {message}
+Platform: {spec['name']}, Max chars: {spec['max_chars']}, Style: {spec['style_hint']}
+Return ONLY JSON: {{"caption": "...", "hashtags": ["..."], "hook": "...", "cta": "...", "image_prompt": "..."}}"""
+    result = await _builder_ai_call(BUILDER_CHAT_SYSTEM, caption_prompt, "claude", 2000)
+    caption_data = {"caption": "", "hashtags": [], "hook": "", "cta": "", "image_prompt": message}
+    if result['text']:
+        json_match = _re.search(r'\{[\s\S]*\}', result['text'])
+        if json_match:
+            try:
+                caption_data = json.loads(json_match.group())
+            except:
+                caption_data["caption"] = result['text'][:spec.get('max_chars', 3000)]
+    image_prompt = caption_data.get("image_prompt", message)
+    image_result = await _builder_generate_image_inline(f"{image_prompt}. Optimized for {spec['name']}")
+    return {
+        "platform": platform, "caption": caption_data.get("caption", ""), "hashtags": caption_data.get("hashtags", []),
+        "hook": caption_data.get("hook", ""), "cta": caption_data.get("cta", ""),
+        "image": {"url": image_result.get("url", ""), "data": image_result.get("data", "")} if image_result.get("success") else {},
+        "summary": f"{spec['name']} content created — caption + {'image' if image_result.get('success') else 'text only'}. Want me to publish it or make changes?"
+    }
+
+
+@app.post("/api/builder/chat")
+async def builder_unified_chat(request: Request):
+    """v7.27.0 — Unified Builder Chat SSE endpoint. One chat, full AI orchestration."""
+    import re as _re
+    body = await request.json()
+    message = body.get("message", "").strip()
+    history = body.get("history", [])
+    attached_files = body.get("attached_files", [])
+
+    if not message:
+        return JSONResponse({"error": "Message required"}, status_code=400)
+
+    intent = _detect_builder_intent(message)
+    print(f"[Builder Chat] intent={intent} msg={message[:80]}")
+
+    async def event_stream():
+        yield f"data: {json.dumps({'type': 'intent', 'intent': intent})}\n\n"
+
+        # ── IMAGE ──
+        if intent == 'image':
+            yield f"data: {json.dumps({'type': 'phase', 'phase': 'generating', 'message': 'Generating image with AI...'})}\n\n"
+            image_result = await _builder_generate_image_inline(message)
+            if image_result.get('success'):
+                yield f"data: {json.dumps({'type': 'image', 'url': image_result['url'], 'data': image_result.get('data', ''), 'provider': image_result.get('provider', '')})}\n\n"
+                yield f"data: {json.dumps({'type': 'text', 'content': f'Image generated via {image_result.get("provider", "AI")}. Want me to refine it, create variations, or use it somewhere?'})}\n\n"
+            else:
+                yield f"data: {json.dumps({'type': 'text', 'content': 'Image generation hit a snag. Let me describe what it would look like...'})}\n\n"
+                fallback = await _builder_ai_call(BUILDER_CHAT_SYSTEM, f"Describe this image in vivid detail: {message}", "claude", 2000)
+                if fallback['text']:
+                    yield f"data: {json.dumps({'type': 'text', 'content': fallback['text']})}\n\n"
+            yield f"data: {json.dumps({'type': 'done'})}\n\n"
+            return
+
+        # ── VIDEO ──
+        if intent == 'video':
+            yield f"data: {json.dumps({'type': 'phase', 'phase': 'generating', 'message': 'Creating video storyboard...'})}\n\n"
+            video_result = await _builder_generate_video_inline(message)
+            if video_result.get('storyboard'):
+                yield f"data: {json.dumps({'type': 'video_storyboard', 'storyboard': video_result['storyboard'], 'job_id': video_result.get('job_id', ''), 'provider': video_result.get('provider', '')})}\n\n"
+            yield f"data: {json.dumps({'type': 'text', 'content': video_result.get('message', 'Video storyboard created.')})}\n\n"
+            yield f"data: {json.dumps({'type': 'done'})}\n\n"
+            return
+
+        # ── AUDIO ──
+        if intent == 'audio':
+            yield f"data: {json.dumps({'type': 'phase', 'phase': 'generating', 'message': 'Generating audio...'})}\n\n"
+            audio_result = await _builder_generate_audio_inline(message)
+            if audio_result.get('success'):
+                yield f"data: {json.dumps({'type': 'audio', 'url': audio_result['url'], 'data': audio_result.get('data', ''), 'provider': audio_result.get('provider', '')})}\n\n"
+                yield f"data: {json.dumps({'type': 'text', 'content': 'Audio generated. Play it above or download it.'})}\n\n"
+            else:
+                yield f"data: {json.dumps({'type': 'text', 'content': f'Audio issue: {audio_result.get("error", "Unknown")}'})}\n\n"
+            yield f"data: {json.dumps({'type': 'done'})}\n\n"
+            return
+
+        # ── SOCIAL ──
+        if intent == 'social':
+            yield f"data: {json.dumps({'type': 'phase', 'phase': 'generating', 'message': 'Creating social media content...'})}\n\n"
+            social_result = await _builder_generate_social_inline(message)
+            yield f"data: {json.dumps({'type': 'social', 'platform': social_result.get('platform', ''), 'caption': social_result.get('caption', ''), 'hashtags': social_result.get('hashtags', []), 'image': social_result.get('image', {}), 'hook': social_result.get('hook', ''), 'cta': social_result.get('cta', '')})}\n\n"
+            yield f"data: {json.dumps({'type': 'text', 'content': social_result.get('summary', 'Social content created.')})}\n\n"
+            yield f"data: {json.dumps({'type': 'done'})}\n\n"
+            return
+
+        # ── CODE ──
+        if intent == 'code':
+            yield f"data: {json.dumps({'type': 'phase', 'phase': 'generating', 'message': 'Building your project...'})}\n\n"
+            history_ctx = ""
+            if history:
+                for h in history[-6:]:
+                    history_ctx += f"\n{h['role'].upper()}: {h['content'][:500]}"
+            file_ctx = ""
+            if attached_files:
+                for af in attached_files[:3]:
+                    file_ctx += f"\nAttached: {af.get('filename', '')} — {af.get('extracted_text', '')[:1000]}"
+            code_sys = BUILDER_CHAT_SYSTEM + """\nCRITICAL CODE RULES:
+- Output ALL files as JSON: ```json\n{"files": [{"name": "index.html", "content": "..."}, ...]}\n```
+- COMPLETE, WORKING, PRODUCTION-READY code — no placeholders
+- Beautiful modern dark-theme design, responsive, smooth animations
+- After the JSON block, add a brief description"""
+            user_msg = message
+            if file_ctx: user_msg += f"\n\n[ATTACHED]{file_ctx}"
+            if history_ctx: user_msg += f"\n\n[CONTEXT]{history_ctx}"
+            result = await _builder_ai_call(code_sys, user_msg, "claude", 64000)
+            if result['text']:
+                json_match = _re.search(r'```json\s*(\{[\s\S]*?"files"\s*:\s*\[[\s\S]*?\]\s*\})\s*```', result['text'])
+                if json_match:
+                    try:
+                        files_data = json.loads(json_match.group(1))
+                        yield f"data: {json.dumps({'type': 'code_files', 'files': files_data.get('files', []), 'model': result['model_used']})}\n\n"
+                        desc = result['text'][json_match.end():].strip()
+                        if desc:
+                            yield f"data: {json.dumps({'type': 'text', 'content': desc})}\n\n"
+                        else:
+                            yield f"data: {json.dumps({'type': 'text', 'content': f'Project built with {len(files_data.get("files", []))} files via {result["model_used"]}. Preview it above, iterate, or deploy.'})}\n\n"
+                    except json.JSONDecodeError:
+                        yield f"data: {json.dumps({'type': 'text', 'content': result['text']})}\n\n"
+                else:
+                    yield f"data: {json.dumps({'type': 'text', 'content': result['text']})}\n\n"
+            else:
+                yield f"data: {json.dumps({'type': 'text', 'content': 'Build failed. Retrying...'})}\n\n"
+            yield f"data: {json.dumps({'type': 'done'})}\n\n"
+            return
+
+        # ── DEPLOY ──
+        if intent == 'deploy':
+            yield f"data: {json.dumps({'type': 'deploy_ready', 'targets': ['vercel', 'render', 'github', 'download']})}\n\n"
+            yield f"data: {json.dumps({'type': 'text', 'content': 'Your project is ready to deploy. Where do you want to ship it?\n\n• **Vercel** — instant frontend, zero config\n• **Render** — full-stack with backends\n• **GitHub** — push to your repo\n• **Download** — get all files as ZIP'})}\n\n"
+            yield f"data: {json.dumps({'type': 'done'})}\n\n"
+            return
+
+        # ── RESEARCH ──
+        if intent == 'research':
+            yield f"data: {json.dumps({'type': 'phase', 'phase': 'searching', 'message': 'Researching...'})}\n\n"
+            pplx_key = os.environ.get("PPLX_API_KEY", "")
+            research_text = ""
+            citations = []
+            if pplx_key:
+                try:
+                    async with httpx.AsyncClient(timeout=60) as hc:
+                        resp = await hc.post("https://api.perplexity.ai/chat/completions",
+                            headers={"Authorization": f"Bearer {pplx_key}", "Content-Type": "application/json"},
+                            json={"model": "sonar-pro", "messages": [{"role": "user", "content": message}], "return_citations": True})
+                        if resp.status_code == 200:
+                            data = resp.json()
+                            research_text = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+                            citations = data.get("citations", [])
+                except Exception as e:
+                    print(f"[Builder] Perplexity error: {e}")
+            if not research_text:
+                result = await _builder_ai_call(BUILDER_CHAT_SYSTEM, message, "claude", 8000)
+                research_text = result['text']
+            if citations:
+                yield f"data: {json.dumps({'type': 'citations', 'citations': citations})}\n\n"
+            for i in range(0, len(research_text), 80):
+                yield f"data: {json.dumps({'type': 'text', 'content': research_text[i:i+80]})}\n\n"
+                await asyncio.sleep(0.015)
+            yield f"data: {json.dumps({'type': 'done'})}\n\n"
+            return
+
+        # ── GENERAL CHAT / DOCUMENT — Stream with Claude ──
+        yield f"data: {json.dumps({'type': 'phase', 'phase': 'generating', 'message': 'SAL is thinking...'})}\n\n"
+        msgs = []
+        if history:
+            for h in history[-8:]:
+                msgs.append({"role": h["role"], "content": h["content"][:2000]})
+        msgs.append({"role": "user", "content": message})
+        anthropic_key = os.environ.get("ANTHROPIC_API_KEY", "")
+        streamed = False
+        if anthropic_key:
+            try:
+                async with httpx.AsyncClient(timeout=120) as hc:
+                    async with hc.stream("POST", "https://api.anthropic.com/v1/messages",
+                        headers={"x-api-key": anthropic_key, "anthropic-version": "2023-06-01", "content-type": "application/json"},
+                        json={"model": "claude-sonnet-4-20250514", "max_tokens": 8000, "system": BUILDER_CHAT_SYSTEM, "stream": True, "messages": msgs},
+                        timeout=120) as resp:
+                        if resp.status_code == 200:
+                            streamed = True
+                            async for line in resp.aiter_lines():
+                                if not line.startswith("data: "): continue
+                                raw = line[6:]
+                                if raw == "[DONE]": break
+                                try:
+                                    evt = json.loads(raw)
+                                    if evt.get("type") == "content_block_delta":
+                                        delta = evt.get("delta", {}).get("text", "")
+                                        if delta:
+                                            yield f"data: {json.dumps({'type': 'text', 'content': delta})}\n\n"
+                                except: continue
+            except Exception as e:
+                print(f"[Builder] Claude stream error: {e}")
+        if not streamed:
+            result = await _builder_ai_call(BUILDER_CHAT_SYSTEM, message, "claude", 8000)
+            if result['text']:
+                for i in range(0, len(result['text']), 80):
+                    yield f"data: {json.dumps({'type': 'text', 'content': result['text'][i:i+80]})}\n\n"
+                    await asyncio.sleep(0.015)
+        yield f"data: {json.dumps({'type': 'done'})}\n\n"
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
 # ── Builder Multi-Model AI Engine ───────────────────────────────────────────
 
 BUILDER_MODEL_CHAIN = [
