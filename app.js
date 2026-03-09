@@ -5435,41 +5435,81 @@ async function builderSend() {
       socialHtml += '</div></div>';
       contentEl.innerHTML += socialHtml;
     } else if (data.type === 'code_files') {
+      // v7.29.0 — Full rewrite: v0/Bolt-style live preview with proper CSS+JS injection
       phaseEl.style.display = 'none';
       builderChatState.files = data.files || [];
       var codeHtml = '<div class="builder-code-preview">';
       
-      // Live preview
+      // Build a complete preview: inject all CSS and JS into the HTML
       var htmlFile = data.files.find(function(f) { return /\.html$/i.test(f.name); });
-      var cssFile = data.files.find(function(f) { return /\.css$/i.test(f.name); });
+      var cssFiles = data.files.filter(function(f) { return /\.css$/i.test(f.name); });
+      var jsFiles = data.files.filter(function(f) { return /\.js$/i.test(f.name); });
+      
       if (htmlFile) {
         var previewContent = htmlFile.content || '';
-        if (cssFile && previewContent.indexOf('<link') > -1) {
-          previewContent = previewContent.replace(/<link[^>]*href=["']style\.css["'][^>]*>/i, '<style>' + (cssFile.content || '') + '</style>');
-        }
-        if (cssFile && previewContent.indexOf('</head>') > -1 && previewContent.indexOf(cssFile.content) === -1) {
-          previewContent = previewContent.replace('</head>', '<style>' + (cssFile.content || '') + '</style></head>');
-        }
+        // Inject all CSS files
+        cssFiles.forEach(function(cf) {
+          var cssContent = cf.content || '';
+          // Replace link tags referencing this CSS file
+          var linkPattern = new RegExp('<link[^>]*href=["\']' + cf.name.replace('.', '\\.') + '["\'][^>]*>', 'gi');
+          if (linkPattern.test(previewContent)) {
+            previewContent = previewContent.replace(linkPattern, '<style>' + cssContent + '</style>');
+          } else if (previewContent.indexOf('</head>') > -1) {
+            previewContent = previewContent.replace('</head>', '<style>' + cssContent + '</style></head>');
+          } else {
+            previewContent = '<style>' + cssContent + '</style>' + previewContent;
+          }
+        });
+        // Inject all JS files
+        jsFiles.forEach(function(jf) {
+          var jsContent = jf.content || '';
+          var scriptPattern = new RegExp('<script[^>]*src=["\']' + jf.name.replace('.', '\\.') + '["\'][^>]*>\\s*</script>', 'gi');
+          if (scriptPattern.test(previewContent)) {
+            previewContent = previewContent.replace(scriptPattern, '<script>' + jsContent + '<\/script>');
+          } else if (previewContent.indexOf('</body>') > -1) {
+            previewContent = previewContent.replace('</body>', '<script>' + jsContent + '<\/script></body>');
+          } else {
+            previewContent += '<script>' + jsContent + '<\/script>';
+          }
+        });
         var blob = new Blob([previewContent], { type: 'text/html' });
         var blobUrl = URL.createObjectURL(blob);
+        var previewId = 'builderPreview_' + Date.now();
         codeHtml += '<div class="builder-code-preview-header">';
         codeHtml += '<div class="builder-code-preview-dots"><span style="background:#ef4444"></span><span style="background:#f59e0b"></span><span style="background:#22c55e"></span></div>';
         codeHtml += '<span class="builder-code-preview-label">Live Preview</span>';
-        codeHtml += '<button class="builder-action-btn" style="font-size:10px;padding:2px 8px;" onclick="var f=this.closest(\'.builder-code-preview\').querySelector(\'iframe\');f.style.height=f.style.height===\'400px\'?\'700px\':\'400px\'">Expand</button>';
+        codeHtml += '<div style="display:flex;gap:4px;margin-left:auto;">';
+        codeHtml += '<button class="builder-action-btn" style="font-size:10px;padding:2px 8px;" onclick="var f=document.getElementById(\'' + previewId + '\');f.style.width=\'100%\';f.style.maxWidth=\'100%\'">Desktop</button>';
+        codeHtml += '<button class="builder-action-btn" style="font-size:10px;padding:2px 8px;" onclick="var f=document.getElementById(\'' + previewId + '\');f.style.width=\'375px\';f.style.maxWidth=\'375px\'">Mobile</button>';
+        codeHtml += '<button class="builder-action-btn" style="font-size:10px;padding:2px 8px;" onclick="var f=document.getElementById(\'' + previewId + '\');f.style.height=f.style.height===\'600px\'?\'400px\':\'600px\'">Expand</button>';
+        codeHtml += '<button class="builder-action-btn" style="font-size:10px;padding:2px 8px;" onclick="window.open(document.getElementById(\'' + previewId + '\').src,\'_blank\')">Open</button>';
+        codeHtml += '</div></div>';
+        codeHtml += '<div style="display:flex;justify-content:center;background:#111;border-radius:0 0 8px 8px;padding:8px;transition:all 0.3s;">';
+        codeHtml += '<iframe id="' + previewId + '" src="' + blobUrl + '" style="width:100%;height:400px;border:none;border-radius:6px;background:#fff;transition:all 0.3s ease;"></iframe>';
         codeHtml += '</div>';
-        codeHtml += '<iframe src="' + blobUrl + '" style="width:100%;height:400px;border:none;background:#fff;"></iframe>';
+      } else {
+        // No HTML file — show code viewer for first file
+        var firstFile = data.files[0];
+        if (firstFile) {
+          codeHtml += '<div class="builder-code-preview-header">';
+          codeHtml += '<div class="builder-code-preview-dots"><span style="background:#ef4444"></span><span style="background:#f59e0b"></span><span style="background:#22c55e"></span></div>';
+          codeHtml += '<span class="builder-code-preview-label">' + escapeHtml(firstFile.name) + '</span>';
+          codeHtml += '</div>';
+          codeHtml += '<pre style="background:#0d0d1a;color:#e0e0e0;padding:16px;font-size:12px;line-height:1.5;max-height:400px;overflow:auto;border-radius:0 0 8px 8px;margin:0;"><code>' + escapeHtml((firstFile.content || '').substring(0, 5000)) + '</code></pre>';
+        }
       }
       
       // File tags
       codeHtml += '<div class="builder-code-files">';
       data.files.forEach(function(f, i) {
         var ext = (f.name || '').split('.').pop().toLowerCase();
-        var color = ext === 'html' ? '#ef4444' : ext === 'css' ? '#3b82f6' : (ext === 'js' || ext === 'ts') ? '#f59e0b' : ext === 'py' ? '#22c55e' : '#6B7280';
-        codeHtml += '<span class="builder-code-file-tag" onclick="builderViewFile(' + i + ')"><span class="builder-code-file-dot" style="background:' + color + '"></span>' + escapeHtml(f.name) + '</span>';
+        var color = ext === 'html' ? '#ef4444' : ext === 'css' ? '#3b82f6' : (ext === 'js' || ext === 'ts') ? '#f59e0b' : ext === 'py' ? '#22c55e' : ext === 'json' ? '#a855f7' : ext === 'md' ? '#6B7280' : '#6B7280';
+        var size = f.content ? (f.content.length > 1000 ? Math.round(f.content.length / 1024) + 'kb' : f.content.length + 'b') : '0b';
+        codeHtml += '<span class="builder-code-file-tag" onclick="builderViewFile(' + i + ')" title="Click to view code"><span class="builder-code-file-dot" style="background:' + color + '"></span>' + escapeHtml(f.name) + ' <span style="font-size:9px;opacity:0.5;">' + size + '</span></span>';
       });
       codeHtml += '</div>';
       
-      // Actions
+      // Actions — v0/Bolt style
       codeHtml += '<div class="builder-code-actions">';
       codeHtml += '<button class="builder-action-btn" onclick="builderQuickPrompt(\'Iterate — \')">Refine</button>';
       codeHtml += '<button class="builder-action-btn" onclick="builderPublish(\'vercel\')"><svg viewBox="0 0 24 24" fill="currentColor" width="12" height="12"><path d="M12 1L1 22h22L12 1z"/></svg> Vercel</button>';
@@ -5572,8 +5612,13 @@ function builderViewFile(index) {
   var files = builderChatState.files;
   if (!files || !files[index]) return;
   var f = files[index];
-  var popup = window.open('', '_blank', 'width=800,height=600');
-  popup.document.write('<html><head><title>' + escapeHtml(f.name) + '</title><style>body{background:#1a1a2e;color:#e0e0e0;font-family:monospace;padding:20px;white-space:pre-wrap;font-size:13px;line-height:1.5;}</style></head><body>' + escapeHtml(f.content || '') + '</body></html>');
+  var ext = (f.name || '').split('.').pop().toLowerCase();
+  var color = ext === 'html' ? '#ef4444' : ext === 'css' ? '#3b82f6' : (ext === 'js' || ext === 'ts') ? '#f59e0b' : ext === 'py' ? '#22c55e' : '#a855f7';
+  var popup = window.open('', '_blank', 'width=900,height=700');
+  popup.document.write('<html><head><title>' + escapeHtml(f.name) + '</title><style>*{margin:0;padding:0;box-sizing:border-box}body{background:#0a0a0f;color:#e0e0e0;font-family:ui-monospace,"Cascadia Code","Fira Code",monospace;font-size:13px;line-height:1.6;}.header{background:#111;padding:12px 20px;display:flex;align-items:center;gap:10px;border-bottom:1px solid #222;position:sticky;top:0;}.dot{width:8px;height:8px;border-radius:50%;background:' + color + '}.fname{font-weight:600;font-size:14px;}.lines{color:#666;font-size:11px;margin-left:auto;}pre{padding:20px;overflow-x:auto;counter-reset:line;white-space:pre-wrap;word-break:break-all;}pre span.line{display:block;padding-left:50px;position:relative;}pre span.line::before{counter-increment:line;content:counter(line);position:absolute;left:0;width:40px;text-align:right;color:#444;font-size:11px;}pre span.line:hover{background:rgba(255,255,255,0.03);}.copy-btn{background:#222;color:#aaa;border:1px solid #333;padding:4px 12px;border-radius:6px;cursor:pointer;font-size:11px;}.copy-btn:hover{background:#333;color:#fff;}</style></head><body>');
+  popup.document.write('<div class="header"><div class="dot"></div><span class="fname">' + escapeHtml(f.name) + '</span><button class="copy-btn" onclick="navigator.clipboard.writeText(document.getElementById(\'code\').textContent).then(function(){this.textContent=\'Copied!\'}.bind(this))">Copy</button><span class="lines">' + ((f.content || '').split('\n').length) + ' lines</span></div>');
+  var codeLines = (f.content || '').split('\n').map(function(l) { return '<span class="line">' + escapeHtml(l) + '</span>'; }).join('');
+  popup.document.write('<pre id="code">' + codeLines + '</pre></body></html>');
   popup.document.close();
 }
 

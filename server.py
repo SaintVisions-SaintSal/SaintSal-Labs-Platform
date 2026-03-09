@@ -5549,6 +5549,52 @@ BUILDER_CHAT_SYSTEM = """You are SAL™, the AI Builder Engine for SaintSal™ L
 5. Keep responses concise but complete.
 """
 
+# v7.29.0 — Dedicated code builder system prompt (forces JSON output, no plans)
+BUILDER_CODE_SYSTEM = """You are SAL™ Code Engine. You produce WORKING CODE, not plans or descriptions.
+
+You work exactly like v0.dev, Bolt.new, and Claude Artifacts. When a user asks you to build something, you OUTPUT THE ACTUAL CODE as a renderable project — never a file list, never a plan, never an outline.
+
+RESPONSE FORMAT — MANDATORY:
+You MUST output a JSON block containing all project files. This is NON-NEGOTIABLE.
+
+```json
+{"files": [{"name": "index.html", "content": "<!DOCTYPE html>...FULL HTML HERE..."}, {"name": "style.css", "content": "...FULL CSS HERE..."}, {"name": "app.js", "content": "...FULL JS HERE..."}]}
+```
+
+RULES:
+1. Your ENTIRE response must be the JSON code block above, optionally followed by 1-2 sentences.
+2. NEVER list files with descriptions (e.g. "server.js — Main entry point"). That is FORBIDDEN.
+3. NEVER say "Here's what I'll create" or "Let me plan this out". Just write the code.
+4. NEVER use placeholder comments like "// TODO" or "/* add your code */". Write REAL code.
+5. Every file in the JSON must have complete, working, production-ready content.
+6. For web projects: Always include index.html as the main entry. Inline CSS/JS is fine for single-page apps.
+7. Use modern, beautiful design: dark themes, gradients, smooth animations, glassmorphism, responsive.
+8. If the project has multiple files, include ALL of them with FULL content.
+9. The code must WORK when rendered in a browser iframe immediately — no build steps needed.
+10. For backend/Node projects: still output the files but include a README with setup instructions.
+
+EXAMPLE (a user says "build me a landing page"):
+```json
+{"files": [{"name": "index.html", "content": "<!DOCTYPE html><html lang='en'><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width,initial-scale=1.0'><title>Landing Page</title><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:'Inter',system-ui,sans-serif;background:#0a0a0f;color:#e0e0e0;min-height:100vh}...</style></head><body>...</body></html>"}]}
+```
+
+NOTICE: The example above contains ACTUAL HTML/CSS/JS code, not descriptions. Do the same.
+"""
+
+# v7.29.0 — Retry prompt when AI returns a plan instead of code
+BUILDER_CODE_RETRY = """STOP. You returned a plan/outline instead of actual code. That is wrong.
+
+Do NOT list files with descriptions. Do NOT describe what you will build.
+Instead, OUTPUT THE ACTUAL CODE in this exact format:
+
+```json
+{"files": [{"name": "index.html", "content": "FULL WORKING HTML CODE HERE"}]}
+```
+
+Write the real, complete, working code NOW. The JSON block with actual file contents is MANDATORY.
+
+Original request: """
+
 
 def _detect_builder_intent(message: str) -> str:
     """Detect what the user wants from their message."""
@@ -5776,7 +5822,7 @@ async def builder_unified_chat(request: Request):
             yield f"data: {json.dumps({'type': 'done'})}\n\n"
             return
 
-        # ── CODE ──
+        # ── CODE ── v7.29.0 — Full rewrite: force JSON output, auto-retry on plans
         if intent == 'code':
             yield f"data: {json.dumps({'type': 'phase', 'phase': 'generating', 'message': 'Building your project...'})}\n\n"
             history_ctx = ""
@@ -5787,32 +5833,144 @@ async def builder_unified_chat(request: Request):
             if attached_files:
                 for af in attached_files[:3]:
                     file_ctx += f"\nAttached: {af.get('filename', '')} — {af.get('extracted_text', '')[:1000]}"
-            code_sys = BUILDER_CHAT_SYSTEM + """\nCRITICAL CODE RULES:
-- Output ALL files as JSON: ```json\n{"files": [{"name": "index.html", "content": "..."}, ...]}\n```
-- COMPLETE, WORKING, PRODUCTION-READY code — no placeholders
-- Beautiful modern dark-theme design, responsive, smooth animations
-- After the JSON block, add a brief description"""
             user_msg = message
             if file_ctx: user_msg += f"\n\n[ATTACHED]{file_ctx}"
             if history_ctx: user_msg += f"\n\n[CONTEXT]{history_ctx}"
-            result = await _builder_ai_call(code_sys, user_msg, "claude", 64000)
+
+            # Helper to extract JSON files block from AI response
+            def _extract_code_files(text: str):
+                """Try multiple strategies to extract {files: [...]} from AI response."""
+                import re as _re2
+                # Strategy 1: ```json ... ``` block
+                m = _re2.search(r'```(?:json)?\s*(\{[\s\S]*?"files"\s*:\s*\[)', text)
+                if m:
+                    start = m.start(1)
+                    # Find matching end: scan for the closing ]} of the files array and object
+                    depth_obj = 0
+                    depth_arr = 0
+                    in_string = False
+                    escape = False
+                    end_pos = start
+                    for ci in range(start, len(text)):
+                        ch = text[ci]
+                        if escape:
+                            escape = False
+                            continue
+                        if ch == '\\':
+                            if in_string: escape = True
+                            continue
+                        if ch == '"':
+                            in_string = not in_string
+                            continue
+                        if in_string:
+                            continue
+                        if ch == '{':
+                            depth_obj += 1
+                        elif ch == '}':
+                            depth_obj -= 1
+                            if depth_obj == 0:
+                                end_pos = ci + 1
+                                break
+                        elif ch == '[':
+                            depth_arr += 1
+                        elif ch == ']':
+                            depth_arr -= 1
+                    if end_pos > start:
+                        candidate = text[start:end_pos]
+                        try:
+                            parsed = json.loads(candidate)
+                            if isinstance(parsed.get('files'), list) and len(parsed['files']) > 0:
+                                # Verify files have actual content, not just descriptions
+                                first_file = parsed['files'][0]
+                                if first_file.get('content') and len(first_file['content']) > 50:
+                                    return parsed, text[end_pos:].replace('```', '').strip()
+                        except (json.JSONDecodeError, KeyError):
+                            pass
+                # Strategy 2: raw {"files": ...} without backticks
+                m2 = _re2.search(r'(\{\s*"files"\s*:\s*\[)', text)
+                if m2:
+                    start = m2.start()
+                    depth_obj = 0
+                    in_string = False
+                    escape = False
+                    end_pos = start
+                    for ci in range(start, len(text)):
+                        ch = text[ci]
+                        if escape:
+                            escape = False
+                            continue
+                        if ch == '\\':
+                            if in_string: escape = True
+                            continue
+                        if ch == '"':
+                            in_string = not in_string
+                            continue
+                        if in_string:
+                            continue
+                        if ch == '{':
+                            depth_obj += 1
+                        elif ch == '}':
+                            depth_obj -= 1
+                            if depth_obj == 0:
+                                end_pos = ci + 1
+                                break
+                    if end_pos > start:
+                        candidate = text[start:end_pos]
+                        try:
+                            parsed = json.loads(candidate)
+                            if isinstance(parsed.get('files'), list) and len(parsed['files']) > 0:
+                                first_file = parsed['files'][0]
+                                if first_file.get('content') and len(first_file['content']) > 50:
+                                    return parsed, text[end_pos:].strip()
+                        except (json.JSONDecodeError, KeyError):
+                            pass
+                return None, text
+
+            # Attempt 1: Use dedicated BUILDER_CODE_SYSTEM prompt
+            print(f"[Builder Code] Attempt 1 with BUILDER_CODE_SYSTEM")
+            result = await _builder_ai_call(BUILDER_CODE_SYSTEM, user_msg, "claude", 64000)
+            files_data = None
+            desc_text = ""
             if result['text']:
-                json_match = _re.search(r'```json\s*(\{[\s\S]*?"files"\s*:\s*\[[\s\S]*?\]\s*\})\s*```', result['text'])
-                if json_match:
-                    try:
-                        files_data = json.loads(json_match.group(1))
-                        yield f"data: {json.dumps({'type': 'code_files', 'files': files_data.get('files', []), 'model': result['model_used']})}\n\n"
-                        desc = result['text'][json_match.end():].strip()
-                        if desc:
-                            yield f"data: {json.dumps({'type': 'text', 'content': desc})}\n\n"
-                        else:
-                            yield f"data: {json.dumps({'type': 'text', 'content': f'Project built with {len(files_data.get("files", []))} files via {result["model_used"]}. Preview it above, iterate, or deploy.'})}\n\n"
-                    except json.JSONDecodeError:
-                        yield f"data: {json.dumps({'type': 'text', 'content': result['text']})}\n\n"
+                files_data, desc_text = _extract_code_files(result['text'])
+
+            # Attempt 2: If no valid JSON files, retry with RETRY prompt
+            if not files_data:
+                print(f"[Builder Code] Attempt 1 failed (no JSON files). Retrying...")
+                yield f"data: {json.dumps({'type': 'phase', 'phase': 'generating', 'message': 'Generating code...'})}\n\n"
+                retry_msg = BUILDER_CODE_RETRY + user_msg
+                result2 = await _builder_ai_call(BUILDER_CODE_SYSTEM, retry_msg, "claude", 64000)
+                if result2['text']:
+                    files_data, desc_text = _extract_code_files(result2['text'])
+                    if files_data:
+                        result = result2
+
+            # Attempt 3: Try a different model if Claude failed
+            if not files_data:
+                print(f"[Builder Code] Attempt 2 failed. Trying alternate model (grok)...")
+                yield f"data: {json.dumps({'type': 'phase', 'phase': 'generating', 'message': 'Switching models...'})}\n\n"
+                result3 = await _builder_ai_call(BUILDER_CODE_SYSTEM, user_msg, "grok", 32000)
+                if result3['text']:
+                    files_data, desc_text = _extract_code_files(result3['text'])
+                    if files_data:
+                        result = result3
+
+            if files_data and files_data.get('files'):
+                yield f"data: {json.dumps({'type': 'code_files', 'files': files_data['files'], 'model': result['model_used']})}\n\n"
+                file_count = len(files_data['files'])
+                if desc_text and len(desc_text) > 10:
+                    # Clean up description — remove markdown artifacts
+                    clean_desc = desc_text.strip().strip('`').strip()
+                    if clean_desc:
+                        yield f"data: {json.dumps({'type': 'text', 'content': clean_desc})}\n\n"
                 else:
-                    yield f"data: {json.dumps({'type': 'text', 'content': result['text']})}\n\n"
+                    file_names = ', '.join(f.get('name', '?') for f in files_data['files'][:5])
+                    yield f"data: {json.dumps({'type': 'text', 'content': f'Built {file_count} files ({file_names}) via {result["model_used"]}. Preview it above — iterate, refine, or deploy.'})}\n\n"
             else:
-                yield f"data: {json.dumps({'type': 'text', 'content': 'Build failed. Retrying...'})}\n\n"
+                # All attempts failed — show what we got but warn user
+                print(f"[Builder Code] All attempts failed to produce JSON files")
+                fallback_text = result['text'] if result.get('text') else 'Build engine encountered an issue. Please try rephrasing your request.'
+                yield f"data: {json.dumps({'type': 'text', 'content': fallback_text})}\n\n"
             yield f"data: {json.dumps({'type': 'done'})}\n\n"
             return
 
