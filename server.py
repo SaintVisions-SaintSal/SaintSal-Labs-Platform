@@ -549,16 +549,16 @@ async def chat(request: Request):
 
         yield f"data: {json.dumps({'type': 'done'})}\n\n"
 
-        # ═══ METERING POST-CALL: Record usage after stream completes ═══
-        if metering_user and ai_responded:
-            import asyncio
+    # ═══ METERING POST-CALL: Record usage via BackgroundTask after stream ═══
+    async def _chat_meter_callback():
+        if metering_user:
             try:
-                loop = asyncio.get_event_loop()
-                loop.create_task(record_metering(metering_user, requested_model, "chat", duration_minutes=1.0))
+                await record_metering(metering_user, requested_model, "chat", duration_minutes=1.0)
             except Exception as me:
                 print(f"[Metering] Chat post-call error (non-fatal): {me}")
 
-    return StreamingResponse(generate(), media_type="text/event-stream")
+    from starlette.background import BackgroundTask
+    return StreamingResponse(generate(), media_type="text/event-stream", background=BackgroundTask(_chat_meter_callback))
 
 
 # ============================================================================
@@ -3152,7 +3152,7 @@ async def meter_usage(user_id: str, model_id: str, action_type: str, duration_mi
     margin = ((charged - our_cost) / our_cost * 100) if our_cost > 0 else 0
     
     try:
-        # Call Supabase meter_compute RPC
+        # Call Supabase meter_compute RPC with ACTUAL model costs
         result = supabase_admin.rpc("meter_compute", {
             "p_user_id": user_id,
             "p_model_id": model_id,
@@ -3160,7 +3160,11 @@ async def meter_usage(user_id: str, model_id: str, action_type: str, duration_mi
             "p_duration_minutes": duration_minutes,
             "p_input_tokens": input_tokens,
             "p_output_tokens": output_tokens,
-            "p_metadata": json.dumps({"provider": model["provider"], "category": model["category"]})
+            "p_metadata": json.dumps({"provider": model["provider"], "category": model["category"]}),
+            "p_credits_needed": model.get("credits", 1),
+            "p_cost_charged": round(charged, 4),
+            "p_our_cost": round(our_cost, 4),
+            "p_compute_tier": model.get("tier", "mini"),
         }).execute()
         
         if result.data and isinstance(result.data, dict) and result.data.get("success"):
