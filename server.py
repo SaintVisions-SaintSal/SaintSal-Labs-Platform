@@ -6748,7 +6748,7 @@ async def save_personality_settings(request: Request, authorization: Optional[st
 # ADMIN FULFILLMENT DASHBOARD — Launch Pad Orders
 # ══════════════════════════════════════════════════════════════════════════════
 
-ADMIN_EMAILS = ["ryan@cookin.io", "ryan@hacpglobal.ai", "cap@hacpglobal.ai", "laliecapatosto86@gmail.com"]
+ADMIN_EMAILS = ["ryan@cookin.io", "ryan@hacpglobal.ai", "cap@hacpglobal.ai", "laliecapatosto86@gmail.com", "laliecapatosto96@gmail.com"]
 
 async def require_admin(authorization: Optional[str] = Header(None)):
     """Verify the current user is an admin."""
