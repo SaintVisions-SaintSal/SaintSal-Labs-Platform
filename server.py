@@ -579,7 +579,7 @@ def _summarize_for_preview(messages: list) -> str:
 @app.post("/api/conversations")
 async def save_conversation(request: Request, authorization: str = Header(None)):
     """Save or update a conversation."""
-    user = verify_token(authorization)
+    user = await get_current_user(authorization)
     if not user:
         raise HTTPException(status_code=401, detail="Sign in to save conversations")
     
@@ -633,7 +633,7 @@ async def list_conversations(
     offset: int = 0,
 ):
     """List user's conversations (most recent first)."""
-    user = verify_token(authorization)
+    user = await get_current_user(authorization)
     if not user:
         raise HTTPException(status_code=401, detail="Sign in to view conversations")
     
@@ -669,7 +669,7 @@ async def list_conversations(
 @app.get("/api/conversations/{conv_id}")
 async def get_conversation(conv_id: str, authorization: str = Header(None)):
     """Load a full conversation with all messages."""
-    user = verify_token(authorization)
+    user = await get_current_user(authorization)
     if not user:
         raise HTTPException(status_code=401, detail="Sign in to view conversations")
     
@@ -693,7 +693,7 @@ async def get_conversation(conv_id: str, authorization: str = Header(None)):
 @app.patch("/api/conversations/{conv_id}")
 async def update_conversation(conv_id: str, request: Request, authorization: str = Header(None)):
     """Update conversation title or metadata."""
-    user = verify_token(authorization)
+    user = await get_current_user(authorization)
     if not user:
         raise HTTPException(status_code=401, detail="Sign in required")
     
@@ -724,7 +724,7 @@ async def update_conversation(conv_id: str, request: Request, authorization: str
 @app.delete("/api/conversations/{conv_id}")
 async def delete_conversation(conv_id: str, authorization: str = Header(None)):
     """Delete a conversation."""
-    user = verify_token(authorization)
+    user = await get_current_user(authorization)
     if not user:
         raise HTTPException(status_code=401, detail="Sign in required")
     
