@@ -76,6 +76,7 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css">
 <link rel="stylesheet" href="connectors-domains.css">
+<link rel="stylesheet" href="admin-fulfillment.css">
 <link rel="stylesheet" href="realestate.css">
     <link rel="stylesheet" href="medical.css">
 </head>
@@ -184,6 +185,10 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
       <div class="nav-item" data-view="account" onclick="navigate('account')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
         Account
+      </div>
+      <div class="nav-item" data-view="admin" onclick="navigate('admin')" id="adminNavItem" style="display:none">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+        Admin Orders
       </div>
 
       <div class="nav-divider"></div>
@@ -1181,6 +1186,11 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
       <div class="app-footer">SaintSal™ <span class="footer-labs-green">LABS</span> · Responsible Intelligence · Patent #10,290,222 · <a href="https://www.perplexity.ai/computer" target="_blank" rel="noopener noreferrer">Created with Perplexity Computer</a></div>
     </div>
 
+    <!-- Admin Fulfillment Dashboard -->
+    <div class="view admin-view" id="adminView">
+      <!-- Dynamically rendered by admin-fulfillment.js renderAdminDashboard() -->
+    </div>
+
     <!-- Connectors View -->
     <div class="view connectors-view" id="connectorsView">
       <div class="connectors-layout" style="max-width:1100px;margin:0 auto;padding:var(--space-6) var(--space-5);"></div>
@@ -1275,6 +1285,7 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
     <script src="business-center.js"></script>
     <script src="voice-engine.js"></script>
     <script src="builder-publish.js"></script>
+    <script src="admin-fulfillment.js"></script>
 
 
     <!-- Social Composer Modal -->

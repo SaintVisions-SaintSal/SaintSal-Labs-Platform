@@ -26,7 +26,8 @@ var views = {
   voice: document.getElementById('voiceView'),
   dashboard: document.getElementById('dashboardView'),
   landing: document.getElementById('landingView'),
-  personality: document.getElementById('personalityView')
+  personality: document.getElementById('personalityView'),
+  admin: document.getElementById('adminView')
 };
 
 /* ============================================
@@ -66,6 +67,9 @@ function setView(view) {
   }
   if (view === 'personality') {
     setTimeout(renderPersonalitySettings, 50);
+  }
+  if (view === 'admin') {
+    setTimeout(renderAdminDashboard, 50);
   }
 
   // Update sidebar active for non-vertical views
@@ -3236,6 +3240,14 @@ function updateAuthUI(loggedIn) {
     if (walletEl) walletEl.textContent = '$' + (parseFloat(currentUser.wallet_balance) || 0).toFixed(2);
     if (monthSpendEl) monthSpendEl.textContent = '$' + (parseFloat(currentUser.current_month_spend) || 0).toFixed(2);
     if (computeMinEl) computeMinEl.textContent = (parseFloat(currentUser.total_compute_minutes) || 0).toFixed(1) + ' min';
+  }
+
+  // Check admin access and show/hide admin nav
+  if (loggedIn && typeof initAdminNav === 'function') {
+    setTimeout(initAdminNav, 200);
+  } else {
+    var adminNavDesktop = document.getElementById('adminNavItem');
+    if (adminNavDesktop) adminNavDesktop.style.display = 'none';
   }
 }
 

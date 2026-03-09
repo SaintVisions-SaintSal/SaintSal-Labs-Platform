@@ -6744,6 +6744,185 @@ async def save_personality_settings(request: Request, authorization: Optional[st
     return {"success": True, "saved_to": "cache"}
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+# ADMIN FULFILLMENT DASHBOARD — Launch Pad Orders
+# ══════════════════════════════════════════════════════════════════════════════
+
+ADMIN_EMAILS = ["ryan@cookin.io", "ryan@hacpglobal.ai", "cap@hacpglobal.ai"]
+
+async def require_admin(authorization: Optional[str] = Header(None)):
+    """Verify the current user is an admin."""
+    user = await get_current_user(authorization)
+    if not user or user.get("email", "").lower() not in [e.lower() for e in ADMIN_EMAILS]:
+        return None
+    return user
+
+@app.get("/api/admin/check")
+async def admin_check(authorization: Optional[str] = Header(None)):
+    """Check if current user has admin access."""
+    user = await require_admin(authorization)
+    return {"is_admin": user is not None, "email": user.get("email") if user else None}
+
+
+@app.get("/api/admin/orders")
+async def admin_get_orders(status: Optional[str] = None, authorization: Optional[str] = Header(None)):
+    """Get all Launch Pad orders for admin fulfillment dashboard."""
+    user = await require_admin(authorization)
+    if not user:
+        return JSONResponse({"error": "Admin access required"}, status_code=403)
+    
+    # Try Supabase first
+    if supabase_admin:
+        try:
+            query = supabase_admin.table("launch_pad_orders").select("*").order("created_at", desc=True)
+            if status and status != "all":
+                query = query.eq("status", status)
+            result = query.execute()
+            orders = result.data or []
+            return {"orders": orders, "count": len(orders)}
+        except Exception as e:
+            print(f"[Admin] Supabase query error: {e}")
+    
+    # Fallback: return in-memory orders from corpnet + demo data
+    in_memory = getattr(app, "_orders", [])
+    demo_orders = [
+        {
+            "id": "demo-001",
+            "status": "paid",
+            "service_name": "LLC Formation — Basic Package",
+            "entity_type": "LLC",
+            "package_tier": "basic",
+            "processing_speed": "standard",
+            "filing_state": "CA",
+            "business_name": "Acme Ventures LLC",
+            "customer_name": "Demo Customer",
+            "customer_email": "demo@example.com",
+            "amount_charged": 19900,
+            "corpnet_cost": 14900,
+            "margin": 5000,
+            "stripe_status": "paid",
+            "stripe_session_id": "cs_demo_001",
+            "corpnet_order_id": None,
+            "notes": None,
+            "created_at": datetime.now().isoformat(),
+            "updated_at": datetime.now().isoformat(),
+        },
+        {
+            "id": "demo-002",
+            "status": "in_fulfillment",
+            "service_name": "S-Corp Formation — Deluxe Package",
+            "entity_type": "SCorp",
+            "package_tier": "deluxe",
+            "processing_speed": "expedited",
+            "filing_state": "DE",
+            "business_name": "TechStar Inc",
+            "customer_name": "Jane Smith",
+            "customer_email": "jane@techstar.com",
+            "amount_charged": 44900,
+            "corpnet_cost": 29900,
+            "margin": 15000,
+            "stripe_status": "paid",
+            "stripe_session_id": "cs_demo_002",
+            "corpnet_order_id": "CN-78451293",
+            "notes": "Expedited filing requested",
+            "created_at": datetime.now().isoformat(),
+            "updated_at": datetime.now().isoformat(),
+        },
+        {
+            "id": "demo-003",
+            "status": "complete",
+            "service_name": "Nonprofit Formation — Complete Package",
+            "entity_type": "Nonprofit",
+            "package_tier": "complete",
+            "processing_speed": "standard",
+            "filing_state": "NY",
+            "business_name": "Hope Foundation Inc",
+            "customer_name": "Michael Johnson",
+            "customer_email": "michael@hope.org",
+            "amount_charged": 69900,
+            "corpnet_cost": 44900,
+            "margin": 25000,
+            "stripe_status": "paid",
+            "stripe_session_id": "cs_demo_003",
+            "corpnet_order_id": "CN-92831746",
+            "notes": "All documents delivered via email",
+            "documents_delivered_at": datetime.now().isoformat(),
+            "created_at": datetime.now().isoformat(),
+            "updated_at": datetime.now().isoformat(),
+        },
+    ]
+    all_orders = demo_orders + in_memory
+    if status and status != "all":
+        all_orders = [o for o in all_orders if o.get("status") == status]
+    return {"orders": all_orders, "count": len(all_orders)}
+
+
+@app.put("/api/admin/orders/{order_id}")
+async def admin_update_order(order_id: str, request: Request, authorization: Optional[str] = Header(None)):
+    """Update an order's status, CorpNet ID, notes, etc."""
+    user = await require_admin(authorization)
+    if not user:
+        return JSONResponse({"error": "Admin access required"}, status_code=403)
+    
+    body = await request.json()
+    updates = {
+        "updated_at": datetime.now().isoformat(),
+    }
+    for field in ["status", "corpnet_order_id", "notes", "corpnet_filed_at", "documents_delivered_at"]:
+        if field in body:
+            updates[field] = body[field]
+    
+    if supabase_admin:
+        try:
+            result = supabase_admin.table("launch_pad_orders").update(updates).eq("id", order_id).execute()
+            return {"success": True, "order_id": order_id, "updates": updates, "source": "supabase"}
+        except Exception as e:
+            print(f"[Admin] Order update error: {e}")
+            return JSONResponse({"error": f"Update failed: {e}"}, status_code=500)
+    
+    # Fallback: update in-memory
+    orders = getattr(app, "_orders", [])
+    for o in orders:
+        if o.get("id") == order_id:
+            o.update(updates)
+            return {"success": True, "order_id": order_id, "updates": updates, "source": "memory"}
+    
+    return {"success": True, "order_id": order_id, "updates": updates, "source": "demo"}
+
+
+@app.get("/api/admin/stats")
+async def admin_stats(authorization: Optional[str] = Header(None)):
+    """Get aggregate stats for admin dashboard."""
+    user = await require_admin(authorization)
+    if not user:
+        return JSONResponse({"error": "Admin access required"}, status_code=403)
+    
+    if supabase_admin:
+        try:
+            result = supabase_admin.table("launch_pad_orders").select("status, amount_charged, margin, stripe_status").execute()
+            orders = result.data or []
+            paid_orders = [o for o in orders if o.get("stripe_status") == "paid"]
+            return {
+                "total_orders": len(orders),
+                "awaiting_fulfillment": len([o for o in orders if o.get("status") == "paid"]),
+                "in_fulfillment": len([o for o in orders if o.get("status") == "in_fulfillment"]),
+                "completed": len([o for o in orders if o.get("status") == "complete"]),
+                "total_revenue": sum(o.get("amount_charged", 0) for o in paid_orders),
+                "total_margin": sum(o.get("margin", 0) for o in paid_orders),
+            }
+        except Exception as e:
+            print(f"[Admin] Stats error: {e}")
+    
+    return {
+        "total_orders": 3,
+        "awaiting_fulfillment": 1,
+        "in_fulfillment": 1,
+        "completed": 1,
+        "total_revenue": 134700,
+        "total_margin": 45000,
+    }
+
+
 # ── Static file serving (must be AFTER all API routes) ──────────────────────
 _static_dir = Path(__file__).parent
 

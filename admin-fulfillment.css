@@ -1,0 +1,328 @@
+/* ═══════════════════════════════════════════════════════════════════════════════
+   SaintSal™ Labs — Admin Fulfillment Dashboard Styles
+   Playfair Display headings + DM Mono body — dark admin aesthetic
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;800&family=DM+Mono:wght@400;500&display=swap');
+
+/* ── Wrap ── */
+.admin-wrap {
+  padding: 28px 20px 100px;
+  max-width: 840px;
+  margin: 0 auto;
+  font-family: 'DM Mono', 'Courier New', monospace;
+}
+
+/* ── Header ── */
+.admin-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 32px;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.admin-title {
+  font-family: 'Playfair Display', serif;
+  font-size: 28px;
+  font-weight: 800;
+  color: #f0f0f0;
+  margin: 0 0 4px;
+}
+.admin-subtitle {
+  color: #444;
+  font-size: 12px;
+  margin: 0;
+}
+
+/* ── Gold Button ── */
+.admin-btn-gold {
+  background: linear-gradient(135deg, #D4AF37, #A8880A);
+  color: #080808;
+  font-weight: 700;
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  border: none;
+  border-radius: 5px;
+  padding: 9px 18px;
+  cursor: pointer;
+  font-family: inherit;
+  transition: all 0.2s;
+}
+.admin-btn-gold:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 5px 16px rgba(212, 175, 55, 0.28);
+}
+.admin-btn-gold:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+.admin-btn-full { width: 100%; }
+
+/* ── Ghost Button ── */
+.admin-btn-ghost {
+  background: transparent;
+  color: #555;
+  font-size: 11px;
+  border: 1px solid #222;
+  border-radius: 5px;
+  padding: 8px 14px;
+  cursor: pointer;
+  font-family: inherit;
+  transition: all 0.2s;
+}
+.admin-btn-ghost:hover {
+  color: #888;
+  border-color: #333;
+}
+
+/* ── Stats Grid ── */
+.admin-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 12px;
+  margin-bottom: 28px;
+}
+.admin-stat-card {
+  background: rgba(14, 14, 14, 0.7);
+  border: 1px solid #1a1a1a;
+  border-radius: 10px;
+  padding: 18px 20px;
+}
+.admin-stat-label {
+  font-size: 10px;
+  color: #444;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+.admin-stat-value {
+  font-family: 'Playfair Display', serif;
+  font-size: 26px;
+  font-weight: 700;
+  color: #D4AF37;
+}
+
+/* ── Filters ── */
+.admin-filters {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+.admin-filter-btn {
+  padding: 7px 14px;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  border-radius: 5px;
+  cursor: pointer;
+  border: 1px solid #1e1e1e;
+  background: transparent;
+  color: #444;
+  font-family: inherit;
+  transition: all 0.2s;
+  text-transform: capitalize;
+}
+.admin-filter-btn:hover {
+  color: #666;
+  border-color: #2a2a2a;
+}
+.admin-filter-btn.on {
+  background: rgba(212, 175, 55, 0.1);
+  border-color: rgba(212, 175, 55, 0.3);
+  color: #D4AF37;
+}
+
+/* ── Order Row ── */
+.admin-order-row {
+  border: 1px solid #1a1a1a;
+  border-radius: 8px;
+  padding: 16px 18px;
+  margin-bottom: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+  background: rgba(14, 14, 14, 0.5);
+}
+.admin-order-row:hover {
+  border-color: rgba(212, 175, 55, 0.25);
+  background: rgba(17, 17, 17, 0.8);
+}
+.admin-order-main {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.admin-order-info { flex: 1; min-width: 0; }
+.admin-order-name {
+  font-family: 'Playfair Display', serif;
+  font-size: 15px;
+  font-weight: 700;
+  color: #d0d0d0;
+  margin-bottom: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.admin-order-meta {
+  font-size: 12px;
+  color: #555;
+  margin-bottom: 2px;
+}
+.admin-order-email {
+  font-size: 11px;
+  color: #333;
+}
+.admin-order-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
+.admin-order-amount {
+  font-size: 15px;
+  font-weight: 700;
+  color: #D4AF37;
+}
+.admin-order-margin {
+  font-size: 11px;
+  color: #3a3a3a;
+}
+
+/* ── Status Badge ── */
+.admin-status-badge {
+  border-radius: 99px;
+  padding: 4px 10px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+/* ── Empty State ── */
+.admin-empty {
+  color: #2a2a2a;
+  font-size: 13px;
+  padding: 40px 0;
+  text-align: center;
+}
+
+/* ── Modal ── */
+.admin-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 20px;
+}
+.admin-modal {
+  background: #0f0f0f;
+  border: 1px solid #222;
+  border-radius: 12px;
+  padding: 28px;
+  width: 100%;
+  max-width: 520px;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+.admin-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 22px;
+}
+.admin-modal-title {
+  font-family: 'Playfair Display', serif;
+  font-size: 20px;
+  font-weight: 700;
+  color: #d0d0d0;
+}
+
+/* ── Field Rows ── */
+.admin-field-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 0;
+  border-bottom: 1px solid #141414;
+  gap: 16px;
+}
+.admin-field-label {
+  font-size: 11px;
+  color: #444;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  flex-shrink: 0;
+}
+.admin-field-value {
+  font-size: 12px;
+  color: #bbb;
+  text-align: right;
+  word-break: break-all;
+}
+
+/* ── Inputs ── */
+.admin-input-group {
+  margin-top: 16px;
+}
+.admin-input-label {
+  font-size: 10px;
+  color: #555;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  display: block;
+  margin-bottom: 8px;
+}
+.admin-inp {
+  background: #111;
+  border: 1px solid #222;
+  border-radius: 6px;
+  padding: 10px 14px;
+  color: #e0e0e0;
+  font-size: 13px;
+  font-family: inherit;
+  outline: none;
+  width: 100%;
+  transition: border-color 0.2s;
+  box-sizing: border-box;
+}
+.admin-inp:focus {
+  border-color: rgba(212, 175, 55, 0.4);
+}
+
+/* ── Status Action Buttons ── */
+.admin-status-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+.admin-status-btn {
+  text-transform: capitalize;
+  font-size: 11px;
+}
+
+/* ── Scrollbar for modal ── */
+.admin-modal::-webkit-scrollbar { width: 4px; }
+.admin-modal::-webkit-scrollbar-track { background: transparent; }
+.admin-modal::-webkit-scrollbar-thumb { background: #222; border-radius: 4px; }
+
+/* ── Mobile ── */
+@media (max-width: 600px) {
+  .admin-wrap { padding: 16px 12px 100px; }
+  .admin-title { font-size: 22px; }
+  .admin-stats-grid { grid-template-columns: 1fr 1fr; }
+  .admin-stat-value { font-size: 22px; }
+  .admin-order-right {
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 6px;
+  }
+  .admin-modal { padding: 20px 16px; }
+}
