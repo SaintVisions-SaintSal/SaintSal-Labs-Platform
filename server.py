@@ -416,6 +416,19 @@ async def chat(request: Request):
     history = body.get("history", [])
     use_search = body.get("search", True)
     force_intent = body.get("intent", "")  # Allow frontend to force an intent
+    requested_model = body.get("model", "claude_sonnet")  # Model selection from frontend
+
+    # ═══ METERING PRE-CHECK ═══
+    meter_check = await enforce_metering(request, model_id=requested_model)
+    if not meter_check["allowed"]:
+        error_payload = {"error": meter_check["error"], "type": "metering"}
+        if meter_check.get("upgrade_required"):
+            error_payload["upgrade_required"] = meter_check["upgrade_required"]
+        if meter_check.get("credits_remaining") is not None:
+            error_payload["credits_remaining"] = meter_check["credits_remaining"]
+        return JSONResponse(error_payload, status_code=meter_check.get("status_code", 403))
+    metering_user = meter_check.get("user")
+    # ═══ END METERING PRE-CHECK ═══
 
     system_prompt = SYSTEM_PROMPTS.get(vertical, SYSTEM_PROMPTS["search"])
     sources = []
@@ -535,6 +548,15 @@ async def chat(request: Request):
             yield f"data: {json.dumps({'type': 'text', 'content': fallback})}\n\n"
 
         yield f"data: {json.dumps({'type': 'done'})}\n\n"
+
+        # ═══ METERING POST-CALL: Record usage after stream completes ═══
+        if metering_user and ai_responded:
+            import asyncio
+            try:
+                loop = asyncio.get_event_loop()
+                loop.create_task(record_metering(metering_user, requested_model, "chat", duration_minutes=1.0))
+            except Exception as me:
+                print(f"[Metering] Chat post-call error (non-fatal): {me}")
 
     return StreamingResponse(generate(), media_type="text/event-stream")
 
@@ -3053,6 +3075,71 @@ def user_can_access_model(user_tier: str, model_id: str) -> bool:
     return user_level >= required_level
 
 
+async def enforce_metering(request: Request, model_id: str = "claude_haiku") -> dict:
+    """
+    PRE-CHECK: Verify user has tier access + sufficient credits before processing.
+    Returns {"allowed": True, "user": {...}, "profile": {...}} or {"allowed": False, "error": ..., "status_code": ...}
+    Admins always pass. Unauthenticated users get free-tier allowance.
+    """
+    # Extract auth token from request headers
+    auth_header = request.headers.get("authorization", "")
+    user = await get_current_user(auth_header if auth_header else None)
+    
+    model_info = MODEL_COSTS.get(model_id, MODEL_COSTS.get("claude_haiku"))
+    if not model_info:
+        return {"allowed": False, "error": "Unknown model", "status_code": 400}
+    
+    # No auth → allow with free-tier defaults (rate limiter handles abuse)
+    if not user or not supabase_admin:
+        return {"allowed": True, "user": None, "profile": {"tier": "free"}, "model_info": model_info, "is_demo": True}
+    
+    # Check if user is admin (admins always pass)
+    ADMIN_EMAILS_LIST = json.loads(os.environ.get("ADMIN_EMAILS", '["ryan@cookin.io", "ryan@hacpglobal.ai", "cap@hacpglobal.ai", "laliecapatosto86@gmail.com", "laliecapatosto96@gmail.com"]'))
+    if user.get("email") in ADMIN_EMAILS_LIST:
+        return {"allowed": True, "user": user, "profile": {"tier": "enterprise"}, "model_info": model_info, "is_admin": True}
+    
+    try:
+        profile_resp = supabase_admin.table("profiles").select("id, tier, plan_tier, request_limit, monthly_requests, stripe_customer_id, stripe_subscription_id").eq("id", user["id"]).single().execute()
+        p = profile_resp.data or {}
+        user_tier = p.get("tier", p.get("plan_tier", "free"))
+        credits_limit = p.get("request_limit", PLAN_TIERS.get(user_tier, PLAN_TIERS["free"])["credits"])
+        credits_used = p.get("monthly_requests", 0)
+        credits_remaining = max(0, credits_limit - credits_used)
+        
+        # Tier access check
+        if not user_can_access_model(user_tier, model_id):
+            return {
+                "allowed": False,
+                "error": f"Your {PLAN_TIERS.get(user_tier, {}).get('label', user_tier)} plan doesn't include {model_info['name']}. Upgrade to {model_info['min_plan'].title()} or higher.",
+                "status_code": 403,
+                "upgrade_required": model_info["min_plan"],
+                "current_tier": user_tier,
+            }
+        
+        # Credit check (enterprise = unlimited)
+        credits_needed = model_info.get("credits", 1)
+        if user_tier != "enterprise" and credits_remaining < credits_needed:
+            return {
+                "allowed": False,
+                "error": f"Insufficient credits. Need {credits_needed}, have {credits_remaining}. Upgrade your plan or wait for monthly reset.",
+                "status_code": 402,
+                "credits_remaining": credits_remaining,
+                "credits_needed": credits_needed,
+                "current_tier": user_tier,
+            }
+        
+        return {
+            "allowed": True,
+            "user": user,
+            "profile": {**p, "tier": user_tier, "credits_remaining": credits_remaining},
+            "model_info": model_info,
+        }
+    except Exception as e:
+        print(f"[Metering] enforce_metering error: {e}")
+        # Fail open — don't block users due to DB errors, but log it
+        return {"allowed": True, "user": user, "profile": {"tier": "free"}, "model_info": model_info, "metering_error": str(e)}
+
+
 async def meter_usage(user_id: str, model_id: str, action_type: str, duration_minutes: float = 1.0, input_tokens: int = 0, output_tokens: int = 0):
     """Record usage in Supabase and report to Stripe metered billing."""
     model = MODEL_COSTS.get(model_id)
@@ -3078,26 +3165,78 @@ async def meter_usage(user_id: str, model_id: str, action_type: str, duration_mi
         
         if result.data and isinstance(result.data, dict) and result.data.get("success"):
             # Report to Stripe metered billing (async, non-blocking)
-            if STRIPE_SECRET and result.data.get("stripe_price_id"):
+            stripe_sub_item_id = result.data.get("stripe_subscription_item_id")
+            if STRIPE_SECRET and stripe_sub_item_id:
                 try:
                     async with httpx.AsyncClient() as hc:
                         # Stripe expects quantity in whole units — report minutes * 100 for cent precision
                         quantity = max(1, int(duration_minutes * 100))
                         await hc.post(
-                            "https://api.stripe.com/v1/subscription_items/usage_records",
+                            f"https://api.stripe.com/v1/subscription_items/{stripe_sub_item_id}/usage_records",
                             headers={"Authorization": f"Bearer {STRIPE_SECRET}"},
                             data={"quantity": quantity, "action": "increment"},
                         )
                 except Exception as stripe_err:
                     print(f"[Metering] Stripe reporting error (non-fatal): {stripe_err}")
+            elif STRIPE_SECRET and not stripe_sub_item_id:
+                # Try to get subscription_item_id from user's profile
+                try:
+                    prof = supabase_admin.table("profiles").select("stripe_subscription_id, stripe_customer_id").eq("id", user_id).single().execute()
+                    sub_id = (prof.data or {}).get("stripe_subscription_id")
+                    cust_id = (prof.data or {}).get("stripe_customer_id")
+                    if sub_id:
+                        async with httpx.AsyncClient() as hc:
+                            # Get subscription items from Stripe
+                            resp = await hc.get(
+                                f"https://api.stripe.com/v1/subscription_items?subscription={sub_id}",
+                                headers={"Authorization": f"Bearer {STRIPE_SECRET}"},
+                            )
+                            if resp.status_code == 200:
+                                items = resp.json().get("data", [])
+                                # Find the metered usage item matching this compute tier
+                                target_price = tier_info.get("stripe_price_id", "")
+                                for item in items:
+                                    if item.get("price", {}).get("id") == target_price:
+                                        quantity = max(1, int(duration_minutes * 100))
+                                        await hc.post(
+                                            f"https://api.stripe.com/v1/subscription_items/{item['id']}/usage_records",
+                                            headers={"Authorization": f"Bearer {STRIPE_SECRET}"},
+                                            data={"quantity": quantity, "action": "increment"},
+                                        )
+                                        print(f"[Metering] Stripe usage recorded: {quantity} units on si={item['id']}")
+                                        break
+                except Exception as stripe_err:
+                    print(f"[Metering] Stripe fallback reporting error (non-fatal): {stripe_err}")
             
             return result.data
         else:
             return result.data if result.data else {"success": False, "error": "rpc_failed"}
     except Exception as e:
         print(f"[Metering] Supabase error: {e}")
-        # Fallback: still allow the request but log the error
+        # Fallback: deduct credits directly on the profiles table
+        try:
+            supabase_admin.rpc("increment_monthly_requests", {
+                "p_user_id": user_id,
+                "p_increment": model.get("credits", 1)
+            }).execute()
+            print(f"[Metering] Fallback credit deduction: {model.get('credits', 1)} credits for {model_id}")
+        except Exception as fallback_err:
+            print(f"[Metering] Fallback deduction also failed: {fallback_err}")
         return {"success": True, "metering_error": str(e), "credits_remaining": 999, "tier": "fallback"}
+
+
+async def record_metering(user: dict, model_id: str, action_type: str, duration_minutes: float = 1.0, input_tokens: int = 0, output_tokens: int = 0):
+    """POST-CALL: Record metering after successful API call. Fire-and-forget."""
+    if not user or not user.get("id"):
+        return  # Skip metering for unauthenticated/demo users
+    try:
+        result = await meter_usage(user["id"], model_id, action_type, duration_minutes, input_tokens, output_tokens)
+        if result.get("success"):
+            print(f"[Metering] Recorded: user={user['id'][:8]}... model={model_id} action={action_type} credits={MODEL_COSTS.get(model_id, {}).get('credits', '?')}")
+        else:
+            print(f"[Metering] Record failed: {result}")
+    except Exception as e:
+        print(f"[Metering] record_metering error (non-fatal): {e}")
 
 
 @app.get("/api/metering/pricing")
@@ -3265,6 +3404,13 @@ async def studio_generate_image(request: Request):
     if not prompt:
         return JSONResponse({"error": "Prompt required"}, status_code=400)
 
+    # ═══ METERING PRE-CHECK ═══
+    meter_check = await enforce_metering(request, model_id=model)
+    if not meter_check["allowed"]:
+        return JSONResponse({"error": meter_check["error"], "type": "metering", "upgrade_required": meter_check.get("upgrade_required", "")}, status_code=meter_check.get("status_code", 403))
+    metering_user = meter_check.get("user")
+    # ═══ END METERING PRE-CHECK ═══
+
     full_prompt = f"{style + ': ' if style else ''}{prompt}"
     image_bytes = None
     actual_model = model
@@ -3366,6 +3512,12 @@ async def studio_generate_image(request: Request):
 
         mime = "image/svg+xml" if ext == "svg" else "image/png"
         b64 = base64.b64encode(image_bytes).decode()
+
+        # ═══ METERING POST-CALL ═══
+        if metering_user and actual_model != "placeholder":
+            await record_metering(metering_user, model, "image_generation", duration_minutes=1.0)
+        # ═══ END METERING POST-CALL ═══
+
         return {**entry, "data": f"data:{mime};base64,{b64}", "model_used": actual_model}
 
     except Exception as e:
@@ -3388,6 +3540,13 @@ async def studio_generate_video(request: Request):
 
     if not prompt:
         return JSONResponse({"error": "Prompt required"}, status_code=400)
+
+    # ═══ METERING PRE-CHECK ═══
+    meter_check = await enforce_metering(request, model_id=model)
+    if not meter_check["allowed"]:
+        return JSONResponse({"error": meter_check["error"], "type": "metering", "upgrade_required": meter_check.get("upgrade_required", "")}, status_code=meter_check.get("status_code", 403))
+    metering_user = meter_check.get("user")
+    # ═══ END METERING PRE-CHECK ═══
 
     job_id = str(uuid.uuid4())[:8]
     storyboard = ""
@@ -3470,6 +3629,12 @@ async def studio_generate_video(request: Request):
     media_gallery.insert(0, {**job_entry, "filename": f"vid_{job_id}_queued.mp4", "size_bytes": 0, "url": ""})
 
     print(f"[Studio] Video job queued: {job_id} — model={model}, duration={duration}s")
+
+    # ═══ METERING POST-CALL ═══
+    if metering_user and (storyboard or scene_description):
+        await record_metering(metering_user, model, "video_generation", duration_minutes=1.0)
+    # ═══ END METERING POST-CALL ═══
+
     return JSONResponse(job_entry, status_code=202)
 
 
@@ -3485,6 +3650,13 @@ async def studio_generate_audio(request: Request):
 
     if not text and not dialogue:
         return JSONResponse({"error": "Text or dialogue required"}, status_code=400)
+
+    # ═══ METERING PRE-CHECK ═══
+    meter_check = await enforce_metering(request, model_id=model)
+    if not meter_check["allowed"]:
+        return JSONResponse({"error": meter_check["error"], "type": "metering", "upgrade_required": meter_check.get("upgrade_required", "")}, status_code=meter_check.get("status_code", 403))
+    metering_user = meter_check.get("user")
+    # ═══ END METERING PRE-CHECK ═══
 
     # ElevenLabs voice name → voice_id mapping
     ELEVENLABS_VOICES = {
@@ -3650,6 +3822,12 @@ async def studio_generate_audio(request: Request):
         media_gallery.insert(0, entry)
 
         b64 = base64.b64encode(audio_bytes).decode()
+
+        # ═══ METERING POST-CALL ═══
+        if metering_user:
+            await record_metering(metering_user, model, "audio_generation", duration_minutes=1.0)
+        # ═══ END METERING POST-CALL ═══
+
         return {**entry, "data": f"data:audio/mpeg;base64,{b64}"}
 
     except Exception as e:
@@ -3668,6 +3846,16 @@ async def studio_generate_code(request: Request):
 
     if not prompt:
         return JSONResponse({"error": "Prompt required"}, status_code=400)
+
+    # ═══ METERING PRE-CHECK ═══
+    # Map code model names to our MODEL_COSTS keys
+    code_model_map = {"grok-4": "grok4", "claude-sonnet": "claude_sonnet", "gemini-flash": "gemini_flash"}
+    metering_model = code_model_map.get(model, "claude_sonnet")
+    meter_check = await enforce_metering(request, model_id=metering_model)
+    if not meter_check["allowed"]:
+        return JSONResponse({"error": meter_check["error"], "type": "metering", "upgrade_required": meter_check.get("upgrade_required", "")}, status_code=meter_check.get("status_code", 403))
+    metering_user = meter_check.get("user")
+    # ═══ END METERING PRE-CHECK ═══
 
     system_prompt = (
         f"You are an expert {language} programmer. Generate clean, production-ready code. "
@@ -3735,6 +3923,12 @@ async def studio_generate_code(request: Request):
             "url": f"/api/studio/media/code/{filename}",
         }
         media_gallery.insert(0, entry)
+
+        # ═══ METERING POST-CALL ═══
+        if metering_user:
+            await record_metering(metering_user, metering_model, "code_generation", duration_minutes=1.0)
+        # ═══ END METERING POST-CALL ═══
+
         return {**entry, "data": code_text, "code": code_text, "model_used": actual_model}
 
     except Exception as e:
@@ -5766,9 +5960,22 @@ async def builder_unified_chat(request: Request):
     message = body.get("message", "").strip()
     history = body.get("history", [])
     attached_files = body.get("attached_files", [])
+    requested_model = body.get("model", "claude_sonnet")  # Model selection from frontend
 
     if not message:
         return JSONResponse({"error": "Message required"}, status_code=400)
+
+    # ═══ METERING PRE-CHECK ═══
+    meter_check = await enforce_metering(request, model_id=requested_model)
+    if not meter_check["allowed"]:
+        error_payload = {"error": meter_check["error"], "type": "metering"}
+        if meter_check.get("upgrade_required"):
+            error_payload["upgrade_required"] = meter_check["upgrade_required"]
+        if meter_check.get("credits_remaining") is not None:
+            error_payload["credits_remaining"] = meter_check["credits_remaining"]
+        return JSONResponse(error_payload, status_code=meter_check.get("status_code", 403))
+    metering_user = meter_check.get("user")
+    # ═══ END METERING PRE-CHECK ═══
 
     intent = _detect_builder_intent(message)
     print(f"[Builder Chat] intent={intent} msg={message[:80]}")
@@ -6049,7 +6256,29 @@ async def builder_unified_chat(request: Request):
                     await asyncio.sleep(0.015)
         yield f"data: {json.dumps({'type': 'done'})}\n\n"
 
-    return StreamingResponse(event_stream(), media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+    async def metered_event_stream():
+        """Wrapper that yields all events from event_stream, then records metering."""
+        async for event in event_stream():
+            yield event
+        # ═══ METERING POST-CALL: Record usage after builder stream completes ═══
+        if metering_user:
+            # Map builder intent to metering action type
+            builder_action_map = {
+                "image": "builder_image", "video": "builder_video", "audio": "builder_audio",
+                "social": "builder_social", "code": "builder_code", "deploy": "builder_deploy",
+                "live_data": "builder_live_data", "chat": "builder_chat",
+            }
+            action_type = builder_action_map.get(intent, "builder_chat")
+            # Code/image/video intents cost more — use higher-tier model for metering
+            metering_model_id = requested_model
+            if intent in ("code", "image", "video") and requested_model == "claude_sonnet":
+                metering_model_id = "claude_sonnet"  # Pro tier default
+            try:
+                await record_metering(metering_user, metering_model_id, action_type, duration_minutes=1.0)
+            except Exception as me:
+                print(f"[Metering] Builder post-call error (non-fatal): {me}")
+
+    return StreamingResponse(metered_event_stream(), media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
 # ── Builder Multi-Model AI Engine ───────────────────────────────────────────
