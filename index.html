@@ -79,6 +79,7 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
 <link rel="stylesheet" href="admin-fulfillment.css">
 <link rel="stylesheet" href="realestate.css">
     <link rel="stylesheet" href="medical.css">
+  <script src="https://unpkg.com/@elevenlabs/convai-widget-embed" async type="text/javascript"></script>
 </head>
 <body>
 <!-- Google Tag Manager (noscript) -->
@@ -872,65 +873,18 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
       <div class="app-footer">SaintSal™ <span class="footer-labs-green">LABS</span> · Responsible Intelligence · Patent #10,290,222 · <a href="https://www.perplexity.ai/computer" target="_blank" rel="noopener noreferrer">Created with Perplexity Computer</a></div>
     </div>
 
-    <!-- Voice AI View -->
+    <!-- Voice AI View — ElevenLabs Conversational Widget -->
     <div class="view voice-view" id="voiceView">
-      <div class="voice-inner">
+      <div class="voice-inner" style="display:flex;flex-direction:column;height:100%;">
         <div class="voice-topbar">
           <div class="voice-title">
             <svg viewBox="0 0 24 24" fill="none" stroke="var(--accent-gold)" stroke-width="1.5" stroke-linecap="round" width="18" height="18"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
             <span>Voice AI</span>
           </div>
-          <div class="voice-model-select">
-            <select class="voice-model-dropdown" id="voiceModelSelect">
-              <option value="sal-voice">SAL Voice · ElevenLabs</option>
-              <option value="sal-mini-voice">SAL Mini Voice</option>
-              <option value="sal-pro-voice">SAL Pro Voice</option>
-            </select>
-          </div>
+          <span style="font-size:12px;color:rgba(255,255,255,0.4);">Powered by ElevenLabs</span>
         </div>
-
-        <div class="voice-stage">
-          <div class="voice-orb-wrap">
-            <div class="voice-orb" id="voiceOrb" onclick="toggleVoiceAI()">
-              <div class="voice-orb-ring"></div>
-              <div class="voice-orb-ring voice-ring-2"></div>
-              <img src="/assets/helmet-icon.jpg" alt="SAL" class="voice-helmet-icon" style="width:52px;height:52px;border-radius:50%;object-fit:cover;">
-            </div>
-            <div class="voice-cta-label" id="voiceCtaLabel">Tap to Talk to SAL</div>
-            <div class="voice-status-indicator" id="voiceStatusIndicator">
-              <span class="voice-status-dot" id="voiceStatusDot"></span>
-              <span id="voiceStatusText">Ready</span>
-            </div>
-          </div>
-
-          <div class="voice-waveform" id="voiceWaveform">
-            <div class="waveform-bars" id="waveformBars">
-              <span class="wbar"></span><span class="wbar"></span><span class="wbar"></span>
-              <span class="wbar"></span><span class="wbar"></span><span class="wbar"></span>
-              <span class="wbar"></span><span class="wbar"></span><span class="wbar"></span>
-              <span class="wbar"></span><span class="wbar"></span><span class="wbar"></span>
-              <span class="wbar"></span><span class="wbar"></span><span class="wbar"></span>
-              <span class="wbar"></span><span class="wbar"></span><span class="wbar"></span>
-              <span class="wbar"></span><span class="wbar"></span><span class="wbar"></span>
-            </div>
-          </div>
-        </div>
-
-        <div class="voice-transcript-wrap">
-          <div class="voice-transcript-label">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" width="13" height="13"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-            Live Transcript
-          </div>
-          <div class="voice-transcript" id="voiceTranscript">
-            <div class="voice-transcript-empty">Your conversation will appear here...</div>
-          </div>
-        </div>
-
-        <div class="voice-input-bar">
-          <input type="text" class="voice-text-input" id="voiceTextInput" placeholder="Or type a message to SAL..." onkeydown="if(event.key==='Enter')sendVoiceText()">
-          <button class="voice-send-btn" onclick="sendVoiceText()" aria-label="Send">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" width="16" height="16"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
-          </button>
+        <div style="flex:1;display:flex;align-items:center;justify-content:center;min-height:400px;position:relative;">
+          <elevenlabs-convai agent-id="agent_5401k855rq5afqprn6vd3mh6sn7z"></elevenlabs-convai>
         </div>
       </div>
       <div class="app-footer">SaintSal™ <span class="footer-labs-green">LABS</span> · Responsible Intelligence · Patent #10,290,222 · <a href="https://www.perplexity.ai/computer" target="_blank" rel="noopener noreferrer">Created with Perplexity Computer</a></div>

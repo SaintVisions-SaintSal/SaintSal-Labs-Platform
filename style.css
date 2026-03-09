@@ -5782,3 +5782,12 @@ ul, ol { list-style: none; }
   box-shadow: 0 16px 48px rgba(0,0,0,0.5);
   width: 90%;
 }
+
+/* Mic active state — pulsing red */
+.prompt-mic.mic-active {
+  animation: micPulse 1s ease-in-out infinite;
+}
+@keyframes micPulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.6; transform: scale(1.1); }
+}

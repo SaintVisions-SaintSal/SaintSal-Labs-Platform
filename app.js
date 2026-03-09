@@ -501,6 +501,98 @@ function handleSend() {
   sendMessage(query);
 }
 
+// ─── Chat Mic — Speech-to-Text for search input ────────────────────────────
+var chatMicActive = false;
+var chatMicRecognition = null;
+
+function toggleChatMic() {
+  if (chatMicActive) {
+    stopChatMic();
+    return;
+  }
+
+  if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+    showToast('Speech recognition not supported in this browser. Try Chrome or Edge.', 'error');
+    return;
+  }
+
+  try {
+    var SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    chatMicRecognition = new SpeechRecognition();
+    chatMicRecognition.continuous = true;
+    chatMicRecognition.interimResults = true;
+    chatMicRecognition.lang = 'en-US';
+
+    var finalText = '';
+    var input = document.getElementById('promptInput');
+    var micBtn = document.querySelector('.prompt-mic');
+
+    chatMicActive = true;
+    if (micBtn) {
+      micBtn.classList.add('mic-active');
+      micBtn.style.color = '#ef4444';
+      micBtn.title = 'Tap to stop';
+    }
+    if (input) input.placeholder = 'Listening...';
+
+    chatMicRecognition.onresult = function(event) {
+      var interim = '';
+      for (var i = event.resultIndex; i < event.results.length; i++) {
+        if (event.results[i].isFinal) {
+          finalText += event.results[i][0].transcript + ' ';
+        } else {
+          interim += event.results[i][0].transcript;
+        }
+      }
+      if (input) input.value = finalText + interim;
+    };
+
+    chatMicRecognition.onerror = function(event) {
+      console.log('[ChatMic] Error:', event.error);
+      if (event.error === 'not-allowed') {
+        showToast('Microphone access denied. Allow it in browser settings.', 'error');
+      }
+      stopChatMic();
+    };
+
+    chatMicRecognition.onend = function() {
+      // Auto-send if we got final text and mic was stopped
+      if (chatMicActive) {
+        // Restart if still active (continuous mode can stop unexpectedly)
+        try { chatMicRecognition.start(); } catch(e) { stopChatMic(); }
+      }
+    };
+
+    chatMicRecognition.start();
+  } catch(e) {
+    console.error('[ChatMic] Failed to start:', e);
+    showToast('Could not start voice input', 'error');
+    stopChatMic();
+  }
+}
+
+function stopChatMic() {
+  chatMicActive = false;
+  if (chatMicRecognition) {
+    try { chatMicRecognition.stop(); } catch(e) {}
+    chatMicRecognition = null;
+  }
+  var micBtn = document.querySelector('.prompt-mic');
+  var input = document.getElementById('promptInput');
+  if (micBtn) {
+    micBtn.classList.remove('mic-active');
+    micBtn.style.color = '';
+    micBtn.title = 'Tap to speak';
+  }
+  if (input) {
+    input.placeholder = 'Ask SAL anything...';
+    // Auto-send if there's content
+    if (input.value.trim()) {
+      handleSend();
+    }
+  }
+}
+
 // WebSocket connection manager
 var wsConnection = null;
 var wsReconnectAttempts = 0;
