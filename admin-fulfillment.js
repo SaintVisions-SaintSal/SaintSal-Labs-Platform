@@ -14,6 +14,11 @@ var adminState = {
   note: '',
   isAdmin: false,
   stats: { total_orders: 0, awaiting_fulfillment: 0, in_fulfillment: 0, completed: 0, total_revenue: 0, total_margin: 0 },
+  activeTab: 'orders',
+  users: [],
+  usersLoading: false,
+  newUser: { email: '', password: '', full_name: '', role: 'user', plan_tier: 'free' },
+  editingUser: null,
 };
 
 var ADMIN_STATUS_FLOW = ['awaiting_payment', 'paid', 'in_fulfillment', 'filed_with_state', 'complete', 'cancelled'];
@@ -28,7 +33,13 @@ var ADMIN_STATUS_COLORS = {
 };
 
 function _adminHeaders() {
-  var token = localStorage.getItem('sal_token') || '';
+  /* Try the saintsal_session first (set by auth modal), then fallback sal_token */
+  var token = '';
+  try {
+    var sess = JSON.parse(localStorage.getItem('saintsal_session') || '{}');
+    token = sess.access_token || '';
+  } catch(e) {}
+  if (!token) token = localStorage.getItem('sal_token') || '';
   return {
     'Content-Type': 'application/json',
     'Authorization': 'Bearer ' + token,
@@ -117,11 +128,47 @@ function renderAdminDashboard() {
   var h = '';
   h += '<div class="admin-wrap">';
 
+  /* Tab bar */
+  h += '<div class="admin-tabs">';
+  h += '<button class="admin-tab' + (adminState.activeTab === 'orders' ? ' active' : '') + '" onclick="adminSwitchTab(\'orders\')">Orders</button>';
+  h += '<button class="admin-tab' + (adminState.activeTab === 'users' ? ' active' : '') + '" onclick="adminSwitchTab(\'users\')">User Management</button>';
+  h += '</div>';
+
+  if (adminState.activeTab === 'orders') {
+    h += _adminOrdersTab();
+  } else if (adminState.activeTab === 'users') {
+    h += _adminUsersTab();
+  }
+
+  h += '</div>';
+
+  /* Modal container */
+  h += '<div id="adminOrderModal"></div>';
+
+  el.innerHTML = h;
+
+  /* Load data */
+  if (adminState.activeTab === 'orders') {
+    adminLoadOrders();
+    adminLoadStats();
+  } else {
+    adminLoadUsers();
+  }
+}
+
+function adminSwitchTab(tab) {
+  adminState.activeTab = tab;
+  renderAdminDashboard();
+}
+
+function _adminOrdersTab() {
+  var h = '';
+
   /* Header */
   h += '<div class="admin-header">';
   h += '<div>';
   h += '<h1 class="admin-title">Launch Pad Orders</h1>';
-  h += '<p class="admin-subtitle">Incoming filings · CorpNet fulfillment queue</p>';
+  h += '<p class="admin-subtitle">Incoming filings \u00b7 CorpNet fulfillment queue</p>';
   h += '</div>';
   h += '<button class="admin-btn-gold" onclick="adminLoadOrders();adminLoadStats();">Refresh</button>';
   h += '</div>';
@@ -145,16 +192,7 @@ function renderAdminDashboard() {
   h += _adminOrdersHTML();
   h += '</div>';
 
-  h += '</div>';
-
-  /* Modal container */
-  h += '<div id="adminOrderModal"></div>';
-
-  el.innerHTML = h;
-
-  /* Load data */
-  adminLoadOrders();
-  adminLoadStats();
+  return h;
 }
 
 function adminSetFilter(f) {
@@ -347,6 +385,221 @@ function _adminDate(iso) {
     return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   } catch (e) {
     return iso.slice(0, 10);
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   USER MANAGEMENT TAB
+   ══════════════════════════════════════════════════════════════════════════════ */
+
+async function adminLoadUsers() {
+  adminState.usersLoading = true;
+  var el = document.getElementById('adminUsersList');
+  if (el) el.innerHTML = '<div class="admin-empty">Loading users...</div>';
+  try {
+    var resp = await fetch(API + '/api/admin/users', { headers: _adminHeaders() });
+    if (resp.ok) {
+      var data = await resp.json();
+      adminState.users = data.users || [];
+    }
+  } catch (e) {
+    console.error('[Admin] Load users error:', e);
+  }
+  adminState.usersLoading = false;
+  _adminRenderUsers();
+}
+
+function _adminUsersTab() {
+  var h = '';
+
+  /* Header */
+  h += '<div class="admin-header">';
+  h += '<div>';
+  h += '<h1 class="admin-title">User Management</h1>';
+  h += '<p class="admin-subtitle">Create, manage roles, and monitor all platform users</p>';
+  h += '</div>';
+  h += '<button class="admin-btn-gold" onclick="adminLoadUsers()">Refresh</button>';
+  h += '</div>';
+
+  /* Create User Form */
+  h += '<div class="admin-create-user-form">';
+  h += '<div class="admin-form-title">Create New User</div>';
+  h += '<div class="admin-form-grid">';
+  h += '<input class="admin-inp" id="newUserEmail" placeholder="Email" value="' + _esc(adminState.newUser.email) + '" oninput="adminState.newUser.email=this.value">';
+  h += '<input class="admin-inp" id="newUserPassword" type="password" placeholder="Password" value="' + _esc(adminState.newUser.password) + '" oninput="adminState.newUser.password=this.value">';
+  h += '<input class="admin-inp" id="newUserName" placeholder="Full Name" value="' + _esc(adminState.newUser.full_name) + '" oninput="adminState.newUser.full_name=this.value">';
+  h += '<select class="admin-inp" id="newUserRole" onchange="adminState.newUser.role=this.value">';
+  h += '<option value="user"' + (adminState.newUser.role === 'user' ? ' selected' : '') + '>User</option>';
+  h += '<option value="admin"' + (adminState.newUser.role === 'admin' ? ' selected' : '') + '>Admin</option>';
+  h += '<option value="owner"' + (adminState.newUser.role === 'owner' ? ' selected' : '') + '>Owner</option>';
+  h += '</select>';
+  h += '<select class="admin-inp" id="newUserTier" onchange="adminState.newUser.plan_tier=this.value">';
+  h += '<option value="free"' + (adminState.newUser.plan_tier === 'free' ? ' selected' : '') + '>Free</option>';
+  h += '<option value="pro"' + (adminState.newUser.plan_tier === 'pro' ? ' selected' : '') + '>Pro</option>';
+  h += '<option value="enterprise"' + (adminState.newUser.plan_tier === 'enterprise' ? ' selected' : '') + '>Enterprise</option>';
+  h += '</select>';
+  h += '<button class="admin-btn-gold" onclick="adminCreateUser()">Create User</button>';
+  h += '</div>';
+  h += '</div>';
+
+  /* Users List */
+  h += '<div id="adminUsersList">';
+  h += _adminUsersHTML();
+  h += '</div>';
+
+  return h;
+}
+
+function _adminUsersHTML() {
+  if (adminState.usersLoading) {
+    return '<div class="admin-empty">Loading users...</div>';
+  }
+  if (adminState.users.length === 0) {
+    return '<div class="admin-empty">No users found.</div>';
+  }
+
+  var h = '';
+  h += '<div class="admin-users-header">';
+  h += '<span class="admin-uh-email">Email</span>';
+  h += '<span class="admin-uh-name">Name</span>';
+  h += '<span class="admin-uh-role">Role</span>';
+  h += '<span class="admin-uh-tier">Tier</span>';
+  h += '<span class="admin-uh-status">Status</span>';
+  h += '<span class="admin-uh-actions">Actions</span>';
+  h += '</div>';
+
+  adminState.users.forEach(function(u) {
+    var isEditing = adminState.editingUser === u.id;
+    var roleBadge = u.is_admin ? 'admin-badge-gold' : (u.role === 'admin' ? 'admin-badge-blue' : 'admin-badge-gray');
+    var tierColor = u.plan_tier === 'enterprise' ? '#D4AF37' : (u.plan_tier === 'pro' ? '#60a5fa' : '#888');
+
+    h += '<div class="admin-user-row' + (isEditing ? ' editing' : '') + '">';
+    h += '<span class="admin-ur-email">' + _esc(u.email) + '</span>';
+    h += '<span class="admin-ur-name">' + _esc(u.full_name || '—') + '</span>';
+
+    if (isEditing) {
+      h += '<span class="admin-ur-role">';
+      h += '<select class="admin-inp-sm" id="editRole_' + u.id + '">';
+      h += '<option value="user"' + (u.role === 'user' ? ' selected' : '') + '>user</option>';
+      h += '<option value="admin"' + (u.role === 'admin' ? ' selected' : '') + '>admin</option>';
+      h += '<option value="owner"' + (u.role === 'owner' ? ' selected' : '') + '>owner</option>';
+      h += '</select>';
+      h += '</span>';
+      h += '<span class="admin-ur-tier">';
+      h += '<select class="admin-inp-sm" id="editTier_' + u.id + '">';
+      h += '<option value="free"' + (u.plan_tier === 'free' ? ' selected' : '') + '>free</option>';
+      h += '<option value="pro"' + (u.plan_tier === 'pro' ? ' selected' : '') + '>pro</option>';
+      h += '<option value="enterprise"' + (u.plan_tier === 'enterprise' ? ' selected' : '') + '>enterprise</option>';
+      h += '</select>';
+      h += '</span>';
+    } else {
+      h += '<span class="admin-ur-role"><span class="' + roleBadge + '">' + _esc(u.role || 'user') + '</span></span>';
+      h += '<span class="admin-ur-tier" style="color:' + tierColor + '">' + _esc(u.plan_tier || 'free') + '</span>';
+    }
+
+    h += '<span class="admin-ur-status">';
+    h += u.email_confirmed
+      ? '<span style="color:#22c55e">\u2713 confirmed</span>'
+      : '<span style="color:#f87171">\u2717 unconfirmed</span>';
+    h += '</span>';
+
+    h += '<span class="admin-ur-actions">';
+    if (isEditing) {
+      h += '<button class="admin-btn-sm admin-btn-save" onclick="adminSaveUser(\'' + u.id + '\')">Save</button>';
+      h += '<button class="admin-btn-sm admin-btn-cancel" onclick="adminCancelEdit()">Cancel</button>';
+    } else {
+      h += '<button class="admin-btn-sm" onclick="adminEditUser(\'' + u.id + '\')">Edit</button>';
+      h += '<button class="admin-btn-sm admin-btn-danger" onclick="adminDeleteUser(\'' + u.id + '\',\'' + _esc(u.email) + '\')">Delete</button>';
+    }
+    h += '</span>';
+
+    h += '</div>';
+  });
+  return h;
+}
+
+function _adminRenderUsers() {
+  var el = document.getElementById('adminUsersList');
+  if (el) el.innerHTML = _adminUsersHTML();
+}
+
+async function adminCreateUser() {
+  var nu = adminState.newUser;
+  if (!nu.email || !nu.password) {
+    showToast('Email and password are required', 'error');
+    return;
+  }
+  try {
+    var resp = await fetch(API + '/api/admin/users', {
+      method: 'POST',
+      headers: _adminHeaders(),
+      body: JSON.stringify(nu),
+    });
+    var data = await resp.json();
+    if (resp.ok && data.success) {
+      showToast('User ' + nu.email + ' created', 'success');
+      adminState.newUser = { email: '', password: '', full_name: '', role: 'user', plan_tier: 'free' };
+      adminLoadUsers();
+    } else {
+      showToast(data.error || 'Failed to create user', 'error');
+    }
+  } catch (e) {
+    showToast('Network error creating user', 'error');
+  }
+}
+
+function adminEditUser(userId) {
+  adminState.editingUser = userId;
+  _adminRenderUsers();
+}
+
+function adminCancelEdit() {
+  adminState.editingUser = null;
+  _adminRenderUsers();
+}
+
+async function adminSaveUser(userId) {
+  var roleEl = document.getElementById('editRole_' + userId);
+  var tierEl = document.getElementById('editTier_' + userId);
+  var updates = {};
+  if (roleEl) updates.role = roleEl.value;
+  if (tierEl) updates.plan_tier = tierEl.value;
+
+  try {
+    var resp = await fetch(API + '/api/admin/users/' + userId, {
+      method: 'PUT',
+      headers: _adminHeaders(),
+      body: JSON.stringify(updates),
+    });
+    if (resp.ok) {
+      showToast('User updated', 'success');
+      adminState.editingUser = null;
+      adminLoadUsers();
+    } else {
+      var data = await resp.json();
+      showToast(data.error || 'Update failed', 'error');
+    }
+  } catch (e) {
+    showToast('Network error', 'error');
+  }
+}
+
+async function adminDeleteUser(userId, email) {
+  if (!confirm('Delete user ' + email + '? This cannot be undone.')) return;
+  try {
+    var resp = await fetch(API + '/api/admin/users/' + userId, {
+      method: 'DELETE',
+      headers: _adminHeaders(),
+    });
+    if (resp.ok) {
+      showToast('User deleted', 'success');
+      adminLoadUsers();
+    } else {
+      var data = await resp.json();
+      showToast(data.error || 'Delete failed', 'error');
+    }
+  } catch (e) {
+    showToast('Network error', 'error');
   }
 }
 

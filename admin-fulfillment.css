@@ -326,3 +326,186 @@
   }
   .admin-modal { padding: 20px 16px; }
 }
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   ADMIN TABS
+   ══════════════════════════════════════════════════════════════════════════════ */
+.admin-tabs {
+  display: flex;
+  gap: 0;
+  margin-bottom: 28px;
+  border-bottom: 1px solid rgba(0,0,0,.06);
+}
+.admin-tab {
+  padding: 12px 24px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #777;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  transition: all .15s ease;
+  letter-spacing: .01em;
+}
+.admin-tab:hover { color: #333; }
+.admin-tab.active {
+  color: #111;
+  border-bottom-color: #D4AF37;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   USER MANAGEMENT
+   ══════════════════════════════════════════════════════════════════════════════ */
+.admin-create-user-form {
+  padding: 20px;
+  background: rgba(0,0,0,.015);
+  border-radius: 10px;
+  margin-bottom: 24px;
+}
+.admin-form-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #111;
+  margin-bottom: 14px;
+  letter-spacing: .01em;
+}
+.admin-form-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+.admin-form-grid .admin-inp {
+  flex: 1 1 160px;
+  min-width: 140px;
+}
+.admin-form-grid select.admin-inp {
+  flex: 0 1 130px;
+}
+.admin-form-grid .admin-btn-gold {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.admin-users-header {
+  display: grid;
+  grid-template-columns: 2fr 1.5fr 1fr 1fr 1fr 1.2fr;
+  gap: 8px;
+  padding: 10px 16px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #999;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  border-bottom: 1px solid rgba(0,0,0,.06);
+}
+.admin-user-row {
+  display: grid;
+  grid-template-columns: 2fr 1.5fr 1fr 1fr 1fr 1.2fr;
+  gap: 8px;
+  padding: 12px 16px;
+  align-items: center;
+  font-size: 13px;
+  border-bottom: 1px solid rgba(0,0,0,.03);
+  transition: background .1s ease;
+}
+.admin-user-row:hover { background: rgba(0,0,0,.015); }
+.admin-user-row.editing { background: rgba(212,175,55,.03); }
+
+.admin-ur-email { color: #111; font-weight: 500; word-break: break-all; }
+.admin-ur-name { color: #555; }
+.admin-ur-role { font-size: 12px; }
+.admin-ur-tier { font-size: 12px; font-weight: 600; text-transform: capitalize; }
+.admin-ur-status { font-size: 11px; }
+.admin-ur-actions { display: flex; gap: 6px; justify-content: flex-end; }
+
+.admin-badge-gold {
+  display: inline-block;
+  padding: 2px 8px;
+  background: rgba(212,175,55,.12);
+  color: #D4AF37;
+  border: 1px solid rgba(212,175,55,.2);
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+}
+.admin-badge-blue {
+  display: inline-block;
+  padding: 2px 8px;
+  background: rgba(96,165,250,.1);
+  color: #60a5fa;
+  border: 1px solid rgba(96,165,250,.2);
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+}
+.admin-badge-gray {
+  display: inline-block;
+  padding: 2px 8px;
+  background: rgba(0,0,0,.04);
+  color: #888;
+  border: 1px solid rgba(0,0,0,.06);
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.admin-btn-sm {
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: 5px;
+  border: 1px solid rgba(0,0,0,.08);
+  background: #fff;
+  color: #555;
+  cursor: pointer;
+  transition: all .12s;
+}
+.admin-btn-sm:hover { background: #f5f5f5; color: #111; }
+.admin-btn-sm.admin-btn-save {
+  background: #D4AF37;
+  color: #fff;
+  border-color: #D4AF37;
+}
+.admin-btn-sm.admin-btn-cancel {
+  color: #888;
+}
+.admin-btn-sm.admin-btn-danger {
+  color: #ef4444;
+  border-color: rgba(239,68,68,.15);
+}
+.admin-btn-sm.admin-btn-danger:hover {
+  background: rgba(239,68,68,.06);
+}
+
+.admin-inp-sm {
+  padding: 4px 8px;
+  font-size: 12px;
+  border: 1px solid rgba(0,0,0,.1);
+  border-radius: 5px;
+  background: #fff;
+  color: #111;
+  width: 100%;
+}
+
+@media (max-width: 768px) {
+  .admin-users-header { display: none; }
+  .admin-user-row {
+    grid-template-columns: 1fr;
+    gap: 4px;
+    padding: 14px 16px;
+  }
+  .admin-ur-actions {
+    justify-content: flex-start;
+    margin-top: 6px;
+  }
+  .admin-form-grid {
+    flex-direction: column;
+  }
+  .admin-form-grid .admin-inp,
+  .admin-form-grid select.admin-inp {
+    flex: 1 1 100%;
+    width: 100%;
+  }
+}

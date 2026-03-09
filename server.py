@@ -6748,7 +6748,7 @@ async def save_personality_settings(request: Request, authorization: Optional[st
 # ADMIN FULFILLMENT DASHBOARD — Launch Pad Orders
 # ══════════════════════════════════════════════════════════════════════════════
 
-ADMIN_EMAILS = ["ryan@cookin.io", "ryan@hacpglobal.ai", "cap@hacpglobal.ai"]
+ADMIN_EMAILS = ["ryan@cookin.io", "ryan@hacpglobal.ai", "cap@hacpglobal.ai", "laliecapatosto86@gmail.com"]
 
 async def require_admin(authorization: Optional[str] = Header(None)):
     """Verify the current user is an admin."""
@@ -6921,6 +6921,188 @@ async def admin_stats(authorization: Optional[str] = Header(None)):
         "total_revenue": 134700,
         "total_margin": 45000,
     }
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# ADMIN USER MANAGEMENT
+# ══════════════════════════════════════════════════════════════════════════════
+
+@app.get("/api/admin/users")
+async def admin_list_users(authorization: Optional[str] = Header(None)):
+    """List all registered users for admin management."""
+    user = await require_admin(authorization)
+    if not user:
+        return JSONResponse({"error": "Admin access required"}, status_code=403)
+    
+    users = []
+    
+    # Fetch from Supabase Auth Admin API
+    if SUPABASE_URL and SUPABASE_SERVICE_KEY:
+        try:
+            async with httpx.AsyncClient() as c:
+                resp = await c.get(
+                    f"{SUPABASE_URL}/auth/v1/admin/users",
+                    headers={
+                        "apikey": SUPABASE_SERVICE_KEY,
+                        "Authorization": f"Bearer {SUPABASE_SERVICE_KEY}"
+                    },
+                    params={"page": 1, "per_page": 500}
+                )
+                if resp.status_code == 200:
+                    data = resp.json()
+                    for u in data.get("users", []):
+                        meta = u.get("user_metadata", {})
+                        users.append({
+                            "id": u["id"],
+                            "email": u.get("email", ""),
+                            "full_name": meta.get("full_name", ""),
+                            "role": meta.get("role", "user"),
+                            "plan_tier": meta.get("plan_tier", "free"),
+                            "email_confirmed": u.get("email_confirmed_at") is not None,
+                            "last_sign_in": u.get("last_sign_in_at"),
+                            "created_at": u.get("created_at"),
+                            "is_admin": u.get("email", "").lower() in [e.lower() for e in ADMIN_EMAILS],
+                        })
+        except Exception as e:
+            print(f"[Admin] User list error: {e}")
+    
+    return {"users": users, "count": len(users)}
+
+
+class AdminCreateUser(BaseModel):
+    email: str
+    password: str
+    full_name: Optional[str] = ""
+    role: Optional[str] = "user"
+    plan_tier: Optional[str] = "free"
+
+@app.post("/api/admin/users")
+async def admin_create_user(data: AdminCreateUser, authorization: Optional[str] = Header(None)):
+    """Create a new user (admin only)."""
+    user = await require_admin(authorization)
+    if not user:
+        return JSONResponse({"error": "Admin access required"}, status_code=403)
+    
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        return JSONResponse({"error": "Auth service not configured"}, status_code=503)
+    
+    try:
+        async with httpx.AsyncClient() as c:
+            resp = await c.post(
+                f"{SUPABASE_URL}/auth/v1/admin/users",
+                headers={
+                    "apikey": SUPABASE_SERVICE_KEY,
+                    "Authorization": f"Bearer {SUPABASE_SERVICE_KEY}",
+                    "Content-Type": "application/json"
+                },
+                json={
+                    "email": data.email,
+                    "password": data.password,
+                    "email_confirm": True,
+                    "user_metadata": {
+                        "full_name": data.full_name,
+                        "role": data.role,
+                        "plan_tier": data.plan_tier,
+                    }
+                }
+            )
+            if resp.status_code in (200, 201):
+                new_user = resp.json()
+                return {
+                    "success": True,
+                    "user": {
+                        "id": new_user["id"],
+                        "email": new_user.get("email"),
+                        "role": data.role,
+                        "plan_tier": data.plan_tier,
+                    }
+                }
+            else:
+                err = resp.json() if resp.headers.get("content-type", "").startswith("application/json") else {"msg": resp.text}
+                return JSONResponse({"error": err.get("msg", err.get("message", str(err)))}, status_code=resp.status_code)
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+class AdminUpdateUser(BaseModel):
+    role: Optional[str] = None
+    plan_tier: Optional[str] = None
+    full_name: Optional[str] = None
+    password: Optional[str] = None
+    email_confirm: Optional[bool] = None
+
+@app.put("/api/admin/users/{user_id}")
+async def admin_update_user(user_id: str, data: AdminUpdateUser, authorization: Optional[str] = Header(None)):
+    """Update a user's role, tier, name, or password (admin only)."""
+    user = await require_admin(authorization)
+    if not user:
+        return JSONResponse({"error": "Admin access required"}, status_code=403)
+    
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        return JSONResponse({"error": "Auth service not configured"}, status_code=503)
+    
+    try:
+        update_body = {}
+        meta_updates = {}
+        if data.role is not None:
+            meta_updates["role"] = data.role
+        if data.plan_tier is not None:
+            meta_updates["plan_tier"] = data.plan_tier
+        if data.full_name is not None:
+            meta_updates["full_name"] = data.full_name
+        if meta_updates:
+            update_body["user_metadata"] = meta_updates
+        if data.password:
+            update_body["password"] = data.password
+        if data.email_confirm is not None:
+            update_body["email_confirm"] = data.email_confirm
+        
+        async with httpx.AsyncClient() as c:
+            resp = await c.put(
+                f"{SUPABASE_URL}/auth/v1/admin/users/{user_id}",
+                headers={
+                    "apikey": SUPABASE_SERVICE_KEY,
+                    "Authorization": f"Bearer {SUPABASE_SERVICE_KEY}",
+                    "Content-Type": "application/json"
+                },
+                json=update_body
+            )
+            if resp.status_code == 200:
+                return {"success": True, "user_id": user_id, "updates": update_body}
+            else:
+                return JSONResponse({"error": resp.text[:300]}, status_code=resp.status_code)
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.delete("/api/admin/users/{user_id}")
+async def admin_delete_user(user_id: str, authorization: Optional[str] = Header(None)):
+    """Delete a user (admin only). Cannot delete yourself."""
+    admin = await require_admin(authorization)
+    if not admin:
+        return JSONResponse({"error": "Admin access required"}, status_code=403)
+    
+    if user_id == admin.get("id"):
+        return JSONResponse({"error": "Cannot delete your own account"}, status_code=400)
+    
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        return JSONResponse({"error": "Auth service not configured"}, status_code=503)
+    
+    try:
+        async with httpx.AsyncClient() as c:
+            resp = await c.delete(
+                f"{SUPABASE_URL}/auth/v1/admin/users/{user_id}",
+                headers={
+                    "apikey": SUPABASE_SERVICE_KEY,
+                    "Authorization": f"Bearer {SUPABASE_SERVICE_KEY}"
+                }
+            )
+            if resp.status_code in (200, 204):
+                return {"success": True, "user_id": user_id}
+            else:
+                return JSONResponse({"error": resp.text[:300]}, status_code=resp.status_code)
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
 
 
 # ── Static file serving (must be AFTER all API routes) ──────────────────────
