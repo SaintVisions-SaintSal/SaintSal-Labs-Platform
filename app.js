@@ -2000,416 +2000,75 @@ function studioAddMessage(role, content, meta, customHtml) {
   container.scrollTop = container.scrollHeight;
 }
 
-/* ── Builder Planning State ── */
-var builderPlanState = { plan: null, answers: {}, iteration: 0, projectName: '', currentQ: 0 };
 
-/* ── Conversational Question Flow (one at a time, clean PWA-friendly) ── */
-function builderShowNextQuestion() {
-  var plan = builderPlanState.plan;
-  if (!plan || !plan.questions) return;
-  var qi = builderPlanState.currentQ;
 
-  // All questions answered — show summary + Build It
-  if (qi >= plan.questions.length) {
-    builderShowBuildSummary();
-    return;
-  }
 
-  var q = plan.questions[qi];
-  var total = plan.questions.length;
-
-  // Build a clean chat-style question card
-  var html = '<div class="builder-q-card" style="animation:fadeIn 0.35s ease;">';
-  html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">';
-  html += '<span style="font-size:11px;color:var(--text-muted);font-weight:500;letter-spacing:0.5px;">QUESTION ' + (qi + 1) + ' OF ' + total + '</span>';
-  // Progress dots
-  html += '<div style="display:flex;gap:4px;">';
-  for (var d = 0; d < total; d++) {
-    var dotColor = d < qi ? 'var(--accent-green)' : (d === qi ? 'var(--accent-gold)' : 'var(--border-subtle)');
-    html += '<div style="width:8px;height:8px;border-radius:50%;background:' + dotColor + ';transition:background 0.3s;"></div>';
-  }
-  html += '</div></div>';
-  html += '<div style="font-size:14px;color:var(--text-primary);font-weight:500;margin-bottom:14px;line-height:1.4;">' + escapeHtml(q.question) + '</div>';
-  html += '<div style="display:flex;flex-direction:column;gap:8px;">';
-  (q.options || []).forEach(function(opt) {
-    var isDefault = (opt === q.default);
-    html += '<button class="builder-q-option" onclick="builderAnswerQuestion(\'' + escapeAttr(q.id) + '\',\'' + escapeAttr(opt) + '\',this)" style="';
-    html += 'background:' + (isDefault ? 'rgba(0,255,136,0.08)' : 'var(--bg-secondary)') + ';';
-    html += 'border:1px solid ' + (isDefault ? 'rgba(0,255,136,0.3)' : 'var(--border-subtle)') + ';';
-    html += 'color:var(--text-primary);padding:10px 14px;border-radius:10px;font-size:13px;cursor:pointer;';
-    html += 'text-align:left;transition:all 0.2s;display:flex;align-items:center;gap:8px;';
-    html += '">';
-    html += '<div style="width:18px;height:18px;border-radius:50%;border:2px solid ' + (isDefault ? 'var(--accent-green)' : 'var(--border-subtle)') + ';flex-shrink:0;display:flex;align-items:center;justify-content:center;transition:all 0.2s;">';
-    if (isDefault) html += '<div style="width:8px;height:8px;border-radius:50%;background:var(--accent-green);"></div>';
-    html += '</div>';
-    html += escapeHtml(opt);
-    if (isDefault) html += '<span style="margin-left:auto;font-size:10px;color:var(--accent-green);font-weight:600;">RECOMMENDED</span>';
-    html += '</button>';
-  });
-  html += '</div></div>';
-
-  studioAddMessage('assistant', '', { model: (builderPlanState.plan._modelUsed || 'SAL Builder'), tier: studioState.selectedTier }, html);
-}
-
-function builderAnswerQuestion(qid, val, el) {
-  builderPlanState.answers[qid] = val;
-
-  // Highlight selected, dim others
-  var parent = el.parentElement;
-  parent.querySelectorAll('.builder-q-option').forEach(function(b) {
-    b.style.opacity = '0.4';
-    b.style.pointerEvents = 'none';
-    b.style.border = '1px solid var(--border-subtle)';
-    b.style.background = 'var(--bg-secondary)';
-    b.querySelector('div').style.borderColor = 'var(--border-subtle)';
-    b.querySelector('div').innerHTML = '';
-  });
-  el.style.opacity = '1';
-  el.style.background = 'rgba(0,255,136,0.1)';
-  el.style.border = '1px solid var(--accent-green)';
-  el.querySelector('div').style.borderColor = 'var(--accent-green)';
-  el.querySelector('div').innerHTML = '<div style="width:8px;height:8px;border-radius:50%;background:var(--accent-green);"></div>';
-
-  // Show user's choice as a chat message
-  studioAddMessage('user', val);
-
-  // Move to next question after a brief pause
-  builderPlanState.currentQ++;
-  setTimeout(function() {
-    builderShowNextQuestion();
-  }, 400);
-}
-
-function builderShowBuildSummary() {
-  var plan = builderPlanState.plan;
-  var html = '<div style="animation:fadeIn 0.35s ease;">';
-  html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">';
-  html += '<div style="width:10px;height:10px;border-radius:50%;background:var(--accent-green);animation:pulse-dot 1.5s infinite"></div>';
-  html += '<span style="font-weight:600;font-size:14px;color:var(--accent-gold);">Ready to Build</span></div>';
-
-  // Show planned files
-  if (plan.files_planned && plan.files_planned.length) {
-    html += '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px;">';
-    plan.files_planned.forEach(function(fp) {
-      var ext = (fp.name || '').split('.').pop().toLowerCase();
-      var c = ext === 'html' ? '#ef4444' : ext === 'css' ? '#3b82f6' : (ext === 'js' || ext === 'ts') ? '#f59e0b' : ext === 'py' ? '#22c55e' : '#6B7280';
-      html += '<span style="background:var(--bg-secondary);border:1px solid var(--border-subtle);padding:4px 8px;border-radius:6px;font-size:11px;display:flex;align-items:center;gap:4px;">';
-      html += '<span style="width:6px;height:6px;border-radius:50%;background:' + c + '"></span>' + escapeHtml(fp.name) + '</span>';
-    });
-    html += '</div>';
-  }
-
-  // Compact tech stack
-  if (plan.architecture && plan.architecture.tech_stack) {
-    html += '<div style="font-size:11px;color:var(--text-muted);margin-bottom:14px;">' + plan.architecture.tech_stack.join(' · ') + '</div>';
-  }
-
-  html += '<button class="studio-action-btn" onclick="builderExecutePlan()" style="background:var(--accent-green);color:#000;font-weight:600;padding:10px 24px;border-radius:10px;width:100%;font-size:14px;display:flex;align-items:center;justify-content:center;gap:8px;">';
-  html += '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="16" height="16"><polygon points="5 3 19 12 5 21 5 3"/></svg> Build It</button>';
-  html += '</div>';
-
-  studioAddMessage('assistant', '', { model: (plan._modelUsed || 'SAL Builder'), tier: studioState.selectedTier }, html);
-}
-
-async function builderExecutePlan() {
-  if (!builderPlanState.plan) return;
-  var plan = builderPlanState.plan;
-  // Collect any default answers for unanswered questions
-  if (plan.questions) {
-    plan.questions.forEach(function(q) {
-      if (!builderPlanState.answers[q.id] && q.default) builderPlanState.answers[q.id] = q.default;
-    });
-  }
-
-  // Show building animation in chat
-  studioAddMessage('assistant', 'Building ' + (plan.project_name || 'your project') + '...');
-
-  // Show animated file creation log in preview
-  var files = plan.files_planned || [{ name: 'index.html' }, { name: 'style.css' }, { name: 'app.js' }];
-  var logHtml = '<div class="builder-build-log" style="padding:24px;">';
-  logHtml += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:20px;">';
-  logHtml += '<div class="studio-btn-spinner" style="width:20px;height:20px;"></div>';
-  logHtml += '<span style="font-weight:600;font-size:14px;color:var(--text-primary);">Generating project files...</span></div>';
-  logHtml += '<div id="builderFileLog" style="font-family:monospace;font-size:12px;line-height:2;">';
-  files.forEach(function(fp, i) {
-    var ext = (fp.name || '').split('.').pop().toLowerCase();
-    var c = ext === 'html' ? '#ef4444' : ext === 'css' ? '#3b82f6' : (ext === 'js' || ext === 'ts') ? '#f59e0b' : ext === 'py' ? '#22c55e' : '#6B7280';
-    logHtml += '<div class="builder-file-log-item" style="opacity:0;transform:translateX(-8px);transition:all 0.4s ease ' + (i * 0.3) + 's;" data-idx="' + i + '">';
-    logHtml += '<span style="color:var(--accent-green);">✓</span> ';
-    logHtml += '<span style="color:' + c + ';">' + escapeHtml(fp.name) + '</span>';
-    logHtml += '<span style="color:var(--text-muted);"> — ' + escapeHtml(fp.purpose || 'generating...') + '</span>';
-    logHtml += '</div>';
-  });
-  logHtml += '</div></div>';
-  showStudioResult(logHtml);
-  if (studioState.viewMode === 'chat') studioToggleView('preview');
-
-  // Animate file items appearing one by one
-  setTimeout(function() {
-    document.querySelectorAll('.builder-file-log-item').forEach(function(el) {
-      el.style.opacity = '1';
-      el.style.transform = 'translateX(0)';
-    });
-  }, 100);
-
-  try {
-    var template = plan.project_type || (builderState.project && builderState.project.template) || 'landing';
-    var projName = plan.project_name || (builderState.project && builderState.project.name) || 'my-project';
-    var aiModel = 'claude';
-    if (/grok/i.test(studioState.selectedModel)) aiModel = 'grok';
-    else if (/gemini/i.test(studioState.selectedModel)) aiModel = 'gemini';
-    else if (/gpt/i.test(studioState.selectedModel)) aiModel = 'gpt';
-
-    var appResp = await fetch(API + '/api/builder/generate-app', {
-      method: 'POST',
-      headers: Object.assign({ 'Content-Type': 'application/json' }, authHeaders()),
-      body: JSON.stringify({
-        prompt: plan.summary || builderPlanState.projectName,
-        template: template, name: projName, model: aiModel,
-        plan: plan, answers: builderPlanState.answers,
-        iteration: builderPlanState.iteration,
-        existing_files: builderPlanState.iteration > 0 ? builderState.files : []
-      })
-    });
-    var appData = await appResp.json();
-    if (appData.error) {
-      studioAddMessage('assistant', 'Build error: ' + appData.error);
-      showStudioResult('<div style="color:var(--text-muted);padding:20px;">Build failed. Try rephrasing or selecting a different model.</div>');
-    } else {
-      var genFiles = appData.files || [];
-      builderState.files = genFiles;
-      builderState.project = builderState.project || {};
-      builderState.project.name = appData.name || projName;
-      builderState.project.template = template;
-      builderPlanState.iteration++;
-
-      studioAddMessage('assistant', 'Project built — ' + genFiles.length + ' file(s) via ' + (appData.model_used || 'AI'), {
-        model: appData.model_used || studioState.selectedModel, tier: studioState.selectedTier
-      });
-      builderRenderFileTree();
-      builderAddLog('success', 'Generated ' + genFiles.length + ' files via ' + (appData.model_used || 'AI'));
-
-      // Render the live preview + deploy pipeline
-      showBuilderGenResult(genFiles);
-      if (typeof showToast === 'function') showToast('Project built: ' + genFiles.length + ' files', 'success');
-    }
-  } catch (e) {
-    studioAddMessage('assistant', 'Build failed: ' + (e.message || 'Network error'));
-  }
-}
 
 function showBuilderGenResult(genFiles) {
-  // Find HTML file for live preview
+  // v7.31.0 — Lean preview for design-to-code flow. Code mode uses builderSend() path.
   var htmlFile = null;
-  var cssFile = null;
+  var cssFiles = [];
+  var jsFiles = [];
   genFiles.forEach(function(f) {
     if (/\.html$/i.test(f.name) && !htmlFile) htmlFile = f;
-    if (/\.css$/i.test(f.name) && !cssFile) cssFile = f;
+    if (/\.css$/i.test(f.name)) cssFiles.push(f);
+    if (/\.js$/i.test(f.name)) jsFiles.push(f);
   });
 
   var resultHtml = '<div class="builder-gen-result" style="padding:0;">';
 
-  // Live preview at top
   if (htmlFile) {
     var previewContent = htmlFile.content || '';
-    // Inject CSS if separate
-    if (cssFile && previewContent.indexOf('<link') > -1) {
-      previewContent = previewContent.replace(/<link[^>]*href=["']style\.css["'][^>]*>/i, '<style>' + (cssFile.content || '') + '</style>');
-    }
+    cssFiles.forEach(function(cf) {
+      var lp = new RegExp('<link[^>]*href=["\']' + cf.name.replace('.', '\\.') + '["\'][^>]*>', 'gi');
+      if (lp.test(previewContent)) { previewContent = previewContent.replace(lp, '<style>' + (cf.content || '') + '</style>'); }
+      else if (previewContent.indexOf('</head>') > -1) { previewContent = previewContent.replace('</head>', '<style>' + (cf.content || '') + '</style></head>'); }
+      else { previewContent = '<style>' + (cf.content || '') + '</style>' + previewContent; }
+    });
+    jsFiles.forEach(function(jf) {
+      var sp = new RegExp('<script[^>]*src=["\']' + jf.name.replace('.', '\\.') + '["\'][^>]*>\\s*</script>', 'gi');
+      if (sp.test(previewContent)) { previewContent = previewContent.replace(sp, '<script>' + (jf.content || '') + '<\/script>'); }
+      else if (previewContent.indexOf('</body>') > -1) { previewContent = previewContent.replace('</body>', '<script>' + (jf.content || '') + '<\/script></body>'); }
+      else { previewContent += '<script>' + (jf.content || '') + '<\/script>'; }
+    });
     var blob = new Blob([previewContent], { type: 'text/html' });
     var blobUrl = URL.createObjectURL(blob);
-    resultHtml += '<div style="position:relative;border-bottom:1px solid var(--border-subtle);">';
-    resultHtml += '<div style="display:flex;align-items:center;gap:8px;padding:10px 16px;background:var(--bg-secondary);border-bottom:1px solid var(--border-subtle);">';
-    resultHtml += '<div style="display:flex;gap:4px;"><div style="width:8px;height:8px;border-radius:50%;background:#ef4444;"></div><div style="width:8px;height:8px;border-radius:50%;background:#f59e0b;"></div><div style="width:8px;height:8px;border-radius:50%;background:#22c55e;"></div></div>';
-    resultHtml += '<span style="font-size:11px;color:var(--text-muted);flex:1;text-align:center;">Live Preview</span>';
-    resultHtml += '<button onclick="builderTogglePreviewSize()" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:11px;">⛶ Expand</button>';
-    resultHtml += '</div>';
-    resultHtml += '<iframe id="builderPreviewFrame" src="' + blobUrl + '" style="width:100%;height:400px;border:none;background:#fff;"></iframe>';
-    resultHtml += '</div>';
+    var pid = 'designPreview_' + Date.now();
+    resultHtml += '<div class="builder-code-preview-header">';
+    resultHtml += '<div class="builder-code-preview-dots"><span style="background:#ef4444"></span><span style="background:#f59e0b"></span><span style="background:#22c55e"></span></div>';
+    resultHtml += '<span class="builder-code-preview-label">Live Preview</span>';
+    resultHtml += '<div style="display:flex;gap:4px;margin-left:auto;">';
+    resultHtml += '<button class="builder-action-btn" style="font-size:10px;padding:2px 8px;" onclick="var f=document.getElementById(\'' + pid + '\');f.style.height=f.style.height===\'600px\'?\'400px\':\'600px\'">Expand</button>';
+    resultHtml += '<button class="builder-action-btn" style="font-size:10px;padding:2px 8px;" onclick="window.open(document.getElementById(\'' + pid + '\').src,\'_blank\')">Open</button>';
+    resultHtml += '</div></div>';
+    resultHtml += '<div style="display:flex;justify-content:center;background:#111;border-radius:0 0 8px 8px;padding:8px;">';
+    resultHtml += '<iframe id="' + pid + '" src="' + blobUrl + '" style="width:100%;height:400px;border:none;border-radius:6px;background:#fff;"></iframe></div>';
   }
 
-  // File tree
-  resultHtml += '<div style="padding:16px;">';
-  resultHtml += '<div style="font-size:12px;font-weight:600;color:var(--text-muted);margin-bottom:10px;letter-spacing:0.5px;">PROJECT FILES · ' + genFiles.length + '</div>';
-  resultHtml += '<div style="display:flex;flex-direction:column;gap:4px;margin-bottom:16px;">';
+  // File tags
+  resultHtml += '<div class="builder-code-files">';
   genFiles.forEach(function(f, i) {
     var ext = (f.name || '').split('.').pop().toLowerCase();
     var color = ext === 'html' ? '#ef4444' : ext === 'css' ? '#3b82f6' : (ext === 'js' || ext === 'ts') ? '#f59e0b' : ext === 'py' ? '#22c55e' : '#6B7280';
-    var size = f.content ? f.content.length : 0;
-    resultHtml += '<div class="builder-file-row" onclick="builderOpenFile(' + i + ')" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:8px;cursor:pointer;transition:background 0.2s;background:var(--bg-secondary);">';
-    resultHtml += '<div style="width:8px;height:8px;border-radius:2px;background:' + color + ';flex-shrink:0;"></div>';
-    resultHtml += '<span style="font-size:13px;font-weight:500;flex:1;">' + escapeHtml(f.name) + '</span>';
-    resultHtml += '<span style="font-size:11px;color:var(--text-muted);">' + formatFileSize(size) + '</span>';
-    resultHtml += '</div>';
+    var size = f.content ? (f.content.length > 1000 ? Math.round(f.content.length / 1024) + 'kb' : f.content.length + 'b') : '0b';
+    resultHtml += '<span class="builder-code-file-tag" onclick="builderOpenFile(' + i + ')" title="View code"><span class="builder-code-file-dot" style="background:' + color + '"></span>' + escapeHtml(f.name) + ' <span style="font-size:9px;opacity:0.5;">' + size + '</span></span>';
   });
   resultHtml += '</div>';
 
-  // Iterate button
-  resultHtml += '<button class="studio-action-btn" onclick="builderIteratePrompt()" style="width:100%;border-color:var(--accent-green);color:var(--accent-green);padding:10px;border-radius:10px;margin-bottom:16px;font-size:13px;display:flex;align-items:center;justify-content:center;gap:8px;">';
-  resultHtml += '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M1 4v6h6"/><path d="M23 20v-6h-6"/><path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"/></svg> Iterate / Refine</button>';
-
-  // Deploy Pipeline header
-  resultHtml += '<div style="font-size:12px;font-weight:600;color:var(--text-muted);margin-bottom:10px;letter-spacing:0.5px;">DEPLOY PIPELINE</div>';
-  resultHtml += '<div style="display:flex;flex-direction:column;gap:8px;">';
-
-  // Env Variables
-  resultHtml += '<div class="builder-deploy-step" onclick="builderShowEnvVars()" style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:10px;border:1px solid var(--border-subtle);cursor:pointer;transition:all 0.2s;">';
-  resultHtml += '<div style="width:32px;height:32px;border-radius:8px;background:rgba(139,92,246,0.1);display:flex;align-items:center;justify-content:center;flex-shrink:0;"><svg viewBox="0 0 24 24" fill="none" stroke="#8b5cf6" stroke-width="2" width="16" height="16"><path d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg></div>';
-  resultHtml += '<div style="flex:1;"><div style="font-size:13px;font-weight:500;">Environment Variables</div><div style="font-size:11px;color:var(--text-muted);">Add API keys, secrets, config</div></div>';
-  resultHtml += '<svg viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="2" width="16" height="16"><polyline points="9 18 15 12 9 6"/></svg></div>';
-
-  // Domain Connect
-  resultHtml += '<div class="builder-deploy-step" onclick="builderShowDomainConnect()" style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:10px;border:1px solid var(--border-subtle);cursor:pointer;transition:all 0.2s;">';
-  resultHtml += '<div style="width:32px;height:32px;border-radius:8px;background:rgba(6,182,212,0.1);display:flex;align-items:center;justify-content:center;flex-shrink:0;"><svg viewBox="0 0 24 24" fill="none" stroke="#06b6d4" stroke-width="2" width="16" height="16"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></div>';
-  resultHtml += '<div style="flex:1;"><div style="font-size:13px;font-weight:500;">Connect Domain</div><div style="font-size:11px;color:var(--text-muted);">Custom domain + DNS records</div></div>';
-  resultHtml += '<svg viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="2" width="16" height="16"><polyline points="9 18 15 12 9 6"/></svg></div>';
-
-  // Vercel
-  resultHtml += '<div class="builder-deploy-step" onclick="builderPublish(\'vercel\')" style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:10px;border:1px solid var(--border-subtle);cursor:pointer;transition:all 0.2s;">';
-  resultHtml += '<div style="width:32px;height:32px;border-radius:8px;background:rgba(255,255,255,0.06);display:flex;align-items:center;justify-content:center;flex-shrink:0;"><svg viewBox="0 0 24 24" fill="var(--text-primary)" width="16" height="16"><path d="M12 1L1 22h22L12 1z"/></svg></div>';
-  resultHtml += '<div style="flex:1;"><div style="font-size:13px;font-weight:500;">Deploy to Vercel</div><div style="font-size:11px;color:var(--text-muted);">Frontend, zero-config, instant</div></div>';
-  resultHtml += '<svg viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="2" width="16" height="16"><polyline points="9 18 15 12 9 6"/></svg></div>';
-
-  // Render
-  resultHtml += '<div class="builder-deploy-step" onclick="builderPublish(\'render\')" style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:10px;border:1px solid var(--border-subtle);cursor:pointer;transition:all 0.2s;">';
-  resultHtml += '<div style="width:32px;height:32px;border-radius:8px;background:rgba(70,235,140,0.1);display:flex;align-items:center;justify-content:center;flex-shrink:0;"><span style="font-size:16px;font-weight:900;color:var(--accent-green);">R</span></div>';
-  resultHtml += '<div style="flex:1;"><div style="font-size:13px;font-weight:500;">Deploy to Render</div><div style="font-size:11px;color:var(--text-muted);">Full-stack, WebSockets, backends</div></div>';
-  resultHtml += '<svg viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="2" width="16" height="16"><polyline points="9 18 15 12 9 6"/></svg></div>';
-
-  // GitHub
-  resultHtml += '<div class="builder-deploy-step" onclick="builderPublish(\'github\')" style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:10px;border:1px solid var(--border-subtle);cursor:pointer;transition:all 0.2s;">';
-  resultHtml += '<div style="width:32px;height:32px;border-radius:8px;background:rgba(255,255,255,0.06);display:flex;align-items:center;justify-content:center;flex-shrink:0;"><svg viewBox="0 0 24 24" fill="var(--text-primary)" width="16" height="16"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23A11.509 11.509 0 0112 5.803c1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576C20.566 21.797 24 17.3 24 12c0-6.627-5.373-12-12-12z"/></svg></div>';
-  resultHtml += '<div style="flex:1;"><div style="font-size:13px;font-weight:500;">Push to GitHub</div><div style="font-size:11px;color:var(--text-muted);">Version control, collaborate</div></div>';
-  resultHtml += '<svg viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="2" width="16" height="16"><polyline points="9 18 15 12 9 6"/></svg></div>';
-
-  // Download ZIP
-  resultHtml += '<div class="builder-deploy-step" onclick="builderPublish(\'download\')" style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:10px;border:1px solid var(--border-subtle);cursor:pointer;transition:all 0.2s;">';
-  resultHtml += '<div style="width:32px;height:32px;border-radius:8px;background:rgba(245,158,11,0.1);display:flex;align-items:center;justify-content:center;flex-shrink:0;"><svg viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2" width="16" height="16"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></div>';
-  resultHtml += '<div style="flex:1;"><div style="font-size:13px;font-weight:500;">Download ZIP</div><div style="font-size:11px;color:var(--text-muted);">Get all project files</div></div>';
-  resultHtml += '<svg viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="2" width="16" height="16"><polyline points="9 18 15 12 9 6"/></svg></div>';
-
-  resultHtml += '</div></div></div>';
+  // Deploy actions
+  resultHtml += '<div class="builder-code-actions">';
+  resultHtml += '<button class="builder-action-btn" onclick="builderPublish(\'vercel\')"><svg viewBox="0 0 24 24" fill="currentColor" width="12" height="12"><path d="M12 1L1 22h22L12 1z"/></svg> Vercel</button>';
+  resultHtml += '<button class="builder-action-btn" onclick="builderPublish(\'github\')">GitHub</button>';
+  resultHtml += '<button class="builder-action-btn" onclick="builderPublish(\'render\')">Render</button>';
+  resultHtml += '<button class="builder-action-btn" onclick="builderPublish(\'download\')">Download ZIP</button>';
+  resultHtml += '</div></div>';
   showStudioResult(resultHtml);
   if (studioState.viewMode === 'chat') studioToggleView('preview');
 }
 
-function builderTogglePreviewSize() {
-  var iframe = document.getElementById('builderPreviewFrame');
-  if (!iframe) return;
-  iframe.style.height = iframe.style.height === '400px' ? '700px' : '400px';
-}
 
-/* ── Env Variables UI ── */
-function builderShowEnvVars() {
-  var html = '<div style="padding:20px;animation:fadeIn 0.3s ease;">';
-  html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;">';
-  html += '<svg viewBox="0 0 24 24" fill="none" stroke="#8b5cf6" stroke-width="2" width="18" height="18"><path d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>';
-  html += '<span style="font-weight:600;font-size:14px;">Environment Variables</span></div>';
-  html += '<div id="builderEnvList" style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px;">';
-  html += builderEnvRow('', '');
-  html += '</div>';
-  html += '<button onclick="builderAddEnvRow()" style="background:none;border:1px dashed var(--border-subtle);color:var(--text-muted);padding:8px;border-radius:8px;width:100%;cursor:pointer;font-size:12px;margin-bottom:16px;">+ Add Variable</button>';
-  html += '<button onclick="builderSaveEnvVars()" class="studio-action-btn" style="background:var(--accent-green);color:#000;font-weight:600;padding:10px;border-radius:10px;width:100%;">Save & Continue</button>';
-  html += '</div>';
-  showStudioResult(html);
-}
 
-function builderEnvRow(key, val) {
-  return '<div style="display:flex;gap:6px;"><input type="text" placeholder="KEY" value="' + escapeAttr(key) + '" style="flex:1;background:var(--bg-secondary);border:1px solid var(--border-subtle);border-radius:6px;padding:8px;font-size:12px;color:var(--text-primary);font-family:monospace;">' +
-    '<input type="password" placeholder="value" value="' + escapeAttr(val) + '" style="flex:2;background:var(--bg-secondary);border:1px solid var(--border-subtle);border-radius:6px;padding:8px;font-size:12px;color:var(--text-primary);font-family:monospace;">' +
-    '<button onclick="this.parentElement.remove()" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:16px;">&times;</button></div>';
-}
 
-function builderAddEnvRow() {
-  var list = document.getElementById('builderEnvList');
-  if (list) { var div = document.createElement('div'); div.innerHTML = builderEnvRow('', ''); list.appendChild(div.firstElementChild); }
-}
-
-function builderSaveEnvVars() {
-  var rows = document.querySelectorAll('#builderEnvList > div');
-  var envVars = {};
-  rows.forEach(function(row) {
-    var inputs = row.querySelectorAll('input');
-    var k = inputs[0] ? inputs[0].value.trim() : '';
-    var v = inputs[1] ? inputs[1].value.trim() : '';
-    if (k) envVars[k] = v;
-  });
-  builderState.envVars = envVars;
-  var count = Object.keys(envVars).length;
-  studioAddMessage('assistant', count + ' env variable' + (count !== 1 ? 's' : '') + ' saved.');
-  if (typeof showToast === 'function') showToast(count + ' env vars saved', 'success');
-  showBuilderGenResult(builderState.files);
-}
-
-/* ── Domain Connect UI ── */
-function builderShowDomainConnect() {
-  var html = '<div style="padding:20px;animation:fadeIn 0.3s ease;">';
-  html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;">';
-  html += '<svg viewBox="0 0 24 24" fill="none" stroke="#06b6d4" stroke-width="2" width="18" height="18"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>';
-  html += '<span style="font-weight:600;font-size:14px;">Connect Custom Domain</span></div>';
-
-  html += '<div style="margin-bottom:16px;"><input id="builderDomainInput" type="text" placeholder="yourdomain.com" style="width:100%;background:var(--bg-secondary);border:1px solid var(--border-subtle);border-radius:8px;padding:10px 14px;font-size:14px;color:var(--text-primary);"></div>';
-
-  // DNS Records info
-  html += '<div style="background:var(--bg-secondary);border-radius:10px;padding:14px;margin-bottom:16px;">';
-  html += '<div style="font-size:12px;font-weight:600;color:var(--text-muted);margin-bottom:8px;letter-spacing:0.5px;">DNS RECORDS TO ADD</div>';
-  html += '<div style="font-family:monospace;font-size:12px;line-height:1.8;color:var(--text-secondary);">';
-  html += '<div><span style="color:var(--accent-green);font-weight:600;">A</span> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp; @ &nbsp;&nbsp;→ &nbsp;76.76.21.21</div>';
-  html += '<div><span style="color:var(--accent-green);font-weight:600;">CNAME</span> &nbsp;www → cname.vercel-dns.com</div>';
-  html += '</div>';
-  html += '<div style="font-size:11px;color:var(--text-muted);margin-top:8px;">Add these records in your DNS provider (Cloudflare, GoDaddy, Namecheap, etc.)</div>';
-  html += '</div>';
-
-  html += '<button onclick="builderSaveDomain()" class="studio-action-btn" style="background:var(--accent-green);color:#000;font-weight:600;padding:10px;border-radius:10px;width:100%;">Save Domain</button>';
-  html += '</div>';
-  showStudioResult(html);
-}
-
-function builderSaveDomain() {
-  var input = document.getElementById('builderDomainInput');
-  var domain = input ? input.value.trim() : '';
-  if (!domain) { if (typeof showToast === 'function') showToast('Enter a domain name', 'error'); return; }
-  builderState.customDomain = domain;
-  studioAddMessage('assistant', 'Domain ' + domain + ' saved. Add the DNS records above, then deploy to Vercel or Render.');
-  if (typeof showToast === 'function') showToast('Domain saved: ' + domain, 'success');
-  showBuilderGenResult(builderState.files);
-}
-
-function builderIteratePrompt() {
-  var promptEl = document.getElementById('studioPrompt');
-  if (promptEl) { promptEl.focus(); promptEl.setAttribute('placeholder', 'Describe changes... e.g. "make the hero section taller" or "add a contact form"'); }
-  studioAddMessage('assistant', 'Tell me what to change — I\'ll update the project while keeping everything else intact.');
-}
-
-async function builderIterate(prompt) {
-  studioAddMessage('assistant', 'Refining project...');
-  showStudioResult('<div style="display:flex;align-items:center;gap:12px;padding:40px;justify-content:center;"><div class="studio-btn-spinner" style="width:24px;height:24px;"></div><span style="color:var(--text-secondary);">Iterating on your project...</span></div>');
-  try {
-    var aiModel = 'claude';
-    if (/grok/i.test(studioState.selectedModel)) aiModel = 'grok';
-    else if (/gemini/i.test(studioState.selectedModel)) aiModel = 'gemini';
-    else if (/gpt/i.test(studioState.selectedModel)) aiModel = 'gpt';
-    var resp = await fetch(API + '/api/builder/iterate', {
-      method: 'POST',
-      headers: Object.assign({ 'Content-Type': 'application/json' }, authHeaders()),
-      body: JSON.stringify({ prompt: prompt, files: builderState.files, model: aiModel })
-    });
-    var data = await resp.json();
-    if (data.error) {
-      studioAddMessage('assistant', 'Iterate Error: ' + data.error);
-    } else {
-      builderState.files = data.files || builderState.files;
-      builderPlanState.iteration++;
-      studioAddMessage('assistant', 'Updated: ' + (data.changes_summary || 'Files refined') + ' (via ' + (data.model_used || 'AI') + ')', { model: data.model_used || studioState.selectedModel, tier: studioState.selectedTier });
-      builderRenderFileTree();
-      builderAddLog('success', 'Iterated: ' + (data.updated_files || []).join(', '));
-      showBuilderGenResult(builderState.files);
-      if (typeof showToast === 'function') showToast('Project updated', 'success');
-    }
-  } catch (e) {
-    studioAddMessage('assistant', 'Iteration failed: ' + (e.message || 'Network error'));
-  }
-}
 
 
 
@@ -2479,63 +2138,19 @@ async function studioGenerate() {
     return;
   }
 
-  // ── CODE MODE: Iterate if project exists, otherwise plan first ──
+  // ── CODE MODE: Route to unified Builder chat (v7.31.0 — eliminates dead plan flow) ──
   if (mode === 'code') {
-    if (builderState.files && builderState.files.length > 0 && builderPlanState.iteration > 0 && !/\b(new project|start over|from scratch|brand new)\b/i.test(prompt)) {
-      await builderIterate(prompt);
-      studioState.generating = false;
-      restoreBtn();
-      return;
-    }
-    if (/\b(app|site|page|dashboard|build|create|website|landing|portfolio|widget|saas|ecommerce|store|pwa|make|design|generate)\b/i.test(prompt)) {
-      try {
-        studioAddMessage('assistant', 'Analyzing your project...');
-        var aiModel = 'claude';
-        if (/grok/i.test(studioState.selectedModel)) aiModel = 'grok';
-        else if (/gemini/i.test(studioState.selectedModel)) aiModel = 'gemini';
-        else if (/gpt/i.test(studioState.selectedModel)) aiModel = 'gpt';
-        var planResp = await fetch(API + '/api/builder/plan', {
-          method: 'POST',
-          headers: Object.assign({ 'Content-Type': 'application/json' }, authHeaders()),
-          body: JSON.stringify({ prompt: prompt, type: 'website', model: aiModel })
-        });
-        var planData = await planResp.json();
-        if (planData.error) {
-          studioAddMessage('assistant', 'Building directly...');
-          builderPlanState.plan = { project_name: 'my-project', project_type: 'landing', summary: prompt, _modelUsed: 'AI' };
-          builderPlanState.projectName = prompt;
-          builderPlanState.iteration = 0;
-          builderPlanState.answers = {};
-          builderPlanState.currentQ = 0;
-          await builderExecutePlan();
-        } else {
-          builderPlanState.plan = planData.plan;
-          builderPlanState.plan._modelUsed = planData.model_used || 'AI';
-          builderPlanState.projectName = prompt;
-          builderPlanState.iteration = 0;
-          builderPlanState.answers = {};
-          builderPlanState.currentQ = 0;
-          // Show plan summary, then ask questions one at a time
-          var p = planData.plan;
-          var summaryHtml = '<div style="animation:fadeIn 0.35s ease;">';
-          summaryHtml += '<div style="font-size:14px;color:var(--text-primary);margin-bottom:10px;line-height:1.5;">' + escapeHtml(p.summary || '') + '</div>';
-          if (p.architecture && p.architecture.features) {
-            summaryHtml += '<div style="display:flex;gap:6px;flex-wrap:wrap;">';
-            p.architecture.features.forEach(function(f) { summaryHtml += '<span style="background:rgba(0,255,136,0.08);color:var(--accent-green);font-size:11px;padding:3px 8px;border-radius:4px;">' + escapeHtml(f) + '</span>'; });
-            summaryHtml += '</div>';
-          }
-          summaryHtml += '</div>';
-          studioAddMessage('assistant', '', { model: planData.model_used || 'SAL Builder', tier: studioState.selectedTier }, summaryHtml);
-          // Start asking questions one at a time
-          setTimeout(function() { builderShowNextQuestion(); }, 500);
-        }
-      } catch(e) {
-        studioAddMessage('assistant', 'Planning failed: ' + (e.message || 'Network error'));
-      }
-      studioState.generating = false;
-      restoreBtn();
-      return;
-    }
+    // Route ALL code requests through the unified builderSend() which uses
+    // /api/builder/chat SSE with BUILDER_CODE_SYSTEM — the only path that
+    // reliably produces actual code with live iframe preview.
+    var builderPromptEl = document.getElementById('builderPrompt');
+    if (builderPromptEl) builderPromptEl.value = prompt;
+    studioState.generating = false;
+    restoreBtn();
+    // Switch to unified builder view if not already there
+    navigate('studio');
+    await builderSend();
+    return;
   }
 
   // ── STANDARD MODES (image/video/audio/code snippets) ──
@@ -5681,6 +5296,3 @@ function toggleBuilderMic() {
   builderMicRecognition.start();
 }
 
-// Override the old studioGenerate to route to new builderSend
-var _origStudioGenerate = typeof studioGenerate === 'function' ? studioGenerate : null;
-studioGenerate = function() { return builderSend(); };
