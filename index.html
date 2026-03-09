@@ -578,6 +578,13 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
               <div class="service-item"><div class="service-icon" style="background:var(--accent-purple-dim);"><svg viewBox="0 0 24 24" fill="none" stroke="var(--accent-purple)" stroke-width="2" stroke-linecap="round"><rect x="1" y="4" width="22" height="16" rx="2"/><path d="M1 10h22"/></svg></div><div><div class="service-name">Stripe Billing</div><div class="service-status connected">● Connected</div></div></div>
             </div>
           </div>
+          <div class="account-section">
+            <div class="account-section-title">SaintSal™ Personality</div>
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:var(--space-3);background:rgba(200,162,78,0.06);border-radius:var(--radius-md);">
+              <div><div style="font-size:var(--text-sm);font-weight:600;color:var(--text-primary);">Custom Instructions & Memory</div><div style="font-size:var(--text-xs);color:var(--text-muted);margin-top:2px;">Customize how SaintSal™ responds to you</div></div>
+              <button class="plan-manage-btn" onclick="navigate('personality')" style="white-space:nowrap;">Configure</button>
+            </div>
+          </div>
           <button class="account-logout-btn" onclick="handleLogout()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16" style="margin-right:6px"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>Sign Out</button>
         </div>
       </div>
@@ -1166,6 +1173,12 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
     <!-- Business Center View -->
     <div class="view launchpad-view" id="launchpadView">
       <!-- Dynamically rendered by business-center.js renderBusinessCenter() -->
+    </div>
+
+    <!-- SAL Personality / Settings View -->
+    <div class="view personality-view" id="personalityView">
+      <div class="personality-inner" id="personalityInner"></div>
+      <div class="app-footer">SaintSal™ <span class="footer-labs-green">LABS</span> · Responsible Intelligence · Patent #10,290,222 · <a href="https://www.perplexity.ai/computer" target="_blank" rel="noopener noreferrer">Created with Perplexity Computer</a></div>
     </div>
 
     <!-- Connectors View -->

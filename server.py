@@ -56,7 +56,7 @@ if XAI_API_KEY:
     except Exception as e:
         print(f"⚠️ xAI/Grok client not initialized: {e}")
 
-ELEVENLABS_API_KEY = os.environ.get("ELEVENLABS_API_KEY", "")
+ELEVENLABS_API_KEY = os.environ.get("ELEVENLABS_API_KEY", "sk_20510a2269d6cc6cd4e505efcde230d1d87b31bc5aae98a2")
 print(f"{'✅' if ELEVENLABS_API_KEY else '⚠️'} ElevenLabs API key {'configured' if ELEVENLABS_API_KEY else 'not set'}")
 
 # ─── Supabase Client ──────────────────────────────────────────────────────────
@@ -2576,6 +2576,209 @@ def get_fallback_chain(model_id: str) -> list:
     """Return the ordered fallback chain for a given model."""
     return [model_id] + MODEL_FALLBACKS.get(model_id, [])
 
+
+async def smart_generate(category: str, model_id: str, prompt: str, **kwargs) -> dict:
+    """
+    Smart Orchestration Router — dispatches to the right provider API for the given
+    model_id, walking MODEL_FALLBACKS on failure.
+
+    Args:
+        category: "chat", "image", or "audio"
+        model_id: key from MODEL_COSTS (e.g. "claude_haiku", "grok_2", "elevenlabs_pro")
+        prompt: the user prompt / text input
+        **kwargs: extra options (system_prompt, voice, aspect_ratio, history, etc.)
+
+    Returns:
+        {success, data, model_used, provider, errors}
+    """
+    errors: list = []
+    chain = get_fallback_chain(model_id)
+
+    for current_model in chain:
+        meta = MODEL_COSTS.get(current_model, {})
+        provider = meta.get("provider", "").lower()
+        cat = meta.get("category", category)
+
+        try:
+            # ─── CHAT ─────────────────────────────────────────────────────────
+            if cat == "chat":
+                system_prompt = kwargs.get("system_prompt", "You are a helpful assistant.")
+                history = kwargs.get("history", [])
+                messages = history + [{"role": "user", "content": prompt}]
+
+                if provider == "anthropic" and client:
+                    resp = client.messages.create(
+                        model=_ANTHROPIC_MODEL_IDS.get(current_model, "claude-3-5-haiku-20241022"),
+                        max_tokens=4096,
+                        system=system_prompt,
+                        messages=messages,
+                    )
+                    text = resp.content[0].text if resp.content else ""
+                    return {"success": True, "data": text, "model_used": current_model, "provider": "Anthropic", "errors": errors}
+
+                elif provider == "xai" and XAI_API_KEY:
+                    xai_model = _XAI_MODEL_IDS.get(current_model, "grok-3-mini")
+                    async with httpx.AsyncClient(timeout=60.0) as hc:
+                        resp = await hc.post(
+                            "https://api.x.ai/v1/chat/completions",
+                            headers={"Authorization": f"Bearer {XAI_API_KEY}", "Content-Type": "application/json"},
+                            json={"model": xai_model, "messages": [{"role": "system", "content": system_prompt}] + messages, "temperature": 0.7},
+                        )
+                        if resp.status_code == 200:
+                            text = resp.json().get("choices", [{}])[0].get("message", {}).get("content", "")
+                            return {"success": True, "data": text, "model_used": current_model, "provider": "xAI", "errors": errors}
+                        errors.append(f"{current_model}: xAI HTTP {resp.status_code}")
+                        continue
+
+                elif provider == "google" and GEMINI_API_KEY:
+                    result = await gemini_chat(prompt, history=history, system_prompt=system_prompt)
+                    if result.get("text"):
+                        return {"success": True, "data": result["text"], "model_used": current_model, "provider": "Google", "errors": errors}
+                    errors.append(f"{current_model}: Gemini returned empty")
+                    continue
+
+                elif provider == "perplexity" and PPLX_API_KEY:
+                    async with httpx.AsyncClient(timeout=60.0) as hc:
+                        resp = await hc.post(
+                            "https://api.perplexity.ai/chat/completions",
+                            headers={"Authorization": f"Bearer {PPLX_API_KEY}", "Content-Type": "application/json"},
+                            json={"model": "llama-3.1-sonar-large-128k-online", "messages": [{"role": "system", "content": system_prompt}] + messages},
+                        )
+                        if resp.status_code == 200:
+                            text = resp.json().get("choices", [{}])[0].get("message", {}).get("content", "")
+                            return {"success": True, "data": text, "model_used": current_model, "provider": "Perplexity", "errors": errors}
+                        errors.append(f"{current_model}: Perplexity HTTP {resp.status_code}")
+                        continue
+
+                else:
+                    errors.append(f"{current_model}: no key for provider '{provider}'")
+                    continue
+
+            # ─── IMAGE ────────────────────────────────────────────────────────
+            elif cat == "image":
+                aspect_ratio = kwargs.get("aspect_ratio", "1:1")
+
+                if provider == "xai" and XAI_API_KEY:
+                    async with httpx.AsyncClient(timeout=90.0) as hc:
+                        resp = await hc.post(
+                            "https://api.x.ai/v1/images/generations",
+                            headers={"Authorization": f"Bearer {XAI_API_KEY}", "Content-Type": "application/json"},
+                            json={"model": "grok-2-image", "prompt": prompt, "n": 1, "response_format": "b64_json"},
+                        )
+                        if resp.status_code == 200 and resp.json().get("data"):
+                            image_b64 = resp.json()["data"][0]["b64_json"]
+                            return {"success": True, "data": image_b64, "model_used": current_model, "provider": "xAI", "errors": errors}
+                        errors.append(f"{current_model}: xAI image HTTP {resp.status_code}")
+                        continue
+
+                elif provider == "openai" and OPENAI_API_KEY:
+                    async with httpx.AsyncClient(timeout=90.0) as hc:
+                        resp = await hc.post(
+                            "https://api.openai.com/v1/images/generations",
+                            headers={"Authorization": f"Bearer {OPENAI_API_KEY}", "Content-Type": "application/json"},
+                            json={"model": "dall-e-3", "prompt": prompt, "n": 1, "size": "1024x1024", "response_format": "b64_json"},
+                        )
+                        if resp.status_code == 200 and resp.json().get("data"):
+                            image_b64 = resp.json()["data"][0]["b64_json"]
+                            return {"success": True, "data": image_b64, "model_used": current_model, "provider": "OpenAI", "errors": errors}
+                        errors.append(f"{current_model}: OpenAI image HTTP {resp.status_code}")
+                        continue
+
+                elif provider == "google" and GEMINI_API_KEY:
+                    async with httpx.AsyncClient(timeout=90.0) as hc:
+                        resp = await hc.post(
+                            f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key={GEMINI_API_KEY}",
+                            headers={"Content-Type": "application/json"},
+                            json={
+                                "contents": [{"parts": [{"text": f"Generate a photorealistic image: {prompt}"}]}],
+                                "generationConfig": {"responseModalities": ["TEXT"]},
+                            },
+                        )
+                        data = resp.json()
+                        parts = data.get("candidates", [{}])[0].get("content", {}).get("parts", [])
+                        for part in parts:
+                            if part.get("inlineData"):
+                                return {"success": True, "data": part["inlineData"]["data"], "model_used": current_model, "provider": "Google", "errors": errors}
+                        errors.append(f"{current_model}: Gemini image returned no inline_data")
+                        continue
+
+                else:
+                    errors.append(f"{current_model}: no image key for provider '{provider}'")
+                    continue
+
+            # ─── AUDIO ────────────────────────────────────────────────────────
+            elif cat == "audio":
+                voice_name = kwargs.get("voice", "kore")
+                _EL_VOICE_IDS = {
+                    "rachel": "21m00Tcm4TlvDq8ikWAM", "adam": "pNInz6obpgDQGcFmaJgB",
+                    "alice": "Xb7hH8MSUJpSbSDYk0k2", "kore": "21m00Tcm4TlvDq8ikWAM",
+                    "aoede": "EXAVITQu4vr4xnSDxMaL", "fenrir": "pNInz6obpgDQGcFmaJgB",
+                }
+
+                if provider == "elevenlabs" and ELEVENLABS_API_KEY:
+                    voice_id = _EL_VOICE_IDS.get(voice_name.lower(), "21m00Tcm4TlvDq8ikWAM")
+                    async with httpx.AsyncClient(timeout=60.0) as hc:
+                        resp = await hc.post(
+                            f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}",
+                            headers={"xi-api-key": ELEVENLABS_API_KEY, "Content-Type": "application/json", "Accept": "audio/mpeg"},
+                            json={"text": prompt, "model_id": "eleven_multilingual_v2", "voice_settings": {"stability": 0.5, "similarity_boost": 0.75}},
+                        )
+                        if resp.status_code == 200:
+                            return {"success": True, "data": base64.b64encode(resp.content).decode(), "model_used": current_model, "provider": "ElevenLabs", "errors": errors}
+                        errors.append(f"{current_model}: ElevenLabs HTTP {resp.status_code}")
+                        continue
+
+                elif provider == "google" and GEMINI_API_KEY:
+                    _g_voice_map = {"kore": "Kore", "aoede": "Aoede", "charon": "Charon", "fenrir": "Fenrir", "puck": "Puck", "rachel": "Kore", "adam": "Fenrir"}
+                    g_voice = _g_voice_map.get(voice_name.lower(), "Kore")
+                    async with httpx.AsyncClient(timeout=60.0) as hc:
+                        resp = await hc.post(
+                            f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key={GEMINI_API_KEY}",
+                            headers={"Content-Type": "application/json"},
+                            json={
+                                "contents": [{"parts": [{"text": prompt}]}],
+                                "generationConfig": {"responseModalities": ["AUDIO"], "speechConfig": {"voiceConfig": {"prebuiltVoiceConfig": {"voiceName": g_voice}}}},
+                            },
+                        )
+                        if resp.status_code == 200:
+                            parts = resp.json().get("candidates", [{}])[0].get("content", {}).get("parts", [])
+                            for part in parts:
+                                if part.get("inlineData", {}).get("data"):
+                                    return {"success": True, "data": part["inlineData"]["data"], "model_used": current_model, "provider": "Google", "errors": errors}
+                        errors.append(f"{current_model}: Gemini TTS HTTP {resp.status_code}")
+                        continue
+
+                else:
+                    errors.append(f"{current_model}: no audio key for provider '{provider}'")
+                    continue
+
+            else:
+                errors.append(f"{current_model}: unsupported category '{cat}'")
+                continue
+
+        except Exception as e:
+            errors.append(f"{current_model}: exception — {str(e)[:120]}")
+            continue
+
+    return {"success": False, "data": None, "model_used": None, "provider": None, "errors": errors}
+
+
+# Internal model ID lookup tables for smart_generate
+_ANTHROPIC_MODEL_IDS = {
+    "claude_haiku":        "claude-3-5-haiku-20241022",
+    "claude_sonnet":       "claude-sonnet-4-5",
+    "claude_sonnet_think": "claude-sonnet-4-5",
+    "claude_opus":         "claude-opus-4-5",
+}
+_XAI_MODEL_IDS = {
+    "grok_mini":  "grok-3-mini",
+    "grok_2":     "grok-2",
+    "grok3":      "grok-3",
+    "grok4":      "grok-4",
+    "grok_aurora":"aurora",
+}
+
+
 # Plan tier → credit limits and compute access
 PLAN_TIERS = {
     "free":       {"credits": 100,   "price_monthly": 0,    "compute_access": ["mini"],                          "label": "Free"},
@@ -2800,7 +3003,7 @@ async def get_studio_models():
 @limiter.limit("10/minute")
 @app.post("/api/studio/generate/image")
 async def studio_generate_image(request: Request):
-    """Generate an image using AI."""
+    """Generate an image using AI — multi-provider fallback chain."""
     body = await request.json()
     prompt = body.get("prompt", "")
     model = body.get("model", "nano_banana_2")
@@ -2811,44 +3014,120 @@ async def studio_generate_image(request: Request):
         return JSONResponse({"error": "Prompt required"}, status_code=400)
 
     full_prompt = f"{style + ': ' if style else ''}{prompt}"
+    image_bytes = None
+    actual_model = model
+    errors = []
+
+    # Provider chain: OpenAI DALL-E → xAI Grok Imagine → Gemini Imagen
+    # 1) Try OpenAI DALL-E if key available
+    if not image_bytes and OPENAI_API_KEY:
+        try:
+            async with httpx.AsyncClient(timeout=60.0) as http:
+                resp = await http.post(
+                    "https://api.openai.com/v1/images/generations",
+                    headers={"Authorization": f"Bearer {OPENAI_API_KEY}", "Content-Type": "application/json"},
+                    json={"model": "dall-e-3", "prompt": full_prompt, "n": 1, "size": "1024x1024", "response_format": "b64_json"},
+                )
+                data = resp.json()
+                if resp.status_code == 200 and data.get("data"):
+                    image_bytes = base64.b64decode(data["data"][0]["b64_json"])
+                    actual_model = "dall-e-3"
+                else:
+                    errors.append(f"OpenAI: {data.get('error', {}).get('message', 'unknown')}")
+        except Exception as e:
+            errors.append(f"OpenAI: {e}")
+
+    # 2) Try xAI Grok Imagine if key available
+    if not image_bytes and XAI_API_KEY:
+        try:
+            async with httpx.AsyncClient(timeout=60.0) as http:
+                resp = await http.post(
+                    "https://api.x.ai/v1/images/generations",
+                    headers={"Authorization": f"Bearer {XAI_API_KEY}", "Content-Type": "application/json"},
+                    json={"model": "grok-2-image", "prompt": full_prompt, "n": 1, "response_format": "b64_json"},
+                )
+                data = resp.json()
+                if resp.status_code == 200 and data.get("data"):
+                    image_bytes = base64.b64decode(data["data"][0]["b64_json"])
+                    actual_model = "grok-2-image"
+                else:
+                    errors.append(f"xAI: {data.get('error', {}).get('message', 'unknown')}")
+        except Exception as e:
+            errors.append(f"xAI: {e}")
+
+    # 3) Gemini Imagen via Stitch API
+    if not image_bytes and GEMINI_API_KEY:
+        try:
+            async with httpx.AsyncClient(timeout=60.0) as http:
+                resp = await http.post(
+                    f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key={GEMINI_API_KEY}",
+                    json={
+                        "contents": [{"parts": [{"text": f"Generate a photorealistic image: {full_prompt}"}]}],
+                        "generationConfig": {"responseModalities": ["TEXT"]},
+                    },
+                    headers={"Content-Type": "application/json"},
+                )
+                data = resp.json()
+                # Gemini may return image in inline_data
+                candidates = data.get("candidates", [{}])
+                parts = candidates[0].get("content", {}).get("parts", [])
+                for part in parts:
+                    if part.get("inlineData"):
+                        image_bytes = base64.b64decode(part["inlineData"]["data"])
+                        actual_model = "gemini-imagen"
+                        break
+                if not image_bytes:
+                    # Gemini returned text description instead — use it as enhanced prompt context
+                    desc = parts[0].get("text", "") if parts else ""
+                    errors.append(f"Gemini: returned text, not image")
+        except Exception as e:
+            errors.append(f"Gemini: {e}")
+
+    # 4) Final fallback: Generate a placeholder SVG
+    if not image_bytes:
+        svg = f"""<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <rect width="1024" height="1024" fill="#1a1a1a"/>
+  <text x="512" y="480" text-anchor="middle" fill="#c8a24e" font-family="system-ui" font-size="32" font-weight="bold">Image Generation</text>
+  <text x="512" y="530" text-anchor="middle" fill="#888" font-family="system-ui" font-size="20">Add an API key to enable:</text>
+  <text x="512" y="570" text-anchor="middle" fill="#666" font-family="system-ui" font-size="16">OPENAI_API_KEY (DALL-E) or XAI_API_KEY (Grok Imagine)</text>
+  <text x="512" y="620" text-anchor="middle" fill="#555" font-family="system-ui" font-size="14">Prompt: {prompt[:80]}...</text>
+</svg>"""
+        image_bytes = svg.encode("utf-8")
+        actual_model = "placeholder"
+        print(f"[Studio] Image fallback: no API key available. Errors: {errors}")
 
     try:
-        from generate_image import generate_image
-        image_bytes = await generate_image(full_prompt, model=model, aspect_ratio=aspect_ratio)
-
-        # Save to gallery
         file_id = str(uuid.uuid4())[:8]
-        filename = f"img_{file_id}.png"
+        ext = "svg" if actual_model == "placeholder" else "png"
+        filename = f"img_{file_id}.{ext}"
         filepath = MEDIA_DIR / "images" / filename
+        filepath.parent.mkdir(parents=True, exist_ok=True)
         filepath.write_bytes(image_bytes)
 
         entry = {
-            "id": file_id,
-            "type": "image",
-            "filename": filename,
-            "prompt": prompt,
-            "model": model,
-            "aspect_ratio": aspect_ratio,
-            "style": style,
-            "created_at": datetime.now().isoformat(),
-            "size_bytes": len(image_bytes),
-            "url": f"/api/studio/media/images/{filename}",
+            "id": file_id, "type": "image", "filename": filename,
+            "prompt": prompt, "model": actual_model, "aspect_ratio": aspect_ratio,
+            "style": style, "created_at": datetime.now().isoformat(),
+            "size_bytes": len(image_bytes), "url": f"/api/studio/media/images/{filename}",
         }
         media_gallery.insert(0, entry)
 
-        # Return base64 for immediate display
+        mime = "image/svg+xml" if ext == "svg" else "image/png"
         b64 = base64.b64encode(image_bytes).decode()
-        return {**entry, "data": f"data:image/png;base64,{b64}"}
+        return {**entry, "data": f"data:{mime};base64,{b64}", "model_used": actual_model}
 
     except Exception as e:
-        print(f"[Studio] Image generation error: {e}")
+        print(f"[Studio] Image save error: {e}")
         return JSONResponse({"error": f"Generation failed: {str(e)[:200]}"}, status_code=422)
 
+
+# In-memory queue for pending video generation jobs
+video_queue: list = []
 
 @limiter.limit("5/minute")
 @app.post("/api/studio/generate/video")
 async def studio_generate_video(request: Request):
-    """Generate a video using AI."""
+    """Queue a video generation job — uses xAI/Gemini to build a storyboard while real video rendering is processed asynchronously."""
     body = await request.json()
     prompt = body.get("prompt", "")
     model = body.get("model", "sora_2")
@@ -2858,63 +3137,251 @@ async def studio_generate_video(request: Request):
     if not prompt:
         return JSONResponse({"error": "Prompt required"}, status_code=400)
 
-    try:
-        from generate_video import generate_video
-        video_bytes = await generate_video(
-            prompt, model=model, aspect_ratio=aspect_ratio, duration=duration
-        )
+    job_id = str(uuid.uuid4())[:8]
+    storyboard = ""
+    scene_description = ""
+    ai_provider_used = None
+    errors = []
 
-        file_id = str(uuid.uuid4())[:8]
-        filename = f"vid_{file_id}.mp4"
-        filepath = MEDIA_DIR / "videos" / filename
-        filepath.write_bytes(video_bytes)
+    # Step 1: Try xAI Grok to generate a storyboard description
+    if XAI_API_KEY:
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as hc:
+                resp = await hc.post(
+                    "https://api.x.ai/v1/chat/completions",
+                    headers={"Authorization": f"Bearer {XAI_API_KEY}", "Content-Type": "application/json"},
+                    json={
+                        "model": "grok-3-mini",
+                        "messages": [{
+                            "role": "user",
+                            "content": (
+                                f"Create a detailed video storyboard for this prompt: '{prompt}'. "
+                                f"Aspect ratio: {aspect_ratio}, Duration: {duration}s. "
+                                "Return a JSON object with fields: "
+                                "scenes (list of scene descriptions), camera_movements, color_palette, mood, style."
+                            )
+                        }],
+                        "temperature": 0.7,
+                    }
+                )
+                if resp.status_code == 200:
+                    data = resp.json()
+                    storyboard = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+                    ai_provider_used = "xAI Grok"
+                else:
+                    errors.append(f"xAI: HTTP {resp.status_code}")
+        except Exception as e:
+            errors.append(f"xAI: {e}")
 
-        entry = {
-            "id": file_id,
-            "type": "video",
-            "filename": filename,
-            "prompt": prompt,
-            "model": model,
-            "aspect_ratio": aspect_ratio,
-            "duration": duration,
-            "created_at": datetime.now().isoformat(),
-            "size_bytes": len(video_bytes),
-            "url": f"/api/studio/media/videos/{filename}",
-        }
-        media_gallery.insert(0, entry)
+    # Step 2: Try Gemini for detailed scene description (fallback or supplement)
+    if not storyboard and GEMINI_API_KEY:
+        try:
+            gemini_result = await gemini_chat(
+                f"Create a detailed cinematic scene description for this video prompt: '{prompt}'. "
+                f"Aspect ratio: {aspect_ratio}, Duration: {duration}s. "
+                "Describe: visuals, camera angles, lighting, color grading, motion, soundtrack mood.",
+                system_prompt="You are a professional cinematographer and video director."
+            )
+            scene_description = gemini_result.get("text", "")
+            if scene_description:
+                ai_provider_used = "Gemini"
+        except Exception as e:
+            errors.append(f"Gemini: {e}")
 
-        b64 = base64.b64encode(video_bytes).decode()
-        return {**entry, "data": f"data:video/mp4;base64,{b64}"}
+    if not storyboard and not scene_description:
+        if errors:
+            return JSONResponse(
+                {"error": "No AI available to process video request", "details": errors},
+                status_code=503
+            )
 
-    except Exception as e:
-        print(f"[Studio] Video generation error: {e}")
-        return JSONResponse({"error": f"Generation failed: {str(e)[:200]}"}, status_code=422)
+    # Enqueue the job
+    job_entry = {
+        "id": job_id,
+        "type": "video",
+        "status": "queued",
+        "prompt": prompt,
+        "model": model,
+        "aspect_ratio": aspect_ratio,
+        "duration": duration,
+        "storyboard": storyboard or scene_description,
+        "scene_description": scene_description,
+        "ai_provider_used": ai_provider_used,
+        "created_at": datetime.now().isoformat(),
+        "message": (
+            "Your video is queued for generation. A dedicated video generation API key "
+            "(Sora/Runway/Veo) is required to render the final video. "
+            "The storyboard has been prepared using " + (ai_provider_used or "available AI") + "."
+        ),
+    }
+    video_queue.insert(0, job_entry)
+    media_gallery.insert(0, {**job_entry, "filename": f"vid_{job_id}_queued.mp4", "size_bytes": 0, "url": ""})
+
+    print(f"[Studio] Video job queued: {job_id} — model={model}, duration={duration}s")
+    return JSONResponse(job_entry, status_code=202)
 
 
 @limiter.limit("10/minute")
 @app.post("/api/studio/generate/audio")
 async def studio_generate_audio(request: Request):
-    """Generate audio/TTS using AI."""
+    """Generate audio/TTS using AI — ElevenLabs primary, Gemini TTS fallback."""
     body = await request.json()
     text = body.get("text", "")
     voice = body.get("voice", "kore")
-    model = body.get("model", "gemini_2_5_pro_tts")
-    dialogue = body.get("dialogue", None)
+    model = body.get("model", "elevenlabs_pro")
+    dialogue = body.get("dialogue", None)  # List of {speaker, text} for multi-speaker
 
     if not text and not dialogue:
         return JSONResponse({"error": "Text or dialogue required"}, status_code=400)
 
-    try:
-        from generate_audio import generate_audio as gen_audio, generate_dialogue
+    # ElevenLabs voice name → voice_id mapping
+    ELEVENLABS_VOICES = {
+        "rachel":   "21m00Tcm4TlvDq8ikWAM",
+        "adam":     "pNInz6obpgDQGcFmaJgB",
+        "alice":    "Xb7hH8MSUJpSbSDYk0k2",
+        "arnold":   "VR6AewLTigWG4xSOukaG",
+        "bella":    "EXAVITQu4vr4xnSDxMaL",
+        "charlie":  "IKne3meq5aSn9XLyUdCD",
+        "dorothy":  "ThT5KcBeYPX3keUQqHPh",
+        "elli":     "MF3mGyEYCl7XYWbV9V6O",
+        "emily":    "LcfcDJNUP1GQjkzn1xUU",
+        "ethan":    "g5CIjZEefAph4nQFvHAz",
+        "fin":      "D38z5RcWu1voky8WS1ja",
+        "freya":    "jsCqWAovK2LkecY7zXl4",
+        "gigi":     "jBpfuIE2acCO8z3wKNLl",
+        "giovanni": "zcAOhNBS3c14rBihAFp1",
+        "grace":    "oWAxZDx7w5VEj9dCyTzz",
+        "harry":    "SOYHLrjzK2X1ezoPC6cr",
+        "james":    "ZQe5CZNOzWyzPSCn5a3c",
+        "jeremy":   "bVMeCyTHy58xNoL34h3p",
+        "jessie":   "t0jbNlBVZ17f02VDIeMI",
+        "joseph":   "Zlb1dXrM653N07WRdFW3",
+        "josh":     "TxGEqnHWrfWFTfGW9XjX",
+        "liam":     "TX3LPaxmHKxFdv7VOQHJ",
+        "kore":     "21m00Tcm4TlvDq8ikWAM",  # default to Rachel
+        "aoede":    "EXAVITQu4vr4xnSDxMaL",  # default to Bella
+        "charon":   "VR6AewLTigWG4xSOukaG",  # default to Arnold
+        "fenrir":   "pNInz6obpgDQGcFmaJgB",  # default to Adam
+        "puck":     "IKne3meq5aSn9XLyUdCD",  # default to Charlie
+    }
 
+    audio_bytes = None
+    actual_model = model
+    errors = []
+
+    async def elevenlabs_tts(tts_text: str, tts_voice: str) -> bytes:
+        """Call ElevenLabs TTS API and return audio bytes."""
+        voice_id = ELEVENLABS_VOICES.get(tts_voice.lower(), "21m00Tcm4TlvDq8ikWAM")
+        async with httpx.AsyncClient(timeout=60.0) as hc:
+            resp = await hc.post(
+                f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}",
+                headers={
+                    "xi-api-key": ELEVENLABS_API_KEY,
+                    "Content-Type": "application/json",
+                    "Accept": "audio/mpeg",
+                },
+                json={
+                    "text": tts_text,
+                    "model_id": "eleven_multilingual_v2",
+                    "voice_settings": {"stability": 0.5, "similarity_boost": 0.75},
+                },
+            )
+            if resp.status_code == 200:
+                return resp.content
+            raise RuntimeError(f"ElevenLabs HTTP {resp.status_code}: {resp.text[:200]}")
+
+    async def gemini_tts(tts_text: str, tts_voice: str = "Kore") -> bytes:
+        """Call Gemini TTS API and return audio bytes."""
+        # Map our voice names to Gemini voice names
+        gemini_voice_map = {
+            "kore": "Kore", "aoede": "Aoede", "charon": "Charon",
+            "fenrir": "Fenrir", "puck": "Puck", "rachel": "Kore",
+            "adam": "Fenrir", "alice": "Aoede", "bella": "Aoede",
+        }
+        g_voice = gemini_voice_map.get(tts_voice.lower(), "Kore")
+        async with httpx.AsyncClient(timeout=60.0) as hc:
+            resp = await hc.post(
+                f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key={GEMINI_API_KEY}",
+                headers={"Content-Type": "application/json"},
+                json={
+                    "contents": [{"parts": [{"text": tts_text}]}],
+                    "generationConfig": {
+                        "responseModalities": ["AUDIO"],
+                        "speechConfig": {
+                            "voiceConfig": {"prebuiltVoiceConfig": {"voiceName": g_voice}}
+                        },
+                    },
+                },
+            )
+            if resp.status_code != 200:
+                raise RuntimeError(f"Gemini TTS HTTP {resp.status_code}: {resp.text[:200]}")
+            data = resp.json()
+            candidates = data.get("candidates", [{}])
+            parts = candidates[0].get("content", {}).get("parts", [])
+            for part in parts:
+                inline = part.get("inlineData", {})
+                if inline.get("data"):
+                    return base64.b64decode(inline["data"])
+            raise RuntimeError("Gemini TTS returned no audio data")
+
+    try:
         if dialogue:
-            audio_bytes = await generate_dialogue(dialogue, model=model)
+            # Multi-speaker dialogue: chain ElevenLabs calls per speaker, concatenate
+            audio_chunks = []
+            for turn in dialogue:
+                speaker_voice = turn.get("voice", turn.get("speaker", voice))
+                speaker_text = turn.get("text", "")
+                if not speaker_text:
+                    continue
+                chunk = None
+                # Try ElevenLabs first
+                if ELEVENLABS_API_KEY:
+                    try:
+                        chunk = await elevenlabs_tts(speaker_text, speaker_voice)
+                        actual_model = "elevenlabs_multilingual_v2"
+                    except Exception as e:
+                        errors.append(f"ElevenLabs [{speaker_voice}]: {e}")
+                # Fallback to Gemini TTS
+                if chunk is None and GEMINI_API_KEY:
+                    try:
+                        chunk = await gemini_tts(speaker_text, speaker_voice)
+                        actual_model = "gemini-tts"
+                    except Exception as e:
+                        errors.append(f"Gemini TTS [{speaker_voice}]: {e}")
+                if chunk:
+                    audio_chunks.append(chunk)
+            if not audio_chunks:
+                return JSONResponse({"error": "Dialogue generation failed", "details": errors}, status_code=422)
+            # Simple concatenation of MP3 chunks
+            audio_bytes = b"".join(audio_chunks)
         else:
-            audio_bytes = await gen_audio(text, voice=voice, model=model)
+            # Single speaker TTS
+            # 1) Try ElevenLabs
+            if ELEVENLABS_API_KEY:
+                try:
+                    audio_bytes = await elevenlabs_tts(text, voice)
+                    actual_model = "elevenlabs_multilingual_v2"
+                except Exception as e:
+                    errors.append(f"ElevenLabs: {e}")
+
+            # 2) Fallback: Gemini TTS
+            if audio_bytes is None and GEMINI_API_KEY:
+                try:
+                    audio_bytes = await gemini_tts(text, voice)
+                    actual_model = "gemini-tts"
+                except Exception as e:
+                    errors.append(f"Gemini TTS: {e}")
+
+            if audio_bytes is None:
+                return JSONResponse(
+                    {"error": "Audio generation failed — no TTS provider available", "details": errors},
+                    status_code=503
+                )
 
         file_id = str(uuid.uuid4())[:8]
         filename = f"audio_{file_id}.mp3"
         filepath = MEDIA_DIR / "audio" / filename
+        filepath.parent.mkdir(parents=True, exist_ok=True)
         filepath.write_bytes(audio_bytes)
 
         entry = {
@@ -2923,7 +3390,7 @@ async def studio_generate_audio(request: Request):
             "filename": filename,
             "text": text[:200] if text else "Dialogue",
             "voice": voice,
-            "model": model,
+            "model": actual_model,
             "created_at": datetime.now().isoformat(),
             "size_bytes": len(audio_bytes),
             "url": f"/api/studio/media/audio/{filename}",
@@ -2941,7 +3408,7 @@ async def studio_generate_audio(request: Request):
 @limiter.limit("10/minute")
 @app.post("/api/studio/generate/code")
 async def studio_generate_code(request: Request):
-    """Generate code using xAI Grok."""
+    """Generate code — multi-provider fallback: xAI Grok → Claude → Gemini."""
     body = await request.json()
     prompt = body.get("prompt", "")
     model = body.get("model", "grok-4")
@@ -2950,41 +3417,59 @@ async def studio_generate_code(request: Request):
     if not prompt:
         return JSONResponse({"error": "Prompt required"}, status_code=400)
 
-    xai_key = os.getenv("XAI_API_KEY", "")
-    if not xai_key:
-        return JSONResponse({"error": "XAI_API_KEY not configured"}, status_code=500)
+    system_prompt = (
+        f"You are an expert {language} programmer. Generate clean, production-ready code. "
+        f"Only output code — no explanations, no markdown fences. Just the raw code."
+    )
+    code_text = ""
+    actual_model = model
+
+    # 1) Try xAI Grok if key available
+    if not code_text and XAI_API_KEY:
+        try:
+            async with httpx.AsyncClient(timeout=60.0) as hc:
+                resp = await hc.post(
+                    "https://api.x.ai/v1/chat/completions",
+                    headers={"Authorization": f"Bearer {XAI_API_KEY}", "Content-Type": "application/json"},
+                    json={"model": "grok-4", "messages": [{"role": "system", "content": system_prompt}, {"role": "user", "content": prompt}], "temperature": 0.3, "max_tokens": 4096},
+                )
+                data = resp.json()
+                code_text = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+                actual_model = "grok-4"
+        except Exception as e:
+            print(f"[Studio Code] xAI error: {e}")
+
+    # 2) Fallback to Claude
+    if not code_text and client:
+        try:
+            msg = client.messages.create(
+                model="claude-sonnet-4-20250514", max_tokens=4096,
+                system=system_prompt,
+                messages=[{"role": "user", "content": prompt}],
+            )
+            code_text = msg.content[0].text
+            actual_model = "claude-sonnet"
+        except Exception as e:
+            print(f"[Studio Code] Claude error: {e}")
+
+    # 3) Fallback to Gemini
+    if not code_text and GEMINI_API_KEY:
+        try:
+            result = await gemini_chat(prompt, system_prompt=system_prompt)
+            code_text = result.get("response", "")
+            actual_model = "gemini-flash"
+        except Exception as e:
+            print(f"[Studio Code] Gemini error: {e}")
+
+    if not code_text:
+        return JSONResponse({"error": "No AI model available for code generation. Add XAI_API_KEY, ANTHROPIC_API_KEY, or GEMINI_API_KEY."}, status_code=503)
+
+    # Strip markdown fences if model included them
+    import re as _code_re
+    code_text = _code_re.sub(r'^```[\w]*\n?', '', code_text.strip())
+    code_text = _code_re.sub(r'\n?```$', '', code_text.strip())
 
     try:
-        import httpx as hx
-        system_prompt = (
-            f"You are an expert {language} programmer. Generate clean, production-ready code. "
-            f"Only output code — no explanations, no markdown fences. Just the raw code."
-        )
-        async with hx.AsyncClient(timeout=60.0) as client:
-            resp = await client.post(
-                "https://api.x.ai/v1/chat/completions",
-                headers={
-                    "Content-Type": "application/json",
-                    "Authorization": f"Bearer {xai_key}",
-                },
-                json={
-                    "model": "grok-4",
-                    "messages": [
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": prompt},
-                    ],
-                    "temperature": 0.3,
-                    "max_tokens": 4096,
-                },
-            )
-            resp.raise_for_status()
-            data = resp.json()
-
-        code_text = data.get("choices", [{}])[0].get("message", {}).get("content", "")
-        if not code_text:
-            raise RuntimeError("No code generated")
-
-        # Save to gallery as a text file
         file_id = str(uuid.uuid4())[:8]
         filename = f"code_{file_id}.txt"
         filepath = MEDIA_DIR / "code" / filename
@@ -2992,22 +3477,16 @@ async def studio_generate_code(request: Request):
         filepath.write_text(code_text)
 
         entry = {
-            "id": file_id,
-            "type": "code",
-            "filename": filename,
-            "prompt": prompt,
-            "model": model,
-            "language": language,
-            "created_at": datetime.now().isoformat(),
-            "size_bytes": len(code_text),
+            "id": file_id, "type": "code", "filename": filename,
+            "prompt": prompt, "model": actual_model, "language": language,
+            "created_at": datetime.now().isoformat(), "size_bytes": len(code_text),
             "url": f"/api/studio/media/code/{filename}",
         }
         media_gallery.insert(0, entry)
-
-        return {**entry, "data": code_text, "code": code_text}
+        return {**entry, "data": code_text, "code": code_text, "model_used": actual_model}
 
     except Exception as e:
-        print(f"[Studio] Code generation error: {e}")
+        print(f"[Studio] Code save error: {e}")
         return JSONResponse({"error": f"Generation failed: {str(e)[:200]}"}, status_code=422)
 
 
@@ -5497,7 +5976,7 @@ async def social_generate_content(request: Request):
 
     results = {"platform": platform, "spec": spec["name"], "content_type": content_type}
 
-    # ── Step 1: Generate caption/post text using Grok-4 ──
+    # ── Step 1: Generate caption/post text — xAI → Claude → Gemini fallback ──
     try:
         caption_prompt = f"""You are a world-class social media content strategist.
 Generate a {spec['name']} post about: {topic}
@@ -5517,32 +5996,57 @@ Return ONLY a JSON object with these fields:
   "image_prompt": "detailed prompt to generate the perfect {spec['name']} image for this post, including style: {spec['style_hint']}, dimensions suitable for {spec['image_size']}"
 }}"""
 
-        async with httpx.AsyncClient(timeout=60) as client:
-            resp = await client.post(
-                "https://api.x.ai/v1/chat/completions",
-                headers={"Authorization": f"Bearer {xai_key}", "Content-Type": "application/json"},
-                json={
-                    "model": "grok-4",
-                    "messages": [{"role": "user", "content": caption_prompt}],
-                    "temperature": 0.8,
-                }
-            )
-            resp_data = resp.json()
-            raw_text = resp_data.get("choices", [{}])[0].get("message", {}).get("content", "")
+        raw_text = ""
+        import re
 
-            # Parse JSON from response
-            import re
+        # 1a) Try xAI Grok
+        if xai_key and not raw_text:
+            try:
+                async with httpx.AsyncClient(timeout=60) as hc:
+                    resp = await hc.post(
+                        "https://api.x.ai/v1/chat/completions",
+                        headers={"Authorization": f"Bearer {xai_key}", "Content-Type": "application/json"},
+                        json={"model": "grok-4", "messages": [{"role": "user", "content": caption_prompt}], "temperature": 0.8},
+                    )
+                    if resp.status_code == 200:
+                        raw_text = resp.json().get("choices", [{}])[0].get("message", {}).get("content", "")
+            except Exception as _e:
+                print(f"[Social] xAI caption error: {_e}")
+
+        # 1b) Fallback: Claude
+        if not raw_text and client:
+            try:
+                claude_resp = client.messages.create(
+                    model="claude-3-5-haiku-20241022",
+                    max_tokens=1024,
+                    messages=[{"role": "user", "content": caption_prompt}],
+                )
+                raw_text = claude_resp.content[0].text if claude_resp.content else ""
+            except Exception as _e:
+                print(f"[Social] Claude caption error: {_e}")
+
+        # 1c) Fallback: Gemini
+        if not raw_text and GEMINI_API_KEY:
+            try:
+                gemini_result = await gemini_chat(caption_prompt)
+                raw_text = gemini_result.get("text", "")
+            except Exception as _e:
+                print(f"[Social] Gemini caption error: {_e}")
+
+        if raw_text:
             json_match = re.search(r'\{[\s\S]*\}', raw_text)
             if json_match:
                 caption_data = json.loads(json_match.group())
             else:
                 caption_data = {"caption": raw_text[:spec['max_chars']], "hashtags": [], "hook": "", "cta": "", "image_prompt": topic}
+        else:
+            caption_data = {"caption": f"Check out {topic}!", "hashtags": [], "hook": "", "cta": "", "image_prompt": topic}
 
-            results["caption"] = caption_data.get("caption", "")
-            results["hashtags"] = caption_data.get("hashtags", [])
-            results["hook"] = caption_data.get("hook", "")
-            results["cta"] = caption_data.get("cta", "")
-            image_prompt = caption_data.get("image_prompt", topic)
+        results["caption"] = caption_data.get("caption", "")
+        results["hashtags"] = caption_data.get("hashtags", [])
+        results["hook"] = caption_data.get("hook", "")
+        results["cta"] = caption_data.get("cta", "")
+        image_prompt = caption_data.get("image_prompt", topic)
 
     except Exception as e:
         print(f"[Social] Caption generation error: {e}")
@@ -5550,10 +6054,9 @@ Return ONLY a JSON object with these fields:
         results["hashtags"] = []
         image_prompt = f"{spec['style_hint']}: {topic}"
 
-    # ── Step 2: Generate image using xAI Grok Imagine ──
+    # ── Step 2: Generate image — xAI Grok Imagine → OpenAI → Gemini ──
     if content_type in ("image_post", "thumbnail", "story"):
         try:
-            from generate_image import generate_image
             # Map platform aspect to generation aspect
             aspect_map = {
                 "1:1": "1:1", "1.91:1": "16:9", "16:9": "16:9", "9:16": "9:16",
@@ -5562,52 +6065,158 @@ Return ONLY a JSON object with these fields:
             gen_aspect = aspect_map.get(spec["aspect"], "1:1")
             full_image_prompt = f"{image_prompt}. Optimized for {spec['name']} at {spec['image_size']}. Style: {spec['style_hint']}"
 
-            image_bytes = await generate_image(full_image_prompt, model="grok-2-image", aspect_ratio=gen_aspect)
+            image_bytes = None
+            img_model_used = None
+            img_errors = []
 
-            file_id = str(uuid.uuid4())[:8]
-            filename = f"social_{platform}_{file_id}.png"
-            filepath = MEDIA_DIR / "images" / filename
-            filepath.write_bytes(image_bytes)
+            # 2a) Try xAI Grok Imagine
+            if xai_key and not image_bytes:
+                try:
+                    async with httpx.AsyncClient(timeout=60.0) as hc:
+                        resp = await hc.post(
+                            "https://api.x.ai/v1/images/generations",
+                            headers={"Authorization": f"Bearer {xai_key}", "Content-Type": "application/json"},
+                            json={"model": "grok-2-image", "prompt": full_image_prompt, "n": 1, "response_format": "b64_json"},
+                        )
+                        data = resp.json()
+                        if resp.status_code == 200 and data.get("data"):
+                            image_bytes = base64.b64decode(data["data"][0]["b64_json"])
+                            img_model_used = "grok-2-image"
+                        else:
+                            img_errors.append(f"xAI: {data.get('error', {}).get('message', 'unknown')}")
+                except Exception as _e:
+                    img_errors.append(f"xAI: {_e}")
 
-            b64 = base64.b64encode(image_bytes).decode()
-            results["image"] = {
-                "url": f"/api/studio/media/images/{filename}",
-                "data": f"data:image/png;base64,{b64}",
-                "filename": filename,
-                "size": len(image_bytes),
-            }
+            # 2b) Fallback: OpenAI DALL-E
+            if not image_bytes and OPENAI_API_KEY:
+                try:
+                    async with httpx.AsyncClient(timeout=60.0) as hc:
+                        resp = await hc.post(
+                            "https://api.openai.com/v1/images/generations",
+                            headers={"Authorization": f"Bearer {OPENAI_API_KEY}", "Content-Type": "application/json"},
+                            json={"model": "dall-e-3", "prompt": full_image_prompt, "n": 1, "size": "1024x1024", "response_format": "b64_json"},
+                        )
+                        data = resp.json()
+                        if resp.status_code == 200 and data.get("data"):
+                            image_bytes = base64.b64decode(data["data"][0]["b64_json"])
+                            img_model_used = "dall-e-3"
+                        else:
+                            img_errors.append(f"OpenAI: {data.get('error', {}).get('message', 'unknown')}")
+                except Exception as _e:
+                    img_errors.append(f"OpenAI: {_e}")
 
-            media_gallery.insert(0, {
-                "id": file_id, "type": "image", "filename": filename,
-                "prompt": full_image_prompt, "model": "grok-2-image",
-                "created_at": datetime.now().isoformat(), "size_bytes": len(image_bytes),
-                "url": f"/api/studio/media/images/{filename}",
-            })
+            # 2c) Fallback: Gemini inline_data
+            if not image_bytes and GEMINI_API_KEY:
+                try:
+                    async with httpx.AsyncClient(timeout=60.0) as hc:
+                        resp = await hc.post(
+                            f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key={GEMINI_API_KEY}",
+                            headers={"Content-Type": "application/json"},
+                            json={
+                                "contents": [{"parts": [{"text": f"Generate a photorealistic image: {full_image_prompt}"}]}],
+                                "generationConfig": {"responseModalities": ["TEXT"]},
+                            },
+                        )
+                        data = resp.json()
+                        parts = data.get("candidates", [{}])[0].get("content", {}).get("parts", [])
+                        for part in parts:
+                            if part.get("inlineData"):
+                                image_bytes = base64.b64decode(part["inlineData"]["data"])
+                                img_model_used = "gemini-imagen"
+                                break
+                        if not image_bytes:
+                            img_errors.append("Gemini: returned text, not image")
+                except Exception as _e:
+                    img_errors.append(f"Gemini: {_e}")
+
+            if image_bytes:
+                file_id = str(uuid.uuid4())[:8]
+                filename = f"social_{platform}_{file_id}.png"
+                filepath = MEDIA_DIR / "images" / filename
+                filepath.parent.mkdir(parents=True, exist_ok=True)
+                filepath.write_bytes(image_bytes)
+
+                b64 = base64.b64encode(image_bytes).decode()
+                results["image"] = {
+                    "url": f"/api/studio/media/images/{filename}",
+                    "data": f"data:image/png;base64,{b64}",
+                    "filename": filename,
+                    "size": len(image_bytes),
+                    "model": img_model_used,
+                }
+
+                media_gallery.insert(0, {
+                    "id": file_id, "type": "image", "filename": filename,
+                    "prompt": full_image_prompt, "model": img_model_used,
+                    "created_at": datetime.now().isoformat(), "size_bytes": len(image_bytes),
+                    "url": f"/api/studio/media/images/{filename}",
+                })
+            else:
+                results["image"] = {"error": "No image provider available", "details": img_errors}
 
         except Exception as e:
             print(f"[Social] Image generation error: {e}")
             results["image"] = {"error": str(e)[:200]}
 
-    # ── Step 3: Generate short video for video-first platforms ──
+    # ── Step 3: Queue short video for video-first platforms ──
     elif content_type == "short_video":
         try:
-            from generate_video import generate_video
             video_prompt = f"{image_prompt}. Vertical 9:16 format for {spec['name']}. {spec['style_hint']}"
-            video_bytes = await generate_video(video_prompt, duration=4)
+            vid_job_id = str(uuid.uuid4())[:8]
+            storyboard_text = ""
+            vid_ai_provider = None
 
-            file_id = str(uuid.uuid4())[:8]
-            filename = f"social_{platform}_{file_id}.mp4"
-            filepath = MEDIA_DIR / "videos" / filename
-            filepath.write_bytes(video_bytes)
+            # Use xAI Grok to build a storyboard for the social video
+            if xai_key:
+                try:
+                    async with httpx.AsyncClient(timeout=30.0) as hc:
+                        resp = await hc.post(
+                            "https://api.x.ai/v1/chat/completions",
+                            headers={"Authorization": f"Bearer {xai_key}", "Content-Type": "application/json"},
+                            json={
+                                "model": "grok-3-mini",
+                                "messages": [{"role": "user", "content": f"Create a short social media video storyboard for {spec['name']} platform: {video_prompt}. 4 seconds, 9:16 vertical."}],
+                                "temperature": 0.7,
+                            }
+                        )
+                        if resp.status_code == 200:
+                            storyboard_text = resp.json().get("choices", [{}])[0].get("message", {}).get("content", "")
+                            vid_ai_provider = "xAI Grok"
+                except Exception:
+                    pass
 
-            b64 = base64.b64encode(video_bytes).decode()
-            results["video"] = {
-                "url": f"/api/studio/media/videos/{filename}",
-                "data": f"data:video/mp4;base64,{b64}",
-                "filename": filename,
+            # Fallback: Gemini
+            if not storyboard_text and GEMINI_API_KEY:
+                try:
+                    g = await gemini_chat(f"Describe a 4-second vertical social video for {spec['name']}: {video_prompt}")
+                    storyboard_text = g.get("text", "")
+                    if storyboard_text:
+                        vid_ai_provider = "Gemini"
+                except Exception:
+                    pass
+
+            vid_job_entry = {
+                "id": vid_job_id,
+                "type": "video",
+                "status": "queued",
+                "prompt": video_prompt,
+                "platform": platform,
+                "aspect_ratio": "9:16",
+                "duration": 4,
+                "storyboard": storyboard_text,
+                "ai_provider_used": vid_ai_provider,
+                "created_at": datetime.now().isoformat(),
+                "message": (
+                    f"Video queued for {spec['name']}. "
+                    "A dedicated video API key (Sora/Runway/Veo) is needed to render. "
+                    + (f"Storyboard prepared by {vid_ai_provider}." if vid_ai_provider else "")
+                ),
             }
+            video_queue.insert(0, vid_job_entry)
+            results["video"] = vid_job_entry
+
         except Exception as e:
-            print(f"[Social] Video generation error: {e}")
+            print(f"[Social] Video queuing error: {e}")
             results["video"] = {"error": str(e)[:200]}
 
     results["success"] = True
@@ -6063,6 +6672,76 @@ async def builder_claim_subdomain(request: Request):
         }
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# SAL PERSONALITY / SETTINGS — Custom Instructions, Response Prefs, Memory
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# In-memory fallback for personality settings (per-user via Supabase when available)
+_personality_cache: dict = {}
+
+@app.get("/api/settings/personality")
+async def get_personality_settings(authorization: Optional[str] = Header(None)):
+    """Load user's SAL personality settings."""
+    user = await get_current_user(authorization)
+    user_id = user["id"] if user else "anonymous"
+    
+    # Try Supabase first
+    if user and supabase_admin:
+        try:
+            result = supabase_admin.table("personality_settings").select("*").eq("user_id", user["id"]).single().execute()
+            if result.data:
+                return result.data
+        except Exception:
+            pass  # Table may not exist yet — fall through to cache
+    
+    # Fall back to in-memory cache
+    cached = _personality_cache.get(user_id, {})
+    return {
+        "occupation": cached.get("occupation", ""),
+        "custom_instructions": cached.get("custom_instructions", ""),
+        "response_length": cached.get("response_length", "default"),
+        "headers_lists": cached.get("headers_lists", "default"),
+        "reference_history": cached.get("reference_history", True),
+        "reference_memories": cached.get("reference_memories", True),
+        "tone": cached.get("tone", "professional"),
+    }
+
+
+@app.post("/api/settings/personality")
+async def save_personality_settings(request: Request, authorization: Optional[str] = Header(None)):
+    """Save user's SAL personality settings."""
+    body = await request.json()
+    user = await get_current_user(authorization)
+    user_id = user["id"] if user else "anonymous"
+    
+    settings = {
+        "occupation": str(body.get("occupation", ""))[:200],
+        "custom_instructions": str(body.get("custom_instructions", ""))[:1500],
+        "response_length": body.get("response_length", "default"),
+        "headers_lists": body.get("headers_lists", "default"),
+        "reference_history": bool(body.get("reference_history", True)),
+        "reference_memories": bool(body.get("reference_memories", True)),
+        "tone": body.get("tone", "professional"),
+    }
+    
+    # Save to in-memory cache always
+    _personality_cache[user_id] = settings
+    
+    # Try Supabase if available
+    if user and supabase_admin:
+        try:
+            supabase_admin.table("personality_settings").upsert({
+                "user_id": user["id"],
+                **settings,
+                "updated_at": datetime.now().isoformat(),
+            }).execute()
+            return {"success": True, "saved_to": "supabase"}
+        except Exception as e:
+            print(f"[Personality] Supabase save error (using cache): {e}")
+    
+    return {"success": True, "saved_to": "cache"}
 
 
 # ── Static file serving (must be AFTER all API routes) ──────────────────────

@@ -25,7 +25,8 @@ var views = {
   bizplan: document.getElementById('bizplanView'),
   voice: document.getElementById('voiceView'),
   dashboard: document.getElementById('dashboardView'),
-  landing: document.getElementById('landingView')
+  landing: document.getElementById('landingView'),
+  personality: document.getElementById('personalityView')
 };
 
 /* ============================================
@@ -63,6 +64,9 @@ function setView(view) {
     window.__salUser = currentUser || null;
     setTimeout(renderAccountProfile, 50);
   }
+  if (view === 'personality') {
+    setTimeout(renderPersonalitySettings, 50);
+  }
 
   // Update sidebar active for non-vertical views
   document.querySelectorAll('.nav-item[data-view]').forEach(function(item) {
@@ -78,7 +82,7 @@ function setView(view) {
     document.getElementById('topbarBreadcrumb').innerHTML = '<span>' + (verticalNames[currentVertical] || 'Search') + '</span>';
   } else {
     document.querySelectorAll('.nav-item[data-vertical]').forEach(function(i) { i.classList.remove('active'); });
-    var breadcrumbMap = { pricing:'Pricing', welcome:'Welcome', account:'Account', studio:'Builder', domains:'Domains & SSL', launchpad:'Business Center', connectors:'Integrations', bizplan:'Business Plan', voice:'Voice AI', dashboard:'Dashboard', landing:'Home' };
+    var breadcrumbMap = { pricing:'Pricing', welcome:'Welcome', account:'Account', studio:'Builder', domains:'Domains & SSL', launchpad:'Business Center', connectors:'Integrations', bizplan:'Business Plan', voice:'Voice AI', dashboard:'Dashboard', landing:'Home', personality:'SAL Personality' };
     document.getElementById('topbarBreadcrumb').innerHTML = '<span>' + (breadcrumbMap[view] || view) + '</span>';
   }
 
@@ -4506,5 +4510,184 @@ if (typeof _origSelectComputeTier === 'function') {
       }
     }
   };
+}
+
+
+/* ============================================
+   SAL PERSONALITY / SETTINGS
+   Modeled after Perplexity's Personalization page
+   ============================================ */
+
+var salPersonality = {
+  occupation: '',
+  custom_instructions: '',
+  response_length: 'default',
+  headers_lists: 'default',
+  reference_history: true,
+  reference_memories: true,
+  tone: 'professional',
+  loaded: false
+};
+
+function renderPersonalitySettings() {
+  var container = document.getElementById('personalityInner');
+  if (!container) return;
+
+  // Load saved settings from backend (or localStorage)
+  if (!salPersonality.loaded) {
+    loadPersonalitySettings();
+  }
+
+  var charCount = (salPersonality.custom_instructions || '').length;
+  var maxChars = 1500;
+
+  container.innerHTML = ''
+    + '<div style="max-width:720px;margin:0 auto;padding:var(--space-6) var(--space-5);" class="personality-settings">'
+    + '<div style="display:flex;align-items:center;gap:var(--space-3);margin-bottom:var(--space-6);">'
+    + '  <button style="background:none;border:none;color:var(--text-muted);cursor:pointer;padding:4px;" onclick="navigate(\'account\')">'
+    + '    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20"><path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/></svg>'
+    + '  </button>'
+    + '  <h2 style="font-size:var(--text-xl);font-weight:700;color:var(--text-primary);margin:0;">Personalization</h2>'
+    + '</div>'
+
+    // ── Your Occupation ──
+    + '<div class="personality-section">'
+    + '  <label class="personality-label">Your occupation</label>'
+    + '  <div style="position:relative;">'
+    + '    <input type="text" class="personality-input" id="salOccupation" placeholder="e.g. Founder | CEO" value="' + escapeHtml(salPersonality.occupation || '') + '" maxlength="200" oninput="salPersonality.occupation=this.value;document.getElementById(\'salOccCount\').textContent=this.value.length+\'/200\'">'
+    + '    <span class="personality-char-count" id="salOccCount">' + (salPersonality.occupation || '').length + '/200</span>'
+    + '  </div>'
+    + '</div>'
+
+    // ── Custom Instructions ──
+    + '<div class="personality-section">'
+    + '  <label class="personality-label">Custom Instructions</label>'
+    + '  <textarea class="personality-textarea" id="salCustomInstructions" rows="10" maxlength="' + maxChars + '" placeholder="Tell SaintSal\u2122 about yourself, your work, and how you want it to respond...\n\nExample:\nYou are SaintSal\u2122 \u2014 the AI orchestration engine behind Saint Vision Technologies LLC. Your primary mission: Build, optimize, and dominate." oninput="salPersonality.custom_instructions=this.value;document.getElementById(\'salCharCount\').textContent=this.value.length+\'/'+maxChars+'\'">' + escapeHtml(salPersonality.custom_instructions || '') + '</textarea>'
+    + '  <div style="display:flex;justify-content:space-between;align-items:center;margin-top:var(--space-2);">'
+    + '    <div style="display:flex;gap:var(--space-2);">'
+    + '      <button class="personality-btn-ghost" onclick="clearCustomInstructions()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg> Clear</button>'
+    + '    </div>'
+    + '    <span class="personality-char-count" id="salCharCount">' + charCount + '/' + maxChars + '</span>'
+    + '  </div>'
+    + '</div>'
+
+    // ── Response Preferences ──
+    + '<div class="personality-section">'
+    + '  <label class="personality-label">Response preferences</label>'
+    + '  <p class="personality-sublabel">Set the style of how SaintSal\u2122 responds. This doesn\'t impact capabilities.</p>'
+    + '  <div class="personality-pref-row">'
+    + '    <span>Response Length</span>'
+    + '    <select class="personality-select" id="salResponseLength" onchange="salPersonality.response_length=this.value">'
+    + '      <option value="concise"' + (salPersonality.response_length === 'concise' ? ' selected' : '') + '>Concise</option>'
+    + '      <option value="default"' + (salPersonality.response_length === 'default' ? ' selected' : '') + '>Default</option>'
+    + '      <option value="detailed"' + (salPersonality.response_length === 'detailed' ? ' selected' : '') + '>Detailed</option>'
+    + '    </select>'
+    + '  </div>'
+    + '  <div class="personality-pref-row">'
+    + '    <span>Headers and Lists</span>'
+    + '    <select class="personality-select" id="salHeadersLists" onchange="salPersonality.headers_lists=this.value">'
+    + '      <option value="minimal"' + (salPersonality.headers_lists === 'minimal' ? ' selected' : '') + '>Minimal</option>'
+    + '      <option value="default"' + (salPersonality.headers_lists === 'default' ? ' selected' : '') + '>Default</option>'
+    + '      <option value="rich"' + (salPersonality.headers_lists === 'rich' ? ' selected' : '') + '>Rich</option>'
+    + '    </select>'
+    + '  </div>'
+    + '  <div class="personality-pref-row">'
+    + '    <span>Tone</span>'
+    + '    <select class="personality-select" id="salTone" onchange="salPersonality.tone=this.value">'
+    + '      <option value="casual"' + (salPersonality.tone === 'casual' ? ' selected' : '') + '>Casual</option>'
+    + '      <option value="professional"' + (salPersonality.tone === 'professional' ? ' selected' : '') + '>Professional</option>'
+    + '      <option value="direct"' + (salPersonality.tone === 'direct' ? ' selected' : '') + '>Direct</option>'
+    + '      <option value="friendly"' + (salPersonality.tone === 'friendly' ? ' selected' : '') + '>Friendly</option>'
+    + '    </select>'
+    + '  </div>'
+    + '</div>'
+
+    // ── Memory ──
+    + '<div class="personality-section">'
+    + '  <label class="personality-label">Memory</label>'
+    + '  <div class="personality-toggle-row">'
+    + '    <div><div class="personality-toggle-title">Reference search history</div><div class="personality-toggle-desc">Let SaintSal\u2122 use previous searches when answering.</div></div>'
+    + '    <label class="toggle-switch"><input type="checkbox" id="salRefHistory"' + (salPersonality.reference_history ? ' checked' : '') + ' onchange="salPersonality.reference_history=this.checked"><span class="toggle-slider"></span></label>'
+    + '  </div>'
+    + '  <div class="personality-toggle-row">'
+    + '    <div><div class="personality-toggle-title">Reference saved memories</div><div class="personality-toggle-desc">Let SaintSal\u2122 save and use memories when answering.</div></div>'
+    + '    <label class="toggle-switch"><input type="checkbox" id="salRefMemories"' + (salPersonality.reference_memories ? ' checked' : '') + ' onchange="salPersonality.reference_memories=this.checked"><span class="toggle-slider"></span></label>'
+    + '  </div>'
+    + '  <div class="personality-toggle-row" style="cursor:pointer;" onclick="showToast(\'Memory manager coming soon\',\'info\');">'
+    + '    <div><div class="personality-toggle-title">Manage your saved memories</div></div>'
+    + '    <svg viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="2" width="18" height="18"><path d="M9 18l6-6-6-6"/></svg>'
+    + '  </div>'
+    + '</div>'
+
+    // ── Save Button ──
+    + '<div style="display:flex;justify-content:flex-end;gap:var(--space-3);margin-top:var(--space-5);padding-bottom:var(--space-8);">'
+    + '  <button class="personality-btn-save" onclick="savePersonalitySettings()">Save</button>'
+    + '</div>'
+    + '</div>';
+}
+
+function escapeHtml(text) {
+  if (!text) return '';
+  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+}
+
+function clearCustomInstructions() {
+  salPersonality.custom_instructions = '';
+  var ta = document.getElementById('salCustomInstructions');
+  if (ta) ta.value = '';
+  var cc = document.getElementById('salCharCount');
+  if (cc) cc.textContent = '0/1500';
+}
+
+function loadPersonalitySettings() {
+  // Try localStorage first for instant load
+  try {
+    var saved = localStorage.getItem('sal_personality');
+    if (saved) {
+      var parsed = JSON.parse(saved);
+      Object.assign(salPersonality, parsed);
+      salPersonality.loaded = true;
+    }
+  } catch(e) {}
+
+  // Then try backend
+  fetch(API + '/api/settings/personality', { headers: currentUser ? { 'Authorization': 'Bearer ' + (currentUser.access_token || '') } : {} })
+    .then(function(r) { return r.ok ? r.json() : null; })
+    .then(function(data) {
+      if (data && data.custom_instructions !== undefined) {
+        Object.assign(salPersonality, data);
+        salPersonality.loaded = true;
+        localStorage.setItem('sal_personality', JSON.stringify(salPersonality));
+        // Re-render if we're still on the page
+        if (currentView === 'personality') renderPersonalitySettings();
+      }
+    })
+    .catch(function() {});
+}
+
+function savePersonalitySettings() {
+  // Save to localStorage immediately
+  localStorage.setItem('sal_personality', JSON.stringify(salPersonality));
+
+  // Save to backend
+  fetch(API + '/api/settings/personality', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer ' + ((currentUser && currentUser.access_token) || '')
+    },
+    body: JSON.stringify(salPersonality)
+  })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data.success) {
+        showToast('Personality settings saved', 'success');
+      } else {
+        showToast('Saved locally — sign in to sync', 'info');
+      }
+    })
+    .catch(function() {
+      showToast('Saved locally', 'info');
+    });
 }
 
