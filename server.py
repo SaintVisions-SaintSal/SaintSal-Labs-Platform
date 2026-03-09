@@ -367,40 +367,69 @@ async def get_discover(category: str):
 @limiter.limit("30/minute")
 @app.post("/api/chat")
 async def chat(request: Request):
-    """Stream an AI chat response with optional web search."""
+    """Stream an AI chat response with auto-detect: research, documents, images, or conversational."""
     body = await request.json()
     query = body.get("message", "")
     vertical = body.get("vertical", "search")
     history = body.get("history", [])
     use_search = body.get("search", True)
-    
+    force_intent = body.get("intent", "")  # Allow frontend to force an intent
+
     system_prompt = SYSTEM_PROMPTS.get(vertical, SYSTEM_PROMPTS["search"])
     sources = []
-    
+    # Intent detection — detect_intent defined later, but Python resolves at call time
+    try:
+        intent = force_intent or detect_intent(query)
+    except Exception:
+        intent = "chat"
+
     # Step 1: Enhanced vertical-specific web search
     tavily_answer = ""
+    pplx_result = None
+
     if use_search and query:
+        # If Perplexity is available and intent is research, use it as primary
+        if intent == "research" and PPLX_API_KEY:
+            pplx_result = await perplexity_research(query)
+
+        # Always do Tavily search as well for source pills
         sources, tavily_answer = await multi_search(query, vertical, max_results=8)
-        
+
         if sources:
             context = "\n\n".join([
                 f"[{i+1}] {s['title']} ({s['domain']})\n{s['content']}"
                 for i, s in enumerate(sources)
             ])
             system_prompt += f"\n\nHere are relevant web search results for the user's query. Use these to inform your response and cite them using [1], [2], etc.:\n\n{context}"
-    
+
+        # If Perplexity returned a good answer, prepend it to context
+        if pplx_result and pplx_result.get("answer"):
+            pplx_citations = pplx_result.get("citations", [])
+            system_prompt += f"\n\nPerplexity Research (high-confidence):\n{pplx_result['answer']}"
+            if pplx_citations:
+                system_prompt += "\n\nPerplexity Citations:\n" + "\n".join(
+                    f"- {c}" for c in pplx_citations[:10]
+                )
+
     # Step 2: Build messages
     messages = []
-    for msg in history[-10:]:  # Keep last 10 messages for context
+    for msg in history[-10:]:
         messages.append({"role": msg["role"], "content": msg["content"]})
     messages.append({"role": "user", "content": query})
-    
+
     # Step 3: Stream response with pipeline phases
     def generate():
+        # Phase: intent detected
+        yield f"data: {json.dumps({'type': 'intent', 'intent': intent})}\n\n"
+
         # Phase: sources found
         if sources:
             yield f"data: {json.dumps({'type': 'sources', 'sources': sources})}\n\n"
-        
+
+        # If Perplexity citations exist, send them
+        if pplx_result and pplx_result.get("citations"):
+            yield f"data: {json.dumps({'type': 'citations', 'citations': pplx_result['citations'][:10]})}\n\n"
+
         # Phase: thinking
         yield f"data: {json.dumps({'type': 'phase', 'phase': 'generating'})}\n\n"
 
@@ -440,10 +469,15 @@ async def chat(request: Request):
             except Exception as e:
                 print(f"[Chat] xAI/Grok error: {e}")
 
-        # Final fallback: use Tavily AI answer or show raw search results
+        # Final fallback: use Tavily AI answer or Perplexity answer
         if not ai_responded:
-            if tavily_answer:
-                # Tavily provides an AI-synthesized answer
+            if pplx_result and pplx_result.get("answer"):
+                fallback = pplx_result["answer"]
+                if pplx_result.get("citations"):
+                    fallback += "\n\n**Sources:**\n" + "\n".join(
+                        f"- [{c}]({c})" for c in pplx_result["citations"][:5]
+                    )
+            elif tavily_answer:
                 fallback = tavily_answer
                 if sources:
                     fallback += "\n\n---\n\n**Sources:**\n"
@@ -456,9 +490,9 @@ async def chat(request: Request):
             else:
                 fallback = "*I couldn't find results for that query. Please try rephrasing or try a different search.*"
             yield f"data: {json.dumps({'type': 'text', 'content': fallback})}\n\n"
-        
+
         yield f"data: {json.dumps({'type': 'done'})}\n\n"
-    
+
     return StreamingResponse(generate(), media_type="text/event-stream")
 
 
@@ -2102,6 +2136,297 @@ async def stitch_status():
         return {"connected": True, "projects_count": len(data.get("projects", []) if isinstance(data, dict) else [])}
     except Exception as e:
         return {"connected": False, "error": str(e)}
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# PERPLEXITY SONAR — Deep Research with Citations (Auto-detect in chat)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+PPLX_API_KEY = os.environ.get("PPLX_API_KEY", "")
+print(f"{'✅' if PPLX_API_KEY else '⚠️'} Perplexity API key {'configured' if PPLX_API_KEY else 'not set'}")
+
+# Keywords that signal a research-worthy query (auto-detect)
+RESEARCH_SIGNALS = [
+    "research", "analyze", "compare", "what is", "how does", "explain",
+    "latest", "news", "update", "trend", "market", "competitor",
+    "statistics", "data on", "report on", "find out", "look up",
+    "current", "recent", "2025", "2026", "who is", "where is",
+    "price of", "cost of", "review", "best", "top", "vs", "versus",
+]
+
+def needs_research(query: str) -> bool:
+    """Auto-detect if a query needs live web research via Perplexity."""
+    q = query.lower().strip()
+    # Direct research requests
+    if any(sig in q for sig in RESEARCH_SIGNALS):
+        return True
+    # Questions about real-world things
+    if q.endswith("?") and len(q.split()) > 3:
+        return True
+    # If it looks like a factual query vs a creative/action request
+    action_words = ["create", "generate", "build", "make", "write me", "draft", "design", "help me with"]
+    if any(q.startswith(a) for a in action_words):
+        return False
+    return False
+
+
+async def perplexity_research(query: str, model: str = "sonar-pro") -> dict:
+    """Call Perplexity Sonar API for research with citations."""
+    if not PPLX_API_KEY:
+        return {"answer": "", "citations": [], "error": "Perplexity API key not configured"}
+
+    async with httpx.AsyncClient(timeout=30.0) as http:
+        try:
+            resp = await http.post(
+                "https://api.perplexity.ai/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {PPLX_API_KEY}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": model,
+                    "messages": [
+                        {"role": "system", "content": "You are a research assistant for SaintSal Labs. Provide concise, well-sourced answers with citations. Be thorough but not verbose."},
+                        {"role": "user", "content": query},
+                    ],
+                    "return_citations": True,
+                    "return_related_questions": True,
+                },
+            )
+            data = resp.json()
+            if resp.status_code != 200:
+                return {"answer": "", "citations": [], "error": data.get("error", {}).get("message", str(resp.status_code))}
+
+            choice = data.get("choices", [{}])[0]
+            return {
+                "answer": choice.get("message", {}).get("content", ""),
+                "citations": data.get("citations", []),
+                "related_questions": data.get("related_questions", []),
+                "model": data.get("model", model),
+            }
+        except Exception as e:
+            return {"answer": "", "citations": [], "error": str(e)}
+
+
+@app.post("/api/research")
+async def research_endpoint(request: Request):
+    """Dedicated research endpoint using Perplexity Sonar."""
+    body = await request.json()
+    query = body.get("query", "")
+    model = body.get("model", "sonar-pro")  # sonar, sonar-pro
+    if not query:
+        return JSONResponse({"error": "Query is required"}, status_code=400)
+    result = await perplexity_research(query, model)
+    return result
+
+
+@app.get("/api/research/status")
+async def research_status():
+    """Check Perplexity API connectivity."""
+    return {"connected": bool(PPLX_API_KEY), "provider": "Perplexity", "models": ["sonar", "sonar-pro"]}
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# GEMINI CHAT — Google Gemini for multimodal chat (Pro+ tier)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", os.environ.get("STITCH_API_KEY", ""))
+
+async def gemini_chat(query: str, history: list = None, system_prompt: str = "") -> dict:
+    """Call Gemini API for multimodal chat."""
+    if not GEMINI_API_KEY:
+        return {"response": "", "error": "Gemini API key not configured"}
+
+    messages = []
+    if history:
+        for msg in history[-10:]:
+            role = "user" if msg.get("role") == "user" else "model"
+            messages.append({"role": role, "parts": [{"text": msg["content"]}]})
+    messages.append({"role": "user", "parts": [{"text": query}]})
+
+    payload = {
+        "contents": messages,
+        "generationConfig": {"maxOutputTokens": 4096, "temperature": 0.7},
+    }
+    if system_prompt:
+        payload["systemInstruction"] = {"parts": [{"text": system_prompt}]}
+
+    async with httpx.AsyncClient(timeout=30.0) as http:
+        try:
+            resp = await http.post(
+                f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={GEMINI_API_KEY}",
+                json=payload,
+                headers={"Content-Type": "application/json"},
+            )
+            data = resp.json()
+            if resp.status_code != 200:
+                return {"response": "", "error": str(data)}
+            candidates = data.get("candidates", [{}])
+            text = candidates[0].get("content", {}).get("parts", [{}])[0].get("text", "")
+            return {"response": text}
+        except Exception as e:
+            return {"response": "", "error": str(e)}
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# DOCUMENT GENERATION — Create PDFs, DOCX from chat
+# ═══════════════════════════════════════════════════════════════════════════════
+
+import io
+import re as _re
+
+@app.post("/api/generate/document")
+async def generate_document(request: Request):
+    """Generate a document (proposal, report, etc.) from AI and return downloadable HTML."""
+    body = await request.json()
+    doc_type = body.get("type", "report")  # report, proposal, letter, resume
+    title = body.get("title", "Document")
+    content = body.get("content", "")
+    prompt = body.get("prompt", "")
+
+    # If prompt given, generate content via Claude
+    if prompt and not content:
+        doc_system = f"""You are a professional document writer for SaintSal Labs.
+Generate a well-structured {doc_type} in clean HTML format.
+Use proper headings (h1, h2, h3), paragraphs, bullet lists, and tables where appropriate.
+Make it professional, polished, and ready to print/download.
+Title: {title}
+Do NOT include <html>, <head>, or <body> tags — just the document content HTML."""
+
+        if client:
+            try:
+                msg = client.messages.create(
+                    model="claude-sonnet-4-20250514",
+                    max_tokens=4096,
+                    system=doc_system,
+                    messages=[{"role": "user", "content": prompt}],
+                )
+                content = msg.content[0].text
+            except Exception as e:
+                return JSONResponse({"error": f"AI generation failed: {e}"}, status_code=500)
+        else:
+            return JSONResponse({"error": "No AI model available"}, status_code=503)
+
+    # Wrap in printable HTML
+    html_doc = f"""<!DOCTYPE html>
+<html><head>
+<meta charset="UTF-8">
+<title>{title}</title>
+<style>
+  body {{ font-family: 'Georgia', serif; max-width: 800px; margin: 40px auto; padding: 20px; color: #1a1a1a; line-height: 1.7; }}
+  h1 {{ font-size: 28px; border-bottom: 2px solid #c8a24e; padding-bottom: 10px; color: #1a1a1a; }}
+  h2 {{ font-size: 22px; color: #333; margin-top: 30px; }}
+  h3 {{ font-size: 18px; color: #555; }}
+  table {{ border-collapse: collapse; width: 100%; margin: 20px 0; }}
+  th, td {{ border: 1px solid #ddd; padding: 10px; text-align: left; }}
+  th {{ background: #f5f0e0; font-weight: bold; }}
+  ul, ol {{ padding-left: 24px; }}
+  li {{ margin-bottom: 6px; }}
+  .footer {{ margin-top: 40px; padding-top: 20px; border-top: 1px solid #ddd; font-size: 12px; color: #888; }}
+  @media print {{ body {{ margin: 0; }} }}
+</style>
+</head><body>
+{content}
+<div class="footer">Generated by SaintSal™ Labs &mdash; Responsible Intelligence</div>
+</body></html>"""
+
+    return {
+        "html": html_doc,
+        "title": title,
+        "type": doc_type,
+        "downloadable": True,
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# IMAGE GENERATION — Create images from text prompts in chat
+# ═══════════════════════════════════════════════════════════════════════════════
+
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
+
+@app.post("/api/generate/image")
+async def generate_image(request: Request):
+    """Generate an image from a text prompt."""
+    body = await request.json()
+    prompt = body.get("prompt", "")
+    size = body.get("size", "1024x1024")
+
+    if not prompt:
+        return JSONResponse({"error": "Prompt is required"}, status_code=400)
+
+    # Try OpenAI DALL-E
+    if OPENAI_API_KEY:
+        async with httpx.AsyncClient(timeout=60.0) as http:
+            try:
+                resp = await http.post(
+                    "https://api.openai.com/v1/images/generations",
+                    headers={"Authorization": f"Bearer {OPENAI_API_KEY}", "Content-Type": "application/json"},
+                    json={"model": "dall-e-3", "prompt": prompt, "n": 1, "size": size, "response_format": "url"},
+                )
+                data = resp.json()
+                if resp.status_code == 200 and data.get("data"):
+                    img = data["data"][0]
+                    return {"url": img.get("url", ""), "revised_prompt": img.get("revised_prompt", ""), "provider": "dall-e-3"}
+                return JSONResponse({"error": data.get("error", {}).get("message", "Image generation failed")}, status_code=500)
+            except Exception as e:
+                return JSONResponse({"error": str(e)}, status_code=500)
+
+    # Fallback: use Gemini image generation
+    if GEMINI_API_KEY:
+        async with httpx.AsyncClient(timeout=60.0) as http:
+            try:
+                resp = await http.post(
+                    f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={GEMINI_API_KEY}",
+                    json={
+                        "contents": [{"parts": [{"text": f"Generate a detailed image description for: {prompt}"}]}],
+                        "generationConfig": {"maxOutputTokens": 1024},
+                    },
+                    headers={"Content-Type": "application/json"},
+                )
+                data = resp.json()
+                desc = data.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "")
+                # Return text description as fallback when no image API available
+                return {"description": desc, "provider": "gemini-description", "note": "Image description generated — add OpenAI API key for actual image generation"}
+            except Exception as e:
+                return JSONResponse({"error": str(e)}, status_code=500)
+
+    return JSONResponse({"error": "No image generation API configured. Add OPENAI_API_KEY for DALL-E."}, status_code=503)
+
+
+@app.get("/api/generate/status")
+async def generate_status():
+    """Check which generation capabilities are available."""
+    return {
+        "document": bool(client),  # Claude for doc generation
+        "image": bool(OPENAI_API_KEY),
+        "image_fallback": bool(GEMINI_API_KEY),
+        "research": bool(PPLX_API_KEY),
+        "multimodal": bool(GEMINI_API_KEY),
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# ENHANCED CHAT — Auto-detect research, generate docs/images inline
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def detect_intent(query: str) -> str:
+    """Detect what the user wants: research, document, image, or chat."""
+    q = query.lower().strip()
+    # Image generation
+    img_signals = ["generate image", "create image", "make image", "draw", "design a logo",
+                   "generate a picture", "create a graphic", "make a graphic", "visualize"]
+    if any(sig in q for sig in img_signals):
+        return "image"
+    # Document generation
+    doc_signals = ["create a document", "generate a report", "write a proposal", "draft a letter",
+                   "make a resume", "create a pdf", "generate a pdf", "write a report",
+                   "create a presentation", "build a document", "write up"]
+    if any(sig in q for sig in doc_signals):
+        return "document"
+    # Research
+    if needs_research(q):
+        return "research"
+    return "chat"
 
 
 # ============================================================================

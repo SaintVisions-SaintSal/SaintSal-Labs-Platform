@@ -578,15 +578,42 @@ function sendMessage(query) {
   var rawText = '';
 
   // Unified message handler for both WS and SSE
+  var detectedIntent = 'chat';
+  var pplxCitations = [];
   function handleEvent(data) {
-    if (data.type === 'phase') {
+    if (data.type === 'intent') {
+      detectedIntent = data.intent || 'chat';
+      var intentLabels = { research: '🔬 Deep Research', document: '📄 Generating Document', image: '🎨 Creating Image', chat: '💬 Chat' };
+      var intentColors = { research: '#8b5cf6', document: '#3b82f6', image: '#f59e0b', chat: 'var(--accent-gold)' };
+      if (detectedIntent !== 'chat') {
+        var badge = document.createElement('div');
+        badge.className = 'intent-badge';
+        badge.style.cssText = 'display:inline-flex;align-items:center;gap:6px;padding:4px 12px;border-radius:20px;font-size:11px;font-weight:600;margin-bottom:8px;background:' + (intentColors[detectedIntent] || 'var(--accent-gold)') + '22;color:' + (intentColors[detectedIntent] || 'var(--accent-gold)') + ';border:1px solid ' + (intentColors[detectedIntent] || 'var(--accent-gold)') + '44;';
+        badge.textContent = intentLabels[detectedIntent] || detectedIntent;
+        msgBlock.insertBefore(badge, phaseEl);
+      }
+    } else if (data.type === 'phase') {
       var phaseLabels = { searching: 'Searching the web...', generating: 'SAL is thinking...', streaming: 'Writing response...' };
+      if (detectedIntent === 'research') phaseLabels.searching = '🔬 Researching with Perplexity + Web...';
       phaseEl.querySelector('.phase-text').textContent = phaseLabels[data.phase] || data.phase;
       phaseEl.style.display = 'flex';
     } else if (data.type === 'sources' && data.sources) {
       allSources = data.sources;
       renderSourcePills(sourcesEl, data.sources);
       phaseEl.querySelector('.phase-text').textContent = data.sources.length + ' sources found';
+    } else if (data.type === 'citations' && data.citations) {
+      pplxCitations = data.citations;
+      // Render Perplexity citations as compact links below sources
+      var citEl = document.createElement('div');
+      citEl.className = 'pplx-citations';
+      citEl.style.cssText = 'display:flex;flex-wrap:wrap;gap:6px;margin:6px 0;';
+      data.citations.forEach(function(url, i) {
+        try {
+          var domain = new URL(url).hostname.replace('www.','');
+          citEl.innerHTML += '<a href="' + escapeAttr(url) + '" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:12px;font-size:10px;background:rgba(139,92,246,0.15);color:#a78bfa;text-decoration:none;border:1px solid rgba(139,92,246,0.3);"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M8 12h8M12 8v8"/></svg>' + escapeHtml(domain) + '</a>';
+        } catch(e) {}
+      });
+      msgBlock.insertBefore(citEl, answerEl);
     } else if (data.type === 'text' && data.content) {
       if (phaseEl.style.display !== 'none') {
         phaseEl.style.display = 'none';
@@ -596,7 +623,7 @@ function sendMessage(query) {
       threadArea.scrollTop = threadArea.scrollHeight;
     } else if (data.type === 'done') {
       phaseEl.style.display = 'none';
-      finalizeResponse(answerEl, rawText, null, allSources);
+      finalizeResponse(answerEl, rawText, null, allSources, detectedIntent);
     } else if (data.type === 'error') {
       phaseEl.style.display = 'none';
       answerEl.innerHTML = '<p style="color:var(--accent-red);">' + escapeHtml(data.message || 'An error occurred') + '</p>';
@@ -689,7 +716,7 @@ function sendMessage(query) {
 // Try to connect WebSocket on load (non-blocking)
 setTimeout(function() { try { connectWebSocket(); } catch(e) {} }, 2000);
 
-function finalizeResponse(answerEl, rawText, typingEl, sources) {
+function finalizeResponse(answerEl, rawText, typingEl, sources, intent) {
   if (typingEl && typingEl.parentNode) typingEl.parentNode.removeChild(typingEl);
   if (rawText) {
     answerEl.innerHTML = formatMarkdown(rawText);
@@ -703,9 +730,96 @@ function finalizeResponse(answerEl, rawText, typingEl, sources) {
     addTTSButton(answerEl, rawText);
   }
 
+  // Add action toolbar below response
+  var toolbar = document.createElement('div');
+  toolbar.className = 'response-toolbar';
+  toolbar.style.cssText = 'display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;';
+
+  // Copy button
+  var copyBtn = document.createElement('button');
+  copyBtn.className = 'toolbar-btn';
+  copyBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg> Copy';
+  copyBtn.style.cssText = 'display:inline-flex;align-items:center;gap:4px;padding:6px 12px;border-radius:8px;font-size:12px;background:rgba(255,255,255,0.06);color:rgba(255,255,255,0.6);border:1px solid rgba(255,255,255,0.1);cursor:pointer;transition:all 0.2s;';
+  copyBtn.onclick = function() {
+    navigator.clipboard.writeText(rawText).then(function() {
+      copyBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg> Copied!';
+      setTimeout(function() { copyBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg> Copy'; }, 2000);
+    });
+  };
+  toolbar.appendChild(copyBtn);
+
+  // Generate Document button (if response is substantial)
+  if (rawText.length > 200) {
+    var docBtn = document.createElement('button');
+    docBtn.className = 'toolbar-btn';
+    docBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg> Save as Document';
+    docBtn.style.cssText = 'display:inline-flex;align-items:center;gap:4px;padding:6px 12px;border-radius:8px;font-size:12px;background:rgba(59,130,246,0.12);color:#60a5fa;border:1px solid rgba(59,130,246,0.3);cursor:pointer;transition:all 0.2s;';
+    docBtn.onclick = function() {
+      generateDocFromChat(rawText, 'SAL Response');
+    };
+    toolbar.appendChild(docBtn);
+  }
+
+  // Share button
+  var shareBtn = document.createElement('button');
+  shareBtn.className = 'toolbar-btn';
+  shareBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg> Share';
+  shareBtn.style.cssText = 'display:inline-flex;align-items:center;gap:4px;padding:6px 12px;border-radius:8px;font-size:12px;background:rgba(255,255,255,0.06);color:rgba(255,255,255,0.6);border:1px solid rgba(255,255,255,0.1);cursor:pointer;transition:all 0.2s;';
+  shareBtn.onclick = function() {
+    if (navigator.share) {
+      navigator.share({ title: 'SaintSal Research', text: rawText.substring(0, 500) });
+    } else {
+      navigator.clipboard.writeText(rawText);
+      shareBtn.textContent = 'Link copied!';
+    }
+  };
+  toolbar.appendChild(shareBtn);
+
+  answerEl.appendChild(toolbar);
+
   // Scroll to bottom
   var threadArea = document.getElementById('chatThreadArea');
   threadArea.scrollTop = threadArea.scrollHeight;
+}
+
+// Generate a downloadable document from chat content
+function generateDocFromChat(content, title) {
+  var btn = event.target.closest('.toolbar-btn');
+  if (btn) { btn.textContent = 'Generating...'; btn.disabled = true; }
+
+  fetch(API + '/api/generate/document', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ content: formatMarkdown(content), title: title || 'SAL Document', type: 'report' })
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(data) {
+    if (data.html) {
+      // Create downloadable blob
+      var blob = new Blob([data.html], { type: 'text/html' });
+      var url = URL.createObjectURL(blob);
+
+      // Show inline preview
+      var preview = document.createElement('div');
+      preview.style.cssText = 'margin-top:12px;border-radius:12px;overflow:hidden;border:1px solid rgba(255,255,255,0.1);background:#fff;';
+      preview.innerHTML = '<iframe style="width:100%;height:300px;border:none;" srcdoc="' + escapeAttr(data.html) + '"></iframe>' +
+        '<div style="display:flex;gap:8px;padding:10px;background:rgba(0,0,0,0.8);">' +
+        '<a href="' + url + '" download="' + escapeAttr(data.title || 'document') + '.html" style="display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border-radius:8px;background:var(--accent-gold);color:#000;font-size:13px;font-weight:600;text-decoration:none;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>Download</a>' +
+        '<button onclick="window.open().document.write(this.closest(\'.response-toolbar\')?.previousElementSibling?.querySelector(\'iframe\')?.srcdoc || \'\')" style="padding:8px 16px;border-radius:8px;background:rgba(255,255,255,0.1);color:#fff;font-size:13px;border:1px solid rgba(255,255,255,0.2);cursor:pointer;">Open Full</button>' +
+        '</div>';
+
+      // Insert after the toolbar
+      var toolbar = btn ? btn.closest('.response-toolbar') : null;
+      if (toolbar) {
+        toolbar.parentNode.insertBefore(preview, toolbar.nextSibling);
+      }
+    }
+    if (btn) { btn.textContent = '✅ Document Ready'; }
+  })
+  .catch(function(e) {
+    console.error('Doc gen error:', e);
+    if (btn) { btn.textContent = 'Error'; btn.disabled = false; }
+  });
 }
 
 function renderSourcePills(container, sources) {
