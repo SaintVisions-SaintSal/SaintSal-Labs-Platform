@@ -5560,7 +5560,7 @@ def _detect_builder_intent(message: str) -> str:
     if _re.search(r'\b(image|img|pic|photo|picture)\b.*\b(of|for|with|showing)\b', msg):
         return 'image'
     # Video
-    if any(w in msg for w in ['generate video', 'create video', 'make video', 'video of', 'animate', 'animation', 'motion graphics', 'cinematic', 'short film', 'clip of', 'reel', 'product video']):
+    if any(w in msg for w in ['generate video', 'create video', 'make video', 'video of', 'animate', 'animation', 'motion graphics', 'cinematic', 'short film', 'clip of', 'reel', 'product video', 'video storyboard', 'storyboard', 'explainer video', 'promo video']):
         return 'video'
     # Audio
     if any(w in msg for w in ['voiceover', 'voice over', 'text to speech', 'tts', 'narrat', 'read aloud', 'generate audio', 'make audio', 'podcast intro', 'jingle']):
