@@ -4892,6 +4892,67 @@ window.addEventListener('beforeunload', function(e) {
    v7.27.0 — UNIFIED BUILDER CHAT (replaces old studioGenerate)
    ═══════════════════════════════════════════════════════════════════ */
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// SaintVision™ Trivia System — rotating facts while Builder works
+// ═══════════════════════════════════════════════════════════════════════════════
+var SAINTVISION_TRIVIA = [
+  { icon: '™', fact: 'Did you know? SaintSal™ is a registered trademark of Saint Vision Technologies LLC, protecting the brand across all AI products and services.' },
+  { icon: '🏛️', fact: 'Saint Vision Technologies LLC holds US Patent #10,290,222 — covering escalation and de-escalation in any virtual environment via a single prompt or avatar.' },
+  { icon: '🏦', fact: 'Saint Vision, Inc. owns CookinCapital, Inc. — an AI-powered commercial real estate and lending brokerage handling deals from $5K to $100M with 57 funding partners.' },
+  { icon: '🌍', fact: 'SaintSal.ai is live in 175+ countries — making it one of the most globally accessible AI assistants built by an independent company.' },
+  { icon: '🤝', fact: 'CookinPartners.com lets anyone sign up with a W-9 to sell SaintSal™ and earn 15% commission on every referral.' },
+  { icon: '📱', fact: 'Both SaintSal.ai and SaintSalLabs.com are coming to the iOS App Store and Google Play Store — native mobile experiences powered by the same backend.' },
+  { icon: '🧠', fact: 'HACP (Human-AI Connection Protocol) is a patented framework by Saint Vision Technologies — a pending second patent (#19/296,986) expands on the original.' },
+  { icon: '💼', fact: 'Cap (Ryan Capatosto) brings 22+ years of financial services experience from JP Morgan and Oppenheimer to the AI industry.' },
+  { icon: '⚡', fact: 'SaintSal™ Labs Builder is a unified AI workspace — images, video, audio, full-stack code, social content, and deployment all from one chat.' },
+  { icon: '🏗️', fact: 'SaintSalLabs.com is built on a modern stack: React frontend, Python/FastAPI backend, Supabase for auth and data, Stripe for billing, and multi-model AI (Claude, Grok, Gemini, GPT).' },
+  { icon: '🎯', fact: 'Saint Vision\'s mission is "Responsible Intelligence" — serving faith-forward, values-driven organizations that make up the 33% of the market big tech overlooks.' },
+  { icon: '📄', fact: 'Patent #10,290,222 was a breakthrough — it enables any AI system to dynamically escalate or de-escalate conversation intensity through a single prompt command.' },
+  { icon: '🏢', fact: 'Saint Vision Technologies is headquartered at 221 Main Street, Suite J, Huntington Beach, CA — right in the heart of SoCal innovation.' },
+  { icon: '🔐', fact: 'SaintSalLabs uses Supabase as the single source of truth for authentication and billing across ALL Saint Vision platforms — one login, everywhere.' },
+  { icon: '🚀', fact: 'CookinCapital.com (cookin.io) is an AI-first brokerage — using artificial intelligence to match borrowers with the best lending partners in real-time.' },
+  { icon: '💡', fact: 'SaintBiz.io is the B2B SaaS arm of Saint Vision — bringing enterprise AI tools to small and mid-size businesses.' },
+  { icon: '🏥', fact: 'SaintAthena is Saint Vision\'s upcoming HIPAA-compliant medical AI platform — bringing Responsible Intelligence to healthcare.' },
+];
+var _triviaTimer = null;
+var _triviaIndex = 0;
+
+function _startBuilderTrivia(container) {
+  _triviaIndex = Math.floor(Math.random() * SAINTVISION_TRIVIA.length);
+  _showTriviaCard(container);
+  _triviaTimer = setInterval(function() {
+    _triviaIndex = (_triviaIndex + 1) % SAINTVISION_TRIVIA.length;
+    _showTriviaCard(container);
+  }, 6000);
+}
+
+function _showTriviaCard(container) {
+  var trivia = SAINTVISION_TRIVIA[_triviaIndex];
+  var card = container.querySelector('.builder-trivia-card');
+  if (!card) {
+    card = document.createElement('div');
+    card.className = 'builder-trivia-card';
+    container.appendChild(card);
+  }
+  card.style.opacity = '0';
+  card.style.transform = 'translateY(6px)';
+  setTimeout(function() {
+    card.innerHTML = '<div class="builder-trivia-inner">' +
+      '<div class="builder-trivia-icon-row">' +
+        '<img src="saintsal-icon.png" alt="" class="builder-trivia-logo">' +
+        '<span class="builder-trivia-badge">Did You Know?</span>' +
+      '</div>' +
+      '<div class="builder-trivia-text">' + escapeHtml(trivia.fact) + '</div>' +
+    '</div>';
+    card.style.opacity = '1';
+    card.style.transform = 'translateY(0)';
+  }, 200);
+}
+
+function _stopBuilderTrivia() {
+  if (_triviaTimer) { clearInterval(_triviaTimer); _triviaTimer = null; }
+}
+
 var builderChatState = {
   messages: [],      // {role, content, html, intent}
   generating: false,
@@ -4986,6 +5047,12 @@ async function builderSend() {
   phaseEl.innerHTML = '<div class="builder-phase-spinner"></div><span>SAL is thinking...</span>';
   asstMsg.appendChild(phaseEl);
 
+  // Trivia container — shows rotating SaintVision facts while building
+  var triviaContainer = document.createElement('div');
+  triviaContainer.className = 'builder-trivia-container';
+  asstMsg.appendChild(triviaContainer);
+  _startBuilderTrivia(triviaContainer);
+
   // Content container
   var contentEl = document.createElement('div');
   contentEl.className = 'builder-msg-content';
@@ -5013,7 +5080,7 @@ async function builderSend() {
       phaseEl.querySelector('span').textContent = data.message || data.phase || 'Processing...';
       phaseEl.style.display = 'flex';
     } else if (data.type === 'image') {
-      phaseEl.style.display = 'none';
+      phaseEl.style.display = 'none'; _stopBuilderTrivia(); if(triviaContainer) triviaContainer.style.display='none';
       var imgHtml = '<img class="builder-inline-image" src="' + (data.data || data.url) + '" alt="Generated image" onclick="window.open(this.src,\'_blank\')">';
       imgHtml += '<div style="display:flex;gap:6px;margin-top:6px;">';
       if (data.url) imgHtml += '<button class="builder-action-btn" onclick="downloadStudioMedia(\'' + escapeAttr(data.url) + '\',\'generated-image.png\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Download</button>';
@@ -5022,16 +5089,16 @@ async function builderSend() {
       if (data.provider) imgHtml += '<div style="font-size:10px;color:var(--text-muted);margin-top:4px;">via ' + escapeHtml(data.provider) + '</div>';
       contentEl.innerHTML += imgHtml;
     } else if (data.type === 'audio') {
-      phaseEl.style.display = 'none';
+      phaseEl.style.display = 'none'; _stopBuilderTrivia(); if(triviaContainer) triviaContainer.style.display='none';
       var audioHtml = '<audio class="builder-inline-audio" src="' + (data.data || data.url) + '" controls></audio>';
       if (data.url) audioHtml += '<div style="margin-top:4px;"><button class="builder-action-btn" onclick="downloadStudioMedia(\'' + escapeAttr(data.url) + '\',\'generated-audio.mp3\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Download</button></div>';
       contentEl.innerHTML += audioHtml;
     } else if (data.type === 'video_storyboard') {
-      phaseEl.style.display = 'none';
+      phaseEl.style.display = 'none'; _stopBuilderTrivia(); if(triviaContainer) triviaContainer.style.display='none';
       contentEl.innerHTML += '<div class="builder-storyboard">' + formatMarkdown(data.storyboard || '') + '</div>';
       if (data.provider) contentEl.innerHTML += '<div style="font-size:10px;color:var(--text-muted);">Storyboard via ' + escapeHtml(data.provider) + '</div>';
     } else if (data.type === 'social') {
-      phaseEl.style.display = 'none';
+      phaseEl.style.display = 'none'; _stopBuilderTrivia(); if(triviaContainer) triviaContainer.style.display='none';
       var socialHtml = '<div class="builder-social-result">';
       socialHtml += '<div class="builder-social-header"><span style="font-weight:600;font-size:13px;">' + escapeHtml((data.platform || 'Social').charAt(0).toUpperCase() + (data.platform || '').slice(1)) + ' Content</span></div>';
       if (data.image && data.image.data) {
@@ -5055,7 +5122,7 @@ async function builderSend() {
       contentEl.innerHTML += socialHtml;
     } else if (data.type === 'code_files') {
       // v7.29.0 — Full rewrite: v0/Bolt-style live preview with proper CSS+JS injection
-      phaseEl.style.display = 'none';
+      phaseEl.style.display = 'none'; _stopBuilderTrivia(); if(triviaContainer) triviaContainer.style.display='none';
       builderChatState.files = data.files || [];
       var codeHtml = '<div class="builder-code-preview">';
       
@@ -5139,7 +5206,7 @@ async function builderSend() {
       if (data.model) codeHtml += '<div style="font-size:10px;color:var(--text-muted);margin-top:4px;">Built with ' + escapeHtml(data.model) + '</div>';
       contentEl.innerHTML += codeHtml;
     } else if (data.type === 'deploy_ready') {
-      phaseEl.style.display = 'none';
+      phaseEl.style.display = 'none'; _stopBuilderTrivia(); if(triviaContainer) triviaContainer.style.display='none';
       var deployHtml = '<div class="builder-deploy-grid">';
       deployHtml += '<div class="builder-deploy-card" onclick="builderPublish(\'vercel\')"><svg viewBox="0 0 24 24" fill="var(--text-primary)" width="20" height="20"><path d="M12 1L1 22h22L12 1z"/></svg><div><div style="font-weight:600;font-size:13px;">Vercel</div><div style="font-size:11px;color:var(--text-muted);">Frontend, zero-config</div></div></div>';
       deployHtml += '<div class="builder-deploy-card" onclick="builderPublish(\'render\')"><span style="font-size:18px;font-weight:900;color:var(--accent-green);">R</span><div><div style="font-weight:600;font-size:13px;">Render</div><div style="font-size:11px;color:var(--text-muted);">Full-stack, backends</div></div></div>';
@@ -5158,7 +5225,7 @@ async function builderSend() {
       citHtml += '</div>';
       contentEl.innerHTML += citHtml;
     } else if (data.type === 'text') {
-      phaseEl.style.display = 'none';
+      phaseEl.style.display = 'none'; _stopBuilderTrivia(); if(triviaContainer) triviaContainer.style.display='none';
       rawText += data.content || '';
       contentEl.innerHTML = contentEl.innerHTML.replace(/<div class="builder-msg-text-stream">[^]*?<\/div>$/, '') ;
       // Only update the text portion, keep media above
@@ -5172,6 +5239,8 @@ async function builderSend() {
       textDiv.innerHTML = formatMarkdown(rawText);
     } else if (data.type === 'done') {
       phaseEl.style.display = 'none';
+      _stopBuilderTrivia();
+      if (triviaContainer) { triviaContainer.style.display = 'none'; }
       builderChatState.messages.push({ role: 'assistant', content: rawText || contentEl.textContent });
       // Auto-save
       triggerBuilderAutoSave();
@@ -5218,7 +5287,7 @@ async function builderSend() {
     await processStream();
   } catch(e) {
     console.error('Builder chat error:', e);
-    phaseEl.style.display = 'none';
+    phaseEl.style.display = 'none'; _stopBuilderTrivia(); if(triviaContainer) triviaContainer.style.display='none';
     contentEl.innerHTML += '<div style="color:#ef4444;font-size:13px;">Connection error. Please try again.</div>';
   }
 

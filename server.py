@@ -5913,7 +5913,7 @@ async def _builder_generate_video_inline(prompt: str) -> dict:
         storyboard = result['text']
         provider = result['model_used']
     job_id = str(uuid.uuid4())[:8]
-    return {"storyboard": storyboard, "job_id": job_id, "provider": provider, "message": f"Video storyboard created via {provider}. Full video rendering requires a dedicated video API (Sora/Runway)."}
+    return {"storyboard": storyboard, "job_id": job_id, "provider": provider, "message": f"Video storyboard created via {provider}. Scenes, timing, and camera directions are ready. Want me to refine any scene or generate supporting images?"}
 
 
 async def _builder_generate_audio_inline(prompt: str) -> dict:
