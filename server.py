@@ -5965,7 +5965,7 @@ async def social_publish(request: Request):
         PLATFORM_CONFIG = {
             "twitter": {
                 "name": "X (Twitter)", "char_limit": 280,
-                "env_keys": ["TWITTER_API_KEY", "TWITTER_API_SECRET", "TWITTER_ACCESS_TOKEN", "TWITTER_ACCESS_SECRET"],
+                "env_keys": ["TWITTER_ACCESS_TOKEN", "TWITTER_ACCESS_SECRET"],  # Minimum needed (Bearer or OAuth 1.0a)
                 "connect_url": "https://developer.twitter.com/en/portal/dashboard",
             },
             "linkedin": {
@@ -6014,83 +6014,98 @@ async def social_publish(request: Request):
                                 api_error = f"Twitter API {resp.status_code}: {resp.text[:200]}"
                         else:
                             # Fallback: Env-var OAuth 1.0a — POST /2/tweets
+                            # Requires all 4 OAuth 1.0a credentials to sign requests
                             import hashlib, hmac, time as _time, urllib.parse, base64, uuid as _uuid
-                            api_key = os.environ["TWITTER_API_KEY"]
-                            api_secret = os.environ["TWITTER_API_SECRET"]
-                            access_token = os.environ["TWITTER_ACCESS_TOKEN"]
-                            access_secret = os.environ["TWITTER_ACCESS_SECRET"]
-                        url = "https://api.twitter.com/2/tweets"
-                        method = "POST"
-                        nonce = _uuid.uuid4().hex
-                        timestamp = str(int(_time.time()))
-                        oauth_params = {
-                            "oauth_consumer_key": api_key,
-                            "oauth_nonce": nonce,
-                            "oauth_signature_method": "HMAC-SHA1",
-                            "oauth_timestamp": timestamp,
-                            "oauth_token": access_token,
-                            "oauth_version": "1.0",
-                        }
-                        param_str = "&".join(f"{urllib.parse.quote(k, safe='')}={urllib.parse.quote(v, safe='')}" for k, v in sorted(oauth_params.items()))
-                        base_str = f"{method}&{urllib.parse.quote(url, safe='')}&{urllib.parse.quote(param_str, safe='')}"
-                        signing_key = f"{urllib.parse.quote(api_secret, safe='')}&{urllib.parse.quote(access_secret, safe='')}"
-                        sig = base64.b64encode(hmac.new(signing_key.encode(), base_str.encode(), hashlib.sha1).digest()).decode()
-                        oauth_params["oauth_signature"] = sig
-                        auth_header = "OAuth " + ", ".join(f'{k}="{urllib.parse.quote(v, safe="")}"' for k, v in sorted(oauth_params.items()))
-                        resp = await hc.post(url, headers={"Authorization": auth_header, "Content-Type": "application/json"}, json={"text": formatted})
-                        if resp.status_code in (200, 201):
-                            data = resp.json()
-                            post_id = data.get("data", {}).get("id", "")
-                            post_url = f"https://x.com/i/status/{post_id}" if post_id else ""
-                            published = True
-                        else:
-                            api_error = f"Twitter API {resp.status_code}: {resp.text[:200]}"
+                            _tw_api_key = os.environ.get("TWITTER_API_KEY", "")
+                            _tw_api_secret = os.environ.get("TWITTER_API_SECRET", "")
+                            _tw_access_token = os.environ.get("TWITTER_ACCESS_TOKEN", "")
+                            _tw_access_secret = os.environ.get("TWITTER_ACCESS_SECRET", "")
+                            if not _tw_api_key or not _tw_api_secret:
+                                # Consumer credentials missing — OAuth 1.0a signing impossible.
+                                # Bearer token (app-only) cannot POST tweets.
+                                # User must connect via OAuth or provide consumer key/secret.
+                                api_error = "Twitter publish requires OAuth login. Please connect your Twitter account in Social settings."
+                            elif not _tw_access_token or not _tw_access_secret:
+                                api_error = "Twitter access tokens missing. Please connect your Twitter account in Social settings."
+                            else:
+                                url = "https://api.twitter.com/2/tweets"
+                                method = "POST"
+                                nonce = _uuid.uuid4().hex
+                                timestamp = str(int(_time.time()))
+                                oauth_params = {
+                                    "oauth_consumer_key": _tw_api_key,
+                                    "oauth_nonce": nonce,
+                                    "oauth_signature_method": "HMAC-SHA1",
+                                    "oauth_timestamp": timestamp,
+                                    "oauth_token": _tw_access_token,
+                                    "oauth_version": "1.0",
+                                }
+                                param_str = "&".join(f"{urllib.parse.quote(k, safe='')}={urllib.parse.quote(v, safe='')}" for k, v in sorted(oauth_params.items()))
+                                base_str = f"{method}&{urllib.parse.quote(url, safe='')}&{urllib.parse.quote(param_str, safe='')}"
+                                signing_key = f"{urllib.parse.quote(_tw_api_secret, safe='')}&{urllib.parse.quote(_tw_access_secret, safe='')}"
+                                sig = base64.b64encode(hmac.new(signing_key.encode(), base_str.encode(), hashlib.sha1).digest()).decode()
+                                oauth_params["oauth_signature"] = sig
+                                auth_header = "OAuth " + ", ".join(f'{k}="{urllib.parse.quote(v, safe="")}"' for k, v in sorted(oauth_params.items()))
+                                resp = await hc.post(url, headers={"Authorization": auth_header, "Content-Type": "application/json"}, json={"text": formatted})
+                                if resp.status_code in (200, 201):
+                                    data = resp.json()
+                                    post_id = data.get("data", {}).get("id", "")
+                                    post_url = f"https://x.com/i/status/{post_id}" if post_id else ""
+                                    published = True
+                                else:
+                                    api_error = f"Twitter API {resp.status_code}: {resp.text[:200]}"
 
                     elif platform == "linkedin":
                         # LinkedIn — POST /v2/ugcPosts
-                        li_token = user_token["access_token"] if user_token else os.environ["LINKEDIN_ACCESS_TOKEN"]
-                        # Get user URN first
-                        me_resp = await hc.get("https://api.linkedin.com/v2/me", headers={"Authorization": f"Bearer {li_token}"})
-                        person_id = ""
-                        if me_resp.status_code == 200:
-                            person_id = me_resp.json().get("id", "")
-                        if person_id:
-                            payload = {
-                                "author": f"urn:li:person:{person_id}",
-                                "lifecycleState": "PUBLISHED",
-                                "specificContent": {
-                                    "com.linkedin.ugc.ShareContent": {
-                                        "shareCommentary": {"text": formatted},
-                                        "shareMediaCategory": "NONE"
-                                    }
-                                },
-                                "visibility": {"com.linkedin.ugc.MemberNetworkVisibility": "PUBLIC"}
-                            }
-                            resp = await hc.post("https://api.linkedin.com/v2/ugcPosts",
-                                headers={"Authorization": f"Bearer {li_token}", "Content-Type": "application/json", "X-Restli-Protocol-Version": "2.0.0"},
-                                json=payload)
-                            if resp.status_code in (200, 201):
-                                post_id = resp.json().get("id", resp.headers.get("x-restli-id", ""))
-                                post_url = f"https://www.linkedin.com/feed/update/{post_id}" if post_id else ""
-                                published = True
-                            else:
-                                api_error = f"LinkedIn API {resp.status_code}: {resp.text[:200]}"
+                        li_token = user_token["access_token"] if user_token else os.environ.get("LINKEDIN_ACCESS_TOKEN", "")
+                        if not li_token:
+                            api_error = "LinkedIn publish requires OAuth login. Please connect your LinkedIn account in Social settings."
                         else:
-                            api_error = "Could not retrieve LinkedIn profile. Check LINKEDIN_ACCESS_TOKEN."
+                            # Get user URN first
+                            me_resp = await hc.get("https://api.linkedin.com/v2/me", headers={"Authorization": f"Bearer {li_token}"})
+                            person_id = ""
+                            if me_resp.status_code == 200:
+                                person_id = me_resp.json().get("id", "")
+                            if person_id:
+                                payload = {
+                                    "author": f"urn:li:person:{person_id}",
+                                    "lifecycleState": "PUBLISHED",
+                                    "specificContent": {
+                                        "com.linkedin.ugc.ShareContent": {
+                                            "shareCommentary": {"text": formatted},
+                                            "shareMediaCategory": "NONE"
+                                        }
+                                    },
+                                    "visibility": {"com.linkedin.ugc.MemberNetworkVisibility": "PUBLIC"}
+                                }
+                                resp = await hc.post("https://api.linkedin.com/v2/ugcPosts",
+                                    headers={"Authorization": f"Bearer {li_token}", "Content-Type": "application/json", "X-Restli-Protocol-Version": "2.0.0"},
+                                    json=payload)
+                                if resp.status_code in (200, 201):
+                                    post_id = resp.json().get("id", resp.headers.get("x-restli-id", ""))
+                                    post_url = f"https://www.linkedin.com/feed/update/{post_id}" if post_id else ""
+                                    published = True
+                                else:
+                                    api_error = f"LinkedIn API {resp.status_code}: {resp.text[:200]}"
+                            else:
+                                api_error = "Could not retrieve LinkedIn profile. Please reconnect your LinkedIn account."
 
                     elif platform == "facebook":
                         # Facebook — POST /{page-id}/feed
-                        page_token = user_token["access_token"] if user_token else os.environ["FACEBOOK_PAGE_TOKEN"]
+                        page_token = user_token["access_token"] if user_token else os.environ.get("FACEBOOK_PAGE_TOKEN", "")
                         page_id = (user_token or {}).get("platform_user_id") or os.environ.get("FACEBOOK_PAGE_ID", "")
-                        resp = await hc.post(f"https://graph.facebook.com/v18.0/{page_id}/feed",
-                            data={"message": formatted, "access_token": page_token})
-                        if resp.status_code == 200:
-                            data = resp.json()
-                            post_id = data.get("id", "")
-                            post_url = f"https://www.facebook.com/{post_id}" if post_id else ""
-                            published = True
+                        if not page_token or not page_id:
+                            api_error = "Facebook publish requires Page Token and Page ID. Please connect your Facebook account in Social settings."
                         else:
-                            api_error = f"Facebook API {resp.status_code}: {resp.text[:200]}"
+                            resp = await hc.post(f"https://graph.facebook.com/v18.0/{page_id}/feed",
+                                data={"message": formatted, "access_token": page_token})
+                            if resp.status_code == 200:
+                                data = resp.json()
+                                post_id = data.get("id", "")
+                                post_url = f"https://www.facebook.com/{post_id}" if post_id else ""
+                                published = True
+                            else:
+                                api_error = f"Facebook API {resp.status_code}: {resp.text[:200]}"
 
             except Exception as pub_err:
                 api_error = str(pub_err)
