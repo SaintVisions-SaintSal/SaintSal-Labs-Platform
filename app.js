@@ -4146,17 +4146,38 @@ async function builderPublishSocial(platform) {
   }
 }
 
-function builderLinkSocial(platform) {
-  var urls = {
-    twitter: 'https://developer.twitter.com/en/portal/dashboard',
-    linkedin: 'https://www.linkedin.com/developers/apps',
-    facebook: 'https://developers.facebook.com/apps',
-    instagram: 'https://developers.facebook.com/apps',
-    tiktok: 'https://developers.tiktok.com/',
-    youtube: 'https://console.developers.google.com/',
-  };
-  window.open(urls[platform] || urls.twitter, '_blank');
-  showToast('Opening ' + platform + ' developer portal...', 'info');
+// v7.36.1 — Real OAuth flow for social linking
+async function builderLinkSocial(platform) {
+  showToast('Connecting to ' + platform + '...', 'info');
+  try {
+    var resp = await fetch(API + '/api/social/auth/' + encodeURIComponent(platform), {
+      headers: authHeaders()
+    });
+    var data = await resp.json();
+    if (data.auth_url) {
+      // Open OAuth popup
+      var popup = window.open(data.auth_url, 'social_auth_' + platform, 'width=600,height=700,left=200,top=100');
+      // Listen for callback message
+      window.addEventListener('message', function handler(evt) {
+        if (evt.data && (evt.data.type === 'social_connected' || evt.data.type === 'social_error')) {
+          window.removeEventListener('message', handler);
+          if (evt.data.type === 'social_connected') {
+            showToast('Connected to ' + (evt.data.username || platform) + '!', 'success');
+          } else {
+            showToast('Connection failed: ' + (evt.data.error || 'Unknown'), 'error');
+          }
+        }
+      });
+    } else if (data.setup_required) {
+      // OAuth app not configured yet — show setup instructions
+      showToast(data.message || 'OAuth not configured for ' + platform, 'info');
+      if (data.docs_url) window.open(data.docs_url, '_blank');
+    } else if (data.error) {
+      showToast(data.error, 'error');
+    }
+  } catch(e) {
+    showToast('Connection failed: ' + e.message, 'error');
+  }
 }
 
 // mobile-bottom-nav:upgrade_mobile

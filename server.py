@@ -4813,6 +4813,296 @@ async def get_connector_credential(user_id: str, connector_id: str) -> dict:
         return connector_credentials.get(connector_id, {})
 
 # Fallback in-memory store (used when Supabase unavailable)
+
+
+# ── v7.36.1 — Social OAuth Flow (per-user, Supabase-stored tokens) ──────────
+
+SOCIAL_OAUTH_CONFIG = {
+    "twitter": {
+        "name": "X (Twitter)",
+        "auth_url": "https://twitter.com/i/oauth2/authorize",
+        "token_url": "https://api.twitter.com/2/oauth2/token",
+        "scopes": "tweet.read tweet.write users.read offline.access",
+        "env_client_id": "TWITTER_CLIENT_ID",
+        "env_client_secret": "TWITTER_CLIENT_SECRET",
+        "pkce": True,  # Twitter uses OAuth 2.0 with PKCE
+    },
+    "linkedin": {
+        "name": "LinkedIn",
+        "auth_url": "https://www.linkedin.com/oauth/v2/authorization",
+        "token_url": "https://www.linkedin.com/oauth/v2/accessToken",
+        "scopes": "openid profile w_member_social",
+        "env_client_id": "LINKEDIN_CLIENT_ID",
+        "env_client_secret": "LINKEDIN_CLIENT_SECRET",
+        "pkce": False,
+    },
+    "facebook": {
+        "name": "Facebook",
+        "auth_url": "https://www.facebook.com/v18.0/dialog/oauth",
+        "token_url": "https://graph.facebook.com/v18.0/oauth/access_token",
+        "scopes": "pages_manage_posts,pages_read_engagement,public_profile",
+        "env_client_id": "FACEBOOK_APP_ID",
+        "env_client_secret": "FACEBOOK_APP_SECRET",
+        "pkce": False,
+    },
+    "instagram": {
+        "name": "Instagram",
+        "auth_url": "https://api.instagram.com/oauth/authorize",
+        "token_url": "https://api.instagram.com/oauth/access_token",
+        "scopes": "instagram_basic,instagram_content_publish",
+        "env_client_id": "INSTAGRAM_APP_ID",
+        "env_client_secret": "INSTAGRAM_APP_SECRET",
+        "pkce": False,
+    },
+}
+
+# Temporary store for PKCE code verifiers (in production: use Redis/session)
+_social_pkce_store = {}
+
+
+@app.get("/api/social/auth/{platform}")
+async def social_auth_start(platform: str, authorization: Optional[str] = Header(None)):
+    """v7.36.1 — Start OAuth flow for a social platform. Returns auth URL for user to visit."""
+    import hashlib, base64, secrets
+    
+    user = await get_current_user(authorization)
+    if not user:
+        return JSONResponse({"error": "Authentication required to connect social accounts"}, status_code=401)
+    
+    config = SOCIAL_OAUTH_CONFIG.get(platform)
+    if not config:
+        return JSONResponse({"error": f"Unsupported platform: {platform}"}, status_code=400)
+    
+    client_id = os.environ.get(config["env_client_id"], "")
+    if not client_id:
+        return JSONResponse({
+            "error": f"{config['name']} OAuth not configured",
+            "setup_required": True,
+            "message": f"Set {config['env_client_id']} and {config['env_client_secret']} environment variables to enable {config['name']} connection.",
+            "docs_url": {
+                "twitter": "https://developer.twitter.com/en/portal/dashboard",
+                "linkedin": "https://www.linkedin.com/developers/apps",
+                "facebook": "https://developers.facebook.com/apps",
+                "instagram": "https://developers.facebook.com/apps",
+            }.get(platform, ""),
+        }, status_code=503)
+    
+    redirect_uri = f"{os.environ.get('APP_URL', 'https://saintsallabs.com')}/api/social/callback/{platform}"
+    state = f"{user['id']}:{secrets.token_urlsafe(16)}"
+    
+    import urllib.parse
+    params = {
+        "client_id": client_id,
+        "redirect_uri": redirect_uri,
+        "scope": config["scopes"],
+        "response_type": "code",
+        "state": state,
+    }
+    
+    # Twitter uses PKCE
+    if config.get("pkce"):
+        code_verifier = secrets.token_urlsafe(64)[:128]
+        code_challenge = base64.urlsafe_b64encode(
+            hashlib.sha256(code_verifier.encode()).digest()
+        ).decode().rstrip("=")
+        params["code_challenge"] = code_challenge
+        params["code_challenge_method"] = "S256"
+        _social_pkce_store[state] = code_verifier
+    
+    auth_url = f"{config['auth_url']}?{urllib.parse.urlencode(params)}"
+    return {"auth_url": auth_url, "platform": platform, "state": state}
+
+
+@app.get("/api/social/callback/{platform}")
+async def social_auth_callback(platform: str, code: str = "", state: str = "", error: str = ""):
+    """v7.36.1 — OAuth callback: exchange code for token, store in Supabase."""
+    if error:
+        return HTMLResponse(f"""<html><body><script>
+            window.opener && window.opener.postMessage({{type:'social_error',platform:'{platform}',error:'{error}'}}, '*');
+            window.close();
+        </script><p>Connection failed: {error}</p></body></html>""")
+    
+    if not code or not state:
+        return HTMLResponse("<html><body><p>Missing authorization code</p></body></html>")
+    
+    # Extract user_id from state
+    user_id = state.split(":")[0] if ":" in state else ""
+    if not user_id:
+        return HTMLResponse("<html><body><p>Invalid state parameter</p></body></html>")
+    
+    config = SOCIAL_OAUTH_CONFIG.get(platform)
+    if not config:
+        return HTMLResponse(f"<html><body><p>Unknown platform: {platform}</p></body></html>")
+    
+    client_id = os.environ.get(config["env_client_id"], "")
+    client_secret = os.environ.get(config["env_client_secret"], "")
+    redirect_uri = f"{os.environ.get('APP_URL', 'https://saintsallabs.com')}/api/social/callback/{platform}"
+    
+    try:
+        async with httpx.AsyncClient(timeout=30) as hc:
+            # Exchange code for token
+            token_data = {
+                "grant_type": "authorization_code",
+                "code": code,
+                "redirect_uri": redirect_uri,
+                "client_id": client_id,
+            }
+            headers = {"Content-Type": "application/x-www-form-urlencoded"}
+            
+            if config.get("pkce"):
+                # Twitter PKCE flow
+                code_verifier = _social_pkce_store.pop(state, "")
+                token_data["code_verifier"] = code_verifier
+                # Twitter uses basic auth for token exchange
+                import base64 as b64
+                basic_auth = b64.b64encode(f"{client_id}:{client_secret}".encode()).decode()
+                headers["Authorization"] = f"Basic {basic_auth}"
+            else:
+                token_data["client_secret"] = client_secret
+            
+            resp = await hc.post(config["token_url"], data=token_data, headers=headers)
+            
+            if resp.status_code != 200:
+                print(f"[Social OAuth] Token exchange failed for {platform}: {resp.status_code} {resp.text[:200]}")
+                return HTMLResponse(f"""<html><body><script>
+                    window.opener && window.opener.postMessage({{type:'social_error',platform:'{platform}',error:'Token exchange failed'}}, '*');
+                    window.close();
+                </script><p>Token exchange failed. Please try again.</p></body></html>""")
+            
+            tokens = resp.json()
+            access_token = tokens.get("access_token", "")
+            refresh_token = tokens.get("refresh_token", "")
+            expires_in = tokens.get("expires_in")
+            
+            # Get platform user info
+            platform_user_id = ""
+            platform_username = ""
+            
+            if platform == "twitter":
+                me_resp = await hc.get("https://api.twitter.com/2/users/me",
+                    headers={"Authorization": f"Bearer {access_token}"})
+                if me_resp.status_code == 200:
+                    me = me_resp.json().get("data", {})
+                    platform_user_id = me.get("id", "")
+                    platform_username = me.get("username", "")
+            
+            elif platform == "linkedin":
+                me_resp = await hc.get("https://api.linkedin.com/v2/me",
+                    headers={"Authorization": f"Bearer {access_token}"})
+                if me_resp.status_code == 200:
+                    me = me_resp.json()
+                    platform_user_id = me.get("id", "")
+                    fn = me.get("localizedFirstName", "")
+                    ln = me.get("localizedLastName", "")
+                    platform_username = f"{fn} {ln}".strip()
+            
+            elif platform == "facebook":
+                me_resp = await hc.get(f"https://graph.facebook.com/v18.0/me?access_token={access_token}")
+                if me_resp.status_code == 200:
+                    me = me_resp.json()
+                    platform_user_id = me.get("id", "")
+                    platform_username = me.get("name", "")
+                # Get page token for posting
+                pages_resp = await hc.get(f"https://graph.facebook.com/v18.0/me/accounts?access_token={access_token}")
+                if pages_resp.status_code == 200:
+                    pages = pages_resp.json().get("data", [])
+                    if pages:
+                        # Store the first page's token as the posting token
+                        access_token = pages[0].get("access_token", access_token)
+                        platform_user_id = pages[0].get("id", platform_user_id)  # Page ID for posting
+            
+            # Store in Supabase social_tokens
+            expires_at = None
+            if expires_in:
+                from datetime import timedelta
+                expires_at = (datetime.now() + timedelta(seconds=int(expires_in))).isoformat()
+            
+            if supabase_admin:
+                try:
+                    supabase_admin.table("social_tokens").upsert({
+                        "user_id": user_id,
+                        "platform": platform,
+                        "access_token": access_token,
+                        "refresh_token": refresh_token or None,
+                        "platform_user_id": platform_user_id,
+                        "platform_username": platform_username,
+                        "scopes": config["scopes"],
+                        "expires_at": expires_at,
+                        "is_active": True,
+                        "connected_at": datetime.now().isoformat(),
+                        "updated_at": datetime.now().isoformat(),
+                    }, on_conflict="user_id,platform").execute()
+                except Exception as db_err:
+                    print(f"[Social OAuth] DB store error: {db_err}")
+            
+            return HTMLResponse(f"""<html><body><script>
+                window.opener && window.opener.postMessage({{
+                    type: 'social_connected',
+                    platform: '{platform}',
+                    username: '{platform_username}',
+                    user_id: '{platform_user_id}'
+                }}, '*');
+                window.close();
+            </script><p>Connected to {config['name']} as {platform_username}! You can close this window.</p></body></html>""")
+    
+    except Exception as e:
+        print(f"[Social OAuth] Error: {e}")
+        return HTMLResponse(f"""<html><body><script>
+            window.opener && window.opener.postMessage({{type:'social_error',platform:'{platform}',error:'{str(e)[:100]}'}}, '*');
+            window.close();
+        </script><p>Connection error. Please try again.</p></body></html>""")
+
+
+@app.get("/api/social/connections")
+async def social_connections_list(authorization: Optional[str] = Header(None)):
+    """v7.36.1 — Get user's connected social platforms."""
+    user = await get_current_user(authorization)
+    if not user:
+        return {"connections": [], "message": "Sign in to see your social connections"}
+    
+    connections = []
+    if supabase_admin:
+        try:
+            result = supabase_admin.table("social_tokens").select(
+                "platform, platform_username, platform_user_id, scopes, connected_at, expires_at, is_active"
+            ).eq("user_id", user["id"]).eq("is_active", True).execute()
+            connections = result.data or []
+        except Exception as e:
+            print(f"[Social] Connections query error: {e}")
+    
+    # Also check env-var-based connections (global, not per-user)
+    env_platforms = {
+        "twitter": bool(os.environ.get("TWITTER_API_KEY") or os.environ.get("TWITTER_CLIENT_ID")),
+        "linkedin": bool(os.environ.get("LINKEDIN_ACCESS_TOKEN") or os.environ.get("LINKEDIN_CLIENT_ID")),
+        "facebook": bool(os.environ.get("FACEBOOK_PAGE_TOKEN") or os.environ.get("FACEBOOK_APP_ID")),
+    }
+    
+    return {
+        "connections": connections,
+        "env_configured": env_platforms,
+        "supported_platforms": list(SOCIAL_OAUTH_CONFIG.keys()),
+    }
+
+
+@app.delete("/api/social/connections/{platform}")
+async def social_disconnect(platform: str, authorization: Optional[str] = Header(None)):
+    """v7.36.1 — Disconnect a social platform."""
+    user = await get_current_user(authorization)
+    if not user:
+        return JSONResponse({"error": "Authentication required"}, status_code=401)
+    
+    if supabase_admin:
+        try:
+            supabase_admin.table("social_tokens").update({
+                "is_active": False,
+                "updated_at": datetime.now().isoformat()
+            }).eq("user_id", user["id"]).eq("platform", platform).execute()
+        except Exception as e:
+            print(f"[Social] Disconnect error: {e}")
+    
+    return {"status": "disconnected", "platform": platform}
+
+
 connector_credentials = {}
 
 
@@ -5643,12 +5933,34 @@ async def godaddy_purchase_domain(request: Request):
 
 @app.post("/api/social/publish")
 async def social_publish(request: Request):
-    """v7.36.0 — Real social publishing. POSTs to platform APIs when credentials exist, formats otherwise."""
+    """v7.36.1 — Real social publishing. Checks per-user OAuth tokens first, then env vars."""
     try:
         body = await request.json()
         platform = (body.get("platform") or "twitter").lower()
         content = body.get("content") or ""
         media_url = body.get("media_url") or ""
+
+        # v7.36.1 — Check for per-user OAuth token in Supabase
+        auth_header = request.headers.get("authorization", "")
+        user = await get_current_user(auth_header if auth_header else None)
+        user_token = None
+        if user and supabase_admin:
+            try:
+                token_result = supabase_admin.table("social_tokens").select("*").eq(
+                    "user_id", user["id"]
+                ).eq("platform", platform).eq("is_active", True).single().execute()
+                if token_result.data:
+                    user_token = token_result.data
+                    # Check expiry
+                    if user_token.get("expires_at"):
+                        from dateutil.parser import parse as dt_parse
+                        try:
+                            if dt_parse(user_token["expires_at"]) < datetime.now(dt_parse(user_token["expires_at"]).tzinfo or None):
+                                user_token = None  # Token expired
+                        except Exception:
+                            pass
+            except Exception:
+                pass  # No per-user token found
 
         PLATFORM_CONFIG = {
             "twitter": {
@@ -5674,7 +5986,9 @@ async def social_publish(request: Request):
         }
 
         config = PLATFORM_CONFIG.get(platform, PLATFORM_CONFIG["twitter"])
-        is_connected = all(bool(os.environ.get(k, "")) for k in config["env_keys"])
+        # Per-user OAuth token takes priority over env vars
+        is_connected = bool(user_token) or all(bool(os.environ.get(k, "")) for k in config["env_keys"])
+        token_source = "user_oauth" if user_token else "env_vars"
         formatted = content[:config["char_limit"]]
         published = False
         post_url = ""
@@ -5686,12 +6000,25 @@ async def social_publish(request: Request):
             try:
                 async with httpx.AsyncClient(timeout=30) as hc:
                     if platform == "twitter":
-                        # Twitter OAuth 1.0a — POST /2/tweets
-                        import hashlib, hmac, time as _time, urllib.parse, base64, uuid as _uuid
-                        api_key = os.environ["TWITTER_API_KEY"]
-                        api_secret = os.environ["TWITTER_API_SECRET"]
-                        access_token = os.environ["TWITTER_ACCESS_TOKEN"]
-                        access_secret = os.environ["TWITTER_ACCESS_SECRET"]
+                        if user_token:
+                            # v7.36.1 — Per-user OAuth 2.0 Bearer token (from social_tokens)
+                            resp = await hc.post("https://api.twitter.com/2/tweets",
+                                headers={"Authorization": f"Bearer {user_token['access_token']}", "Content-Type": "application/json"},
+                                json={"text": formatted})
+                            if resp.status_code in (200, 201):
+                                data = resp.json()
+                                post_id = data.get("data", {}).get("id", "")
+                                post_url = f"https://x.com/i/status/{post_id}" if post_id else ""
+                                published = True
+                            else:
+                                api_error = f"Twitter API {resp.status_code}: {resp.text[:200]}"
+                        else:
+                            # Fallback: Env-var OAuth 1.0a — POST /2/tweets
+                            import hashlib, hmac, time as _time, urllib.parse, base64, uuid as _uuid
+                            api_key = os.environ["TWITTER_API_KEY"]
+                            api_secret = os.environ["TWITTER_API_SECRET"]
+                            access_token = os.environ["TWITTER_ACCESS_TOKEN"]
+                            access_secret = os.environ["TWITTER_ACCESS_SECRET"]
                         url = "https://api.twitter.com/2/tweets"
                         method = "POST"
                         nonce = _uuid.uuid4().hex
@@ -5721,7 +6048,7 @@ async def social_publish(request: Request):
 
                     elif platform == "linkedin":
                         # LinkedIn — POST /v2/ugcPosts
-                        li_token = os.environ["LINKEDIN_ACCESS_TOKEN"]
+                        li_token = user_token["access_token"] if user_token else os.environ["LINKEDIN_ACCESS_TOKEN"]
                         # Get user URN first
                         me_resp = await hc.get("https://api.linkedin.com/v2/me", headers={"Authorization": f"Bearer {li_token}"})
                         person_id = ""
@@ -5753,8 +6080,8 @@ async def social_publish(request: Request):
 
                     elif platform == "facebook":
                         # Facebook — POST /{page-id}/feed
-                        page_token = os.environ["FACEBOOK_PAGE_TOKEN"]
-                        page_id = os.environ["FACEBOOK_PAGE_ID"]
+                        page_token = user_token["access_token"] if user_token else os.environ["FACEBOOK_PAGE_TOKEN"]
+                        page_id = (user_token or {}).get("platform_user_id") or os.environ.get("FACEBOOK_PAGE_ID", "")
                         resp = await hc.post(f"https://graph.facebook.com/v18.0/{page_id}/feed",
                             data={"message": formatted, "access_token": page_token})
                         if resp.status_code == 200:
@@ -5782,6 +6109,7 @@ async def social_publish(request: Request):
             "post_url": post_url,
             "post_id": post_id,
             "connect_url": config["connect_url"],
+            "token_source": token_source if is_connected else None,
             "status": "published" if published else ("error" if api_error else "formatted"),
             "message": (
                 f"Published to {config['name']}! {post_url}" if published
