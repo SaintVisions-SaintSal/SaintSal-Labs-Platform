@@ -5058,7 +5058,7 @@ async def social_connections_list(authorization: Optional[str] = Header(None)):
     """v7.36.1 — Get user's connected social platforms."""
     user = await get_current_user(authorization)
     if not user:
-        return {"connections": [], "message": "Sign in to see your social connections"}
+        return {"connections": [], "message": "Sign in to see your social connections", "supported_platforms": list(SOCIAL_OAUTH_CONFIG.keys())}
     
     connections = []
     if supabase_admin:
