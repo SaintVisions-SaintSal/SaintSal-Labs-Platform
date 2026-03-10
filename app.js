@@ -5375,11 +5375,37 @@ async function builderSend() {
     msgs.scrollTop = msgs.scrollHeight;
   }
 
-  // SSE fetch
+  // ── v7.39.0: Cancel button in phase indicator ──
+  var cancelBtn = document.createElement('button');
+  cancelBtn.className = 'builder-cancel-btn';
+  cancelBtn.innerHTML = '\u2715 Cancel';
+  cancelBtn.style.cssText = 'margin-left:auto;padding:4px 12px;border-radius:8px;background:rgba(239,68,68,0.15);color:#f87171;border:1px solid rgba(239,68,68,0.3);font-size:11px;font-weight:600;cursor:pointer;transition:all 0.2s;';
+  cancelBtn.onmouseenter = function() { cancelBtn.style.background = 'rgba(239,68,68,0.3)'; };
+  cancelBtn.onmouseleave = function() { cancelBtn.style.background = 'rgba(239,68,68,0.15)'; };
+  phaseEl.appendChild(cancelBtn);
+
+  // SSE fetch with AbortController + timeout
+  var abortController = new AbortController();
+  var buildTimedOut = false;
+  var buildCancelled = false;
+
+  // 2-minute hard timeout
+  var timeoutId = setTimeout(function() {
+    buildTimedOut = true;
+    abortController.abort();
+  }, 120000);
+
+  // Cancel button handler
+  cancelBtn.onclick = function() {
+    buildCancelled = true;
+    abortController.abort();
+  };
+
   try {
     var resp = await fetch(API + '/api/builder/chat', {
       method: 'POST',
       headers: Object.assign({ 'Content-Type': 'application/json' }, authHeaders()),
+      signal: abortController.signal,
       body: JSON.stringify({
         message: prompt,
         history: builderChatState.messages.slice(-10),
@@ -5390,19 +5416,19 @@ async function builderSend() {
       }),
     });
     if (!resp.ok) {
-      // v7.36.0 — Handle tier-locked features
       if (resp.status === 403) {
         try {
           var errData = await resp.json();
           if (errData.type === 'tier_locked') {
             phaseEl.style.display = 'none'; _stopBuilderTrivia();
             var lockMsg = '<div class="builder-tier-lock" style="background:linear-gradient(135deg,rgba(239,68,68,0.1),rgba(251,146,60,0.1));border:1px solid rgba(239,68,68,0.3);border-radius:16px;padding:20px;margin:12px 0;text-align:center;">';
-            lockMsg += '<div style="font-size:28px;margin-bottom:8px;">🔒</div>';
+            lockMsg += '<div style="font-size:28px;margin-bottom:8px;">\ud83d\udd12</div>';
             lockMsg += '<div style="color:#f87171;font-weight:600;font-size:15px;margin-bottom:6px;">' + (errData.error || 'Feature locked') + '</div>';
             lockMsg += '<div style="color:rgba(255,255,255,0.6);font-size:13px;margin-bottom:12px;">Current tier: <strong>' + (errData.current_tier || 'free').toUpperCase() + '</strong></div>';
             lockMsg += '<button onclick="navigate(\'billing\')" style="background:linear-gradient(135deg,#f59e0b,#ef4444);color:#fff;border:none;padding:10px 24px;border-radius:10px;font-weight:600;cursor:pointer;font-size:14px;">Upgrade to ' + (errData.upgrade_to || 'Pro').toUpperCase() + '</button>';
             lockMsg += '</div>';
             _appendBuilderMsg('assistant', lockMsg);
+            clearTimeout(timeoutId);
             builderChatState.generating = false;
             return;
           }
@@ -5428,7 +5454,6 @@ async function builderSend() {
           try { handleEvent(JSON.parse(jsonStr)); } catch(e) {}
         }
       }
-      // Final
       if (rawText) {
         builderChatState.messages.push({ role: 'assistant', content: rawText });
         triggerBuilderAutoSave();
@@ -5438,11 +5463,22 @@ async function builderSend() {
   } catch(e) {
     console.error('Builder chat error:', e);
     phaseEl.style.display = 'none'; _stopBuilderTrivia(); if(triviaContainer) triviaContainer.style.display='none';
-    contentEl.innerHTML += '<div style="color:#ef4444;font-size:13px;">Connection error. Please try again.</div>';
+    if (buildCancelled) {
+      contentEl.innerHTML += '<div style="color:var(--text-muted);font-size:13px;padding:8px 0;">Build cancelled.</div>';
+      // Update intent badge
+      var ib = asstMsg.querySelector('.builder-intent-badge');
+      if (ib) { ib.textContent = 'CANCELLED'; ib.style.background = 'rgba(107,114,128,0.15)'; ib.style.color = '#9ca3af'; ib.style.border = '1px solid rgba(107,114,128,0.3)'; }
+    } else if (buildTimedOut) {
+      contentEl.innerHTML += '<div style="color:#f59e0b;font-size:13px;padding:8px 0;">Build timed out after 2 minutes. Try a simpler request or try again.</div>';
+      var ib2 = asstMsg.querySelector('.builder-intent-badge');
+      if (ib2) { ib2.textContent = 'TIMED OUT'; ib2.style.background = 'rgba(245,158,11,0.15)'; ib2.style.color = '#f59e0b'; ib2.style.border = '1px solid rgba(245,158,11,0.3)'; }
+    } else {
+      contentEl.innerHTML += '<div style="color:#ef4444;font-size:13px;">Connection error. Please try again.</div>';
+    }
   }
 
+  clearTimeout(timeoutId);
   restoreBtn();
-  // Clear attachments
   if (typeof clearBuilderUploads === 'function') clearBuilderUploads();
 }
 

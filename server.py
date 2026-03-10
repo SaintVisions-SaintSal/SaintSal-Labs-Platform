@@ -1811,6 +1811,16 @@ async def get_ticker(vertical: str):
         }
     elif vertical == "realestate":
         return {"market": RE_MARKET_DATA, "headlines": RE_HEADLINES}
+    elif vertical == "medical":
+        return {"headlines": [
+            {"text": "FDA approves first AI-assisted diagnostic tool for early Alzheimer's detection", "url": "#"},
+            {"text": "NIH allocates $2.3B for precision medicine genomics research program", "url": "#"},
+            {"text": "WHO reports 40% decline in malaria deaths with new mRNA vaccine rollout", "url": "#"},
+            {"text": "Mayo Clinic deploys AI radiology system reducing diagnostic time by 60%", "url": "#"},
+            {"text": "New CRISPR gene therapy shows 92% efficacy in sickle cell disease trial", "url": "#"},
+            {"text": "AMA updates telemedicine guidelines for AI-powered remote patient monitoring", "url": "#"},
+            {"text": "Pfizer's next-gen cancer immunotherapy enters Phase 3 trials across 12 tumor types", "url": "#"},
+        ]}
     elif vertical in ("top", "search"):
         return {"headlines": TOP_HEADLINES}
     return {"headlines": []}
@@ -6827,20 +6837,26 @@ async def builder_unified_chat(request: Request):
                             pass
                 return None, text
 
-            # Attempt 1: Use dedicated BUILDER_CODE_SYSTEM prompt
-            # Pick first available model from chain
+            # ═══ CODE GENERATION — v7.39.0 Reliable Pipeline ═══
+            # Only try models that actually exist in the chain (no dead-model timeouts)
             primary_model = BUILDER_MODEL_CHAIN[0]["id"] if BUILDER_MODEL_CHAIN else "pplx"
-            print(f"[Builder Code] Attempt 1 with {primary_model}")
-            result = await _builder_ai_call(BUILDER_CODE_SYSTEM, user_msg, primary_model, 64000)
+            available_model_ids = [m["id"] for m in BUILDER_MODEL_CHAIN]
+            print(f"[Builder Code] Available models: {available_model_ids}. Primary: {primary_model}")
+
             files_data = None
             desc_text = ""
+            result = {"text": "", "model_used": "none", "provider": "none"}
+
+            # Attempt 1: Primary model with full code system prompt
+            print(f"[Builder Code] Attempt 1 with {primary_model}")
+            result = await _builder_ai_call(BUILDER_CODE_SYSTEM, user_msg, primary_model, 64000)
             if result['text']:
                 files_data, desc_text = _extract_code_files(result['text'])
 
-            # Attempt 2: If no valid JSON files, retry with RETRY prompt
+            # Attempt 2: If no valid JSON, retry with explicit RETRY prompt on same model
             if not files_data:
                 print(f"[Builder Code] Attempt 1 failed (no JSON files). Retrying with explicit format...")
-                yield f"data: {json.dumps({'type': 'phase', 'phase': 'generating', 'message': 'Generating code...'})}\n\n"
+                yield f"data: {json.dumps({'type': 'phase', 'phase': 'generating', 'message': 'Refining code output...'})}\n\n"
                 retry_msg = BUILDER_CODE_RETRY + user_msg
                 result2 = await _builder_ai_call(BUILDER_CODE_SYSTEM, retry_msg, primary_model, 64000)
                 if result2['text']:
@@ -6848,22 +6864,45 @@ async def builder_unified_chat(request: Request):
                     if files_data:
                         result = result2
 
-            # Attempt 3: Try a different model
-            if not files_data:
-                alt_model = "claude" if primary_model == "gemini" else "gemini"
-                print(f"[Builder Code] Attempt 2 failed. Trying {alt_model}...")
-                yield f"data: {json.dumps({'type': 'phase', 'phase': 'generating', 'message': 'Switching models...'})}\n\n"
+            # Attempt 3: Try a DIFFERENT model, but ONLY if it exists in the chain
+            if not files_data and len(BUILDER_MODEL_CHAIN) > 1:
+                # Pick the second model in the chain (guaranteed to have an API key)
+                alt_model = BUILDER_MODEL_CHAIN[1]["id"]
+                print(f"[Builder Code] Attempt 2 failed. Trying alt model {alt_model}...")
+                yield f"data: {json.dumps({'type': 'phase', 'phase': 'generating', 'message': 'Trying alternate engine...'})}\n\n"
                 result3 = await _builder_ai_call(BUILDER_CODE_SYSTEM, user_msg, alt_model, 64000)
                 if result3['text']:
                     files_data, desc_text = _extract_code_files(result3['text'])
                     if files_data:
                         result = result3
 
+            # Attempt 4 (last resort): If we have raw text but no JSON, try to construct files from it
+            if not files_data and result.get('text') and len(result['text']) > 500:
+                print(f"[Builder Code] No JSON found. Attempting raw-text-to-files extraction...")
+                raw = result['text']
+                # Look for code blocks and create files from them
+                import re as _re_code
+                html_blocks = _re_code.findall(r'```html\n([\s\S]*?)```', raw)
+                css_blocks = _re_code.findall(r'```css\n([\s\S]*?)```', raw)
+                js_blocks = _re_code.findall(r'```(?:javascript|js)\n([\s\S]*?)```', raw)
+                if html_blocks:
+                    constructed_files = []
+                    constructed_files.append({"name": "index.html", "content": html_blocks[0]})
+                    for i, h in enumerate(html_blocks[1:], 1):
+                        constructed_files.append({"name": f"page{i}.html", "content": h})
+                    for i, c in enumerate(css_blocks):
+                        constructed_files.append({"name": f"styles/{'main' if i==0 else f'style{i}'}.css", "content": c})
+                    for i, j in enumerate(js_blocks):
+                        constructed_files.append({"name": f"js/{'app' if i==0 else f'script{i}'}.js", "content": j})
+                    if constructed_files:
+                        files_data = {"files": constructed_files}
+                        desc_text = "Built from code blocks."
+                        print(f"[Builder Code] Constructed {len(constructed_files)} files from raw code blocks")
+
             if files_data and files_data.get('files'):
                 yield f"data: {json.dumps({'type': 'code_files', 'files': files_data['files'], 'model': result['model_used']})}\n\n"
                 file_count = len(files_data['files'])
                 if desc_text and len(desc_text) > 10:
-                    # Clean up description — remove markdown artifacts
                     clean_desc = desc_text.strip().strip('`').strip()
                     if clean_desc:
                         yield f"data: {json.dumps({'type': 'text', 'content': clean_desc})}\n\n"
@@ -6872,9 +6911,13 @@ async def builder_unified_chat(request: Request):
                     yield f"data: {json.dumps({'type': 'text', 'content': f'Built {file_count} files ({file_names}) via {result["model_used"]}. Preview it above — iterate, refine, or deploy.'})}\n\n"
             else:
                 # All attempts failed — show what we got but warn user
-                print(f"[Builder Code] All attempts failed to produce JSON files")
-                fallback_text = result['text'] if result.get('text') else 'Build engine encountered an issue. Please try rephrasing your request.'
-                yield f"data: {json.dumps({'type': 'text', 'content': fallback_text})}\n\n"
+                print(f"[Builder Code] All attempts failed to produce files")
+                fallback_text = result.get('text', '') if result.get('text') else 'Build engine encountered an issue. Please try rephrasing your request or be more specific about what you want built.'
+                # If it's a long response, it's likely the AI gave a plan — show it as text
+                if len(fallback_text) > 200:
+                    yield f"data: {json.dumps({'type': 'text', 'content': fallback_text})}\n\n"
+                else:
+                    yield f"data: {json.dumps({'type': 'text', 'content': 'Build had trouble generating code. Try being more specific, e.g.: "Build a 3-page website for a pizza shop with home, menu, and contact pages."'})}\n\n"
             yield f"data: {json.dumps({'type': 'done'})}\n\n"
             return
 
@@ -7022,7 +7065,7 @@ def get_builder_model_chain(compute_tier: str = "pro") -> list:
 
 
 async def _builder_ai_call(system: str, user_msg: str, preferred_model: str = "claude", max_tokens: int = 32000) -> dict:
-    """Call AI with automatic fallback chain. Uses module-level API key variables (with hardcoded fallbacks)."""
+    """Call AI with automatic fallback chain. Uses module-level API key variables. 60s timeout per model."""
     # Order chain: preferred model first, then rest
     chain = sorted(BUILDER_MODEL_CHAIN, key=lambda m: 0 if m["id"] == preferred_model else 1)
 
@@ -7034,7 +7077,7 @@ async def _builder_ai_call(system: str, user_msg: str, preferred_model: str = "c
             if provider == "anthropic":
                 key = os.environ.get("ANTHROPIC_API_KEY", "")
                 if not key: continue
-                async with httpx.AsyncClient(timeout=180) as hc:
+                async with httpx.AsyncClient(timeout=60) as hc:
                     r = await hc.post("https://api.anthropic.com/v1/messages",
                         headers={"x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json"},
                         json={"model": model_cfg["model"], "max_tokens": tok, "system": system,
@@ -7049,7 +7092,7 @@ async def _builder_ai_call(system: str, user_msg: str, preferred_model: str = "c
             elif provider == "xai":
                 key = XAI_API_KEY  # Module-level variable
                 if not key: continue
-                async with httpx.AsyncClient(timeout=180) as hc:
+                async with httpx.AsyncClient(timeout=60) as hc:
                     r = await hc.post("https://api.x.ai/v1/chat/completions",
                         headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
                         json={"model": model_cfg["model"], "max_tokens": tok, "temperature": 0.7,
@@ -7064,7 +7107,7 @@ async def _builder_ai_call(system: str, user_msg: str, preferred_model: str = "c
             elif provider == "google":
                 key = GEMINI_API_KEY  # Module-level variable (falls back to STITCH_API_KEY)
                 if not key: continue
-                async with httpx.AsyncClient(timeout=180) as hc:
+                async with httpx.AsyncClient(timeout=60) as hc:
                     r = await hc.post(
                         f"https://generativelanguage.googleapis.com/v1beta/models/{model_cfg['model']}:generateContent?key={key}",
                         headers={"Content-Type": "application/json"},
@@ -7080,7 +7123,7 @@ async def _builder_ai_call(system: str, user_msg: str, preferred_model: str = "c
             elif provider == "openai":
                 key = OPENAI_API_KEY  # Module-level variable
                 if not key: continue
-                async with httpx.AsyncClient(timeout=180) as hc:
+                async with httpx.AsyncClient(timeout=60) as hc:
                     r = await hc.post("https://api.openai.com/v1/chat/completions",
                         headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
                         json={"model": model_cfg["model"], "max_tokens": tok, "temperature": 0.7,
@@ -7095,7 +7138,7 @@ async def _builder_ai_call(system: str, user_msg: str, preferred_model: str = "c
             elif provider == "perplexity":
                 key = PPLX_API_KEY  # Module-level variable
                 if not key: continue
-                async with httpx.AsyncClient(timeout=180) as hc:
+                async with httpx.AsyncClient(timeout=60) as hc:
                     r = await hc.post("https://api.perplexity.ai/chat/completions",
                         headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
                         json={"model": model_cfg.get("model", "sonar-pro"), "max_tokens": min(tok, 16000),
