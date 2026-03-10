@@ -491,8 +491,51 @@ async def chat(request: Request):
 
         ai_responded = False
 
-        # Try Anthropic (Claude) first
-        if client:
+        # ═══ PRIMARY: Gemini 2.5 Flash (streaming via SSE) ═══
+        if GEMINI_API_KEY and not ai_responded:
+            try:
+                import httpx as _httpx
+                gemini_messages = []
+                for msg in messages:
+                    role = "user" if msg["role"] == "user" else "model"
+                    gemini_messages.append({"role": role, "parts": [{"text": msg["content"]}]})
+                gemini_payload = {
+                    "contents": gemini_messages,
+                    "generationConfig": {"maxOutputTokens": 4096, "temperature": 0.7},
+                }
+                if system_prompt:
+                    gemini_payload["systemInstruction"] = {"parts": [{"text": system_prompt}]}
+                # Use synchronous httpx for streaming within generator
+                with _httpx.Client(timeout=60.0) as _http:
+                    with _http.stream(
+                        "POST",
+                        f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:streamGenerateContent?alt=sse&key={GEMINI_API_KEY}",
+                        json=gemini_payload,
+                        headers={"Content-Type": "application/json"},
+                    ) as gemini_stream:
+                        if gemini_stream.status_code == 200:
+                            buffer = ""
+                            for line in gemini_stream.iter_lines():
+                                if line.startswith("data: "):
+                                    try:
+                                        chunk_data = json.loads(line[6:])
+                                        candidates = chunk_data.get("candidates", [{}])
+                                        if candidates:
+                                            parts = candidates[0].get("content", {}).get("parts", [])
+                                            for part in parts:
+                                                text_chunk = part.get("text", "")
+                                                if text_chunk:
+                                                    yield f"data: {json.dumps({'type': 'text', 'content': text_chunk})}\n\n"
+                                                    ai_responded = True
+                                    except json.JSONDecodeError:
+                                        pass
+                        else:
+                            print(f"[Chat] Gemini HTTP {gemini_stream.status_code}")
+            except Exception as e:
+                print(f"[Chat] Gemini streaming error: {e}")
+
+        # ═══ FALLBACK 1: Anthropic (Claude) ═══
+        if not ai_responded and client:
             try:
                 with client.messages.stream(
                     model="claude-sonnet-4-20250514",
@@ -506,7 +549,7 @@ async def chat(request: Request):
             except Exception as e:
                 print(f"[Chat] Anthropic error: {e}")
 
-        # Fallback to xAI/Grok
+        # ═══ FALLBACK 2: xAI/Grok ═══
         if not ai_responded and xai_client:
             try:
                 xai_messages = [{"role": "system", "content": system_prompt}] + [
@@ -2402,7 +2445,7 @@ async def stitch_status():
 # PERPLEXITY SONAR — Deep Research with Citations (Auto-detect in chat)
 # ═══════════════════════════════════════════════════════════════════════════════
 
-PPLX_API_KEY = os.environ.get("PPLX_API_KEY", "")
+PPLX_API_KEY = os.environ.get("PPLX_API_KEY", os.environ.get("PERPLEXITY_API_KEY", ""))
 print(f"{'✅' if PPLX_API_KEY else '⚠️'} Perplexity API key {'configured' if PPLX_API_KEY else 'not set'}")
 
 # Keywords that signal a research-worthy query (auto-detect)
@@ -2499,7 +2542,8 @@ async def research_status():
 # GEMINI CHAT — Google Gemini for multimodal chat (Pro+ tier)
 # ═══════════════════════════════════════════════════════════════════════════════
 
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", os.environ.get("STITCH_API_KEY", STITCH_API_KEY))
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "AIzaSyDZOserUM2HQfXVDmlV_l_A2d8q9Gbb0RI")
+print(f"{'✅' if GEMINI_API_KEY else '⚠️'} Gemini API key {'configured' if GEMINI_API_KEY else 'not set'}")
 
 async def gemini_chat(query: str, history: list = None, system_prompt: str = "") -> dict:
     """Call Gemini API for multimodal chat."""
@@ -6353,7 +6397,7 @@ TIER_MODEL_ROUTING = {
     "pro": {  # SAL Pro — Starter + Pro
         "primary": {"id": "claude", "model": "claude-sonnet-4-20250514", "max_tokens": 64000, "provider": "anthropic"},
         "fallback": [
-            {"id": "gemini", "model": "gemini-2.5-pro-preview-06-05", "max_tokens": 65536, "provider": "google"},
+            {"id": "gemini", "model": "gemini-2.5-pro", "max_tokens": 65536, "provider": "google"},
             {"id": "grok", "model": "grok-3-beta", "max_tokens": 32000, "provider": "xai"},
             {"id": "gpt", "model": "gpt-4.1", "max_tokens": 32768, "provider": "openai"},
         ]
@@ -6361,7 +6405,7 @@ TIER_MODEL_ROUTING = {
     "max": {  # SAL Max — Pro + Teams
         "primary": {"id": "claude", "model": "claude-opus-4-20250514", "max_tokens": 32000, "provider": "anthropic"},
         "fallback": [
-            {"id": "gemini", "model": "gemini-2.5-pro-preview-06-05", "max_tokens": 65536, "provider": "google"},
+            {"id": "gemini", "model": "gemini-2.5-pro", "max_tokens": 65536, "provider": "google"},
             {"id": "gpt", "model": "gpt-4.1", "max_tokens": 32768, "provider": "openai"},
         ]
     },
@@ -6946,7 +6990,7 @@ _BUILDER_CHAIN_CANDIDATES = [
      "available": bool(os.environ.get("ANTHROPIC_API_KEY", ""))},
     {"id": "grok", "name": "Grok-3", "provider": "xai", "model": "grok-3-beta", "max_tokens": 32000,
      "available": bool(os.environ.get("XAI_API_KEY", ""))},
-    {"id": "gemini", "name": "Gemini 2.5 Pro", "provider": "google", "model": "gemini-2.5-pro-preview-06-05", "max_tokens": 65536,
+    {"id": "gemini", "name": "Gemini 2.5 Pro", "provider": "google", "model": "gemini-2.5-pro", "max_tokens": 65536,
      "available": bool(os.environ.get("GEMINI_API_KEY", ""))},  # Only a real Gemini key, not Stitch
     {"id": "gpt", "name": "GPT-4.1", "provider": "openai", "model": "gpt-4.1", "max_tokens": 32768,
      "available": bool(os.environ.get("OPENAI_API_KEY", ""))},
