@@ -13,6 +13,7 @@ var adminState = {
   corpnetId: '',
   note: '',
   isAdmin: false,
+  isSuperAdmin: false,
   stats: { total_orders: 0, awaiting_fulfillment: 0, in_fulfillment: 0, completed: 0, total_revenue: 0, total_margin: 0 },
   activeTab: 'orders',
   users: [],
@@ -52,9 +53,11 @@ async function checkAdminAccess() {
     var resp = await fetch(API + '/api/admin/check', { headers: _adminHeaders() });
     var data = await resp.json();
     adminState.isAdmin = data.is_admin === true;
+    adminState.isSuperAdmin = data.is_super_admin === true;
     return adminState.isAdmin;
   } catch (e) {
     adminState.isAdmin = false;
+    adminState.isSuperAdmin = false;
     return false;
   }
 }
@@ -128,16 +131,20 @@ function renderAdminDashboard() {
   var h = '';
   h += '<div class="admin-wrap">';
 
-  /* Tab bar */
+  /* Tab bar — User Management only visible to super admin (ryan@cookin.io) */
   h += '<div class="admin-tabs">';
   h += '<button class="admin-tab' + (adminState.activeTab === 'orders' ? ' active' : '') + '" onclick="adminSwitchTab(\'orders\')">Orders</button>';
-  h += '<button class="admin-tab' + (adminState.activeTab === 'users' ? ' active' : '') + '" onclick="adminSwitchTab(\'users\')">User Management</button>';
+  if (adminState.isSuperAdmin) {
+    h += '<button class="admin-tab' + (adminState.activeTab === 'users' ? ' active' : '') + '" onclick="adminSwitchTab(\'users\')">User Management</button>';
+  }
   h += '</div>';
 
   if (adminState.activeTab === 'orders') {
     h += _adminOrdersTab();
-  } else if (adminState.activeTab === 'users') {
+  } else if (adminState.activeTab === 'users' && adminState.isSuperAdmin) {
     h += _adminUsersTab();
+  } else if (adminState.activeTab === 'users') {
+    h += '<div class="admin-empty" style="padding:40px;">User management requires super admin access (ryan@cookin.io only).</div>';
   }
 
   h += '</div>';
@@ -434,9 +441,11 @@ function _adminUsersTab() {
   h += '<option value="owner"' + (adminState.newUser.role === 'owner' ? ' selected' : '') + '>Owner</option>';
   h += '</select>';
   h += '<select class="admin-inp" id="newUserTier" onchange="adminState.newUser.plan_tier=this.value">';
-  h += '<option value="free"' + (adminState.newUser.plan_tier === 'free' ? ' selected' : '') + '>Free</option>';
-  h += '<option value="pro"' + (adminState.newUser.plan_tier === 'pro' ? ' selected' : '') + '>Pro</option>';
-  h += '<option value="enterprise"' + (adminState.newUser.plan_tier === 'enterprise' ? ' selected' : '') + '>Enterprise</option>';
+  h += '<option value="free"' + (adminState.newUser.plan_tier === 'free' ? ' selected' : '') + '>Free (100 credits)</option>';
+  h += '<option value="starter"' + (adminState.newUser.plan_tier === 'starter' ? ' selected' : '') + '>Starter (500 credits)</option>';
+  h += '<option value="pro"' + (adminState.newUser.plan_tier === 'pro' ? ' selected' : '') + '>Pro (2000 credits)</option>';
+  h += '<option value="teams"' + (adminState.newUser.plan_tier === 'teams' ? ' selected' : '') + '>Teams (5000 credits)</option>';
+  h += '<option value="enterprise"' + (adminState.newUser.plan_tier === 'enterprise' ? ' selected' : '') + '>Enterprise (unlimited)</option>';
   h += '</select>';
   h += '<button class="admin-btn-gold" onclick="adminCreateUser()">Create User</button>';
   h += '</div>';
@@ -471,7 +480,8 @@ function _adminUsersHTML() {
   adminState.users.forEach(function(u) {
     var isEditing = adminState.editingUser === u.id;
     var roleBadge = u.is_admin ? 'admin-badge-gold' : (u.role === 'admin' ? 'admin-badge-blue' : 'admin-badge-gray');
-    var tierColor = u.plan_tier === 'enterprise' ? '#D4AF37' : (u.plan_tier === 'pro' ? '#60a5fa' : '#888');
+    var tierColors = { free: '#6B7280', starter: '#10B981', pro: '#60a5fa', teams: '#F59E0B', enterprise: '#D4AF37' };
+    var tierColor = tierColors[u.plan_tier] || '#888';
 
     h += '<div class="admin-user-row' + (isEditing ? ' editing' : '') + '">';
     h += '<span class="admin-ur-email">' + _esc(u.email) + '</span>';
@@ -487,9 +497,11 @@ function _adminUsersHTML() {
       h += '</span>';
       h += '<span class="admin-ur-tier">';
       h += '<select class="admin-inp-sm" id="editTier_' + u.id + '">';
-      h += '<option value="free"' + (u.plan_tier === 'free' ? ' selected' : '') + '>free</option>';
-      h += '<option value="pro"' + (u.plan_tier === 'pro' ? ' selected' : '') + '>pro</option>';
-      h += '<option value="enterprise"' + (u.plan_tier === 'enterprise' ? ' selected' : '') + '>enterprise</option>';
+      h += '<option value="free"' + (u.plan_tier === 'free' ? ' selected' : '') + '>Free (100)</option>';
+      h += '<option value="starter"' + (u.plan_tier === 'starter' ? ' selected' : '') + '>Starter (500)</option>';
+      h += '<option value="pro"' + (u.plan_tier === 'pro' ? ' selected' : '') + '>Pro (2000)</option>';
+      h += '<option value="teams"' + (u.plan_tier === 'teams' ? ' selected' : '') + '>Teams (5000)</option>';
+      h += '<option value="enterprise"' + (u.plan_tier === 'enterprise' ? ' selected' : '') + '>Enterprise (∞)</option>';
       h += '</select>';
       h += '</span>';
     } else {
