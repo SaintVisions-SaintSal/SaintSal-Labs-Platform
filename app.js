@@ -4106,6 +4106,48 @@ async function builderPublish(target) {
   }
 }
 
+// ═══ Social Media Publish & Link Account ═══
+async function builderPublishSocial(platform) {
+  var caption = document.querySelector('.builder-social-caption');
+  if (!caption) { showToast('No content to publish', 'error'); return; }
+  showToast('Publishing to ' + platform + '...', 'info');
+  try {
+    var resp = await fetch(API + '/api/social/publish', {
+      method: 'POST',
+      headers: Object.assign({'Content-Type':'application/json'}, authHeaders()),
+      body: JSON.stringify({ platform: platform, content: caption.textContent })
+    });
+    var data = await resp.json();
+    if (data.connected) {
+      showToast('Published to ' + platform + '!', 'success');
+    } else {
+      showToast(platform + ' not connected yet', 'info');
+      var instrEl = document.createElement('div');
+      instrEl.style.cssText = 'background:var(--bg-tertiary);border:1px solid var(--border-subtle);border-radius:10px;padding:12px 14px;margin-top:8px;font-size:12px;line-height:1.5;color:var(--text-secondary);';
+      instrEl.innerHTML = '<div style="font-weight:600;margin-bottom:6px;color:var(--text-primary);">Connect ' + escapeHtml(data.platform_name || platform) + '</div>' +
+        '<div>' + escapeHtml(data.instructions || 'Link your account in Settings to auto-publish.') + '</div>' +
+        (data.connect_url ? '<a href="' + escapeAttr(data.connect_url) + '" target="_blank" style="display:inline-block;margin-top:8px;color:var(--accent-gold);font-weight:600;text-decoration:none;">Open Developer Portal &rarr;</a>' : '');
+      var lastResult = document.querySelector('.builder-social-result');
+      if (lastResult) lastResult.appendChild(instrEl);
+    }
+  } catch(e) {
+    showToast('Publish failed: ' + e.message, 'error');
+  }
+}
+
+function builderLinkSocial(platform) {
+  var urls = {
+    twitter: 'https://developer.twitter.com/en/portal/dashboard',
+    linkedin: 'https://www.linkedin.com/developers/apps',
+    facebook: 'https://developers.facebook.com/apps',
+    instagram: 'https://developers.facebook.com/apps',
+    tiktok: 'https://developers.tiktok.com/',
+    youtube: 'https://console.developers.google.com/',
+  };
+  window.open(urls[platform] || urls.twitter, '_blank');
+  showToast('Opening ' + platform + ' developer portal...', 'info');
+}
+
 // mobile-bottom-nav:upgrade_mobile
 // ─── Mobile Bottom Navigation ─────────────────────────────────────────
 function mobileNav(view, btn) {
@@ -4959,7 +5001,24 @@ var builderChatState = {
   files: [],         // Generated code files
   currentProject: null,
   convId: null,
+  selectedTier: 'pro',   // Default compute tier: mini, pro, max, max_pro
 };
+
+// Tier → model_id mapping for backend metering
+var TIER_MODEL_MAP = {
+  'mini': 'claude_haiku',
+  'pro': 'claude_sonnet',
+  'max': 'claude_sonnet_think',
+  'max_pro': 'claude_opus'
+};
+
+function setBuilderTier(tier) {
+  builderChatState.selectedTier = tier;
+  var pills = document.querySelectorAll('.builder-tier-pill');
+  pills.forEach(function(p) {
+    p.classList.toggle('active', p.getAttribute('data-tier') === tier);
+  });
+}
 
 function builderNewChat() {
   builderChatState.messages = [];
@@ -5115,9 +5174,11 @@ async function builderSend() {
         });
         socialHtml += '</div>';
       }
-      socialHtml += '<div style="display:flex;gap:6px;padding:10px 14px;border-top:1px solid var(--border-subtle);">';
+      socialHtml += '<div style="display:flex;flex-wrap:wrap;gap:6px;padding:10px 14px;border-top:1px solid var(--border-subtle);">';
       socialHtml += '<button class="builder-action-btn primary" onclick="navigator.clipboard.writeText(document.querySelector(\'.builder-social-caption\').textContent).then(function(){showToast(\'Caption copied\',\'success\')})">Copy Caption</button>';
       if (data.image && data.image.url) socialHtml += '<button class="builder-action-btn" onclick="downloadStudioMedia(\'' + escapeAttr(data.image.url) + '\',\'social-image.png\')">Download Image</button>';
+      socialHtml += '<button class="builder-action-btn" onclick="builderPublishSocial(\'' + escapeAttr(data.platform || 'twitter') + '\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg> Publish</button>';
+      socialHtml += '<button class="builder-action-btn" onclick="builderLinkSocial(\'' + escapeAttr(data.platform || 'twitter') + '\')">Link Account</button>';
       socialHtml += '</div></div>';
       contentEl.innerHTML += socialHtml;
     } else if (data.type === 'code_files') {
@@ -5257,6 +5318,7 @@ async function builderSend() {
         message: prompt,
         history: builderChatState.messages.slice(-10),
         attached_files: builderAttachedFiles || [],
+        model: TIER_MODEL_MAP[builderChatState.selectedTier] || 'claude_sonnet',
       }),
     });
     if (!resp.ok) throw new Error('API error: ' + resp.status);

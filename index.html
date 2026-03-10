@@ -726,8 +726,21 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
             </button>
           </div>
           <div class="builder-input-meta">
-            <span class="builder-engine-info">Claude + Grok + DALL-E + ElevenLabs + Stitch</span>
-            <span class="builder-deploy-targets">Vercel · Render · GitHub</span>
+            <div class="builder-tier-selector" id="builderTierSelector">
+              <button class="builder-tier-pill" data-tier="mini" onclick="setBuilderTier('mini')">
+                <span class="builder-tier-dot" style="background:#6B7280"></span>Mini <span class="builder-tier-rate">$0.05</span>
+              </button>
+              <button class="builder-tier-pill active" data-tier="pro" onclick="setBuilderTier('pro')">
+                <span class="builder-tier-dot" style="background:#10B981"></span>Pro <span class="builder-tier-rate">$0.25</span>
+              </button>
+              <button class="builder-tier-pill" data-tier="max" onclick="setBuilderTier('max')">
+                <span class="builder-tier-dot" style="background:#8B5CF6"></span>Max <span class="builder-tier-rate">$0.75</span>
+              </button>
+              <button class="builder-tier-pill" data-tier="max_pro" onclick="setBuilderTier('max_pro')">
+                <span class="builder-tier-dot" style="background:#F59E0B"></span>Max Pro <span class="builder-tier-rate">$1.00</span>
+              </button>
+            </div>
+            <span class="builder-deploy-targets">Vercel · GitHub · Download</span>
           </div>
         </div>
       </div>

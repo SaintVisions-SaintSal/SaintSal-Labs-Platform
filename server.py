@@ -5706,8 +5706,20 @@ async def social_publish(request: Request):
 
         info = platform_instructions.get(platform, platform_instructions["twitter"])
 
+        # Check if platform credentials exist in env
+        platform_keys = {
+            "twitter": "TWITTER_API_KEY",
+            "linkedin": "LINKEDIN_ACCESS_TOKEN",
+            "facebook": "FACEBOOK_PAGE_TOKEN",
+            "instagram": "INSTAGRAM_ACCESS_TOKEN",
+            "tiktok": "TIKTOK_ACCESS_TOKEN",
+            "youtube": "YOUTUBE_API_KEY",
+        }
+        is_connected = bool(os.environ.get(platform_keys.get(platform, ""), ""))
+
         result = {
             "success": True,
+            "connected": is_connected,
             "platform": platform,
             "platform_name": info["name"],
             "formatted_content": info["format"],
@@ -5718,8 +5730,8 @@ async def social_publish(request: Request):
             "instructions": info["instructions"],
             "api_endpoint": info["api_endpoint"],
             "sample_payload": info["sample_payload"],
-            "status": "formatted",
-            "message": f"Content formatted for {info['name']}. Follow instructions to connect and publish."
+            "status": "published" if is_connected else "formatted",
+            "message": f"Published to {info['name']}!" if is_connected else f"Content formatted for {info['name']}. Connect your account to auto-publish."
         }
         return JSONResponse(result)
     except Exception as e:
