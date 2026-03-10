@@ -962,6 +962,14 @@ function renderSourcePills(container, sources) {
    MARKDOWN-ISH FORMATTING
    ============================================ */
 function formatMarkdown(text) {
+  // Strip trailing "Sources:" / "References:" raw-markdown blocks that AI appends
+  // These show up as raw [text](url) lines — sources are already rendered as pills above
+  text = text.replace(/\n---\n\n\*\*Sources:\*\*[\s\S]*$/m, '');
+  text = text.replace(/\n\*\*Sources:\*\*\n[\s\S]*$/m, '');
+  text = text.replace(/\nSources:\n[\s\S]*$/m, '');
+  text = text.replace(/\n---\n\nSources:\n[\s\S]*$/m, '');
+  text = text.replace(/\n\*\*References:\*\*[\s\S]*$/m, '');
+
   // Headers
   text = text.replace(/^### (.+)$/gm, '<h3>$1</h3>');
   text = text.replace(/^## (.+)$/gm, '<h2>$1</h2>');
@@ -975,7 +983,10 @@ function formatMarkdown(text) {
   // Code blocks
   text = text.replace(/```[\w]*\n([\s\S]*?)```/g, '<pre><code>$1</code></pre>');
 
-  // Citations [1], [2], etc
+  // Markdown links [text](url) — MUST come before citation regex
+  text = text.replace(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener" style="color:var(--accent-gold);text-decoration:none;border-bottom:1px solid rgba(212,175,55,0.3);">$1</a>');
+
+  // Citations [1], [2], etc (only bare numbers in brackets)
   text = text.replace(/\[(\d+)\]/g, '<span class="citation-num" onclick="scrollToSource($1)">$1</span>');
 
   // Bullet lists
@@ -990,7 +1001,7 @@ function formatMarkdown(text) {
   var result = parts.map(function(p) {
     p = p.trim();
     if (!p) return '';
-    if (p.startsWith('<h') || p.startsWith('<ul') || p.startsWith('<ol') || p.startsWith('<pre') || p.startsWith('<li')) return p;
+    if (p.startsWith('<h') || p.startsWith('<ul') || p.startsWith('<ol') || p.startsWith('<pre') || p.startsWith('<li') || p.startsWith('<a ')) return p;
     return '<p>' + p.replace(/\n/g, '<br>') + '</p>';
   }).join('');
 
@@ -5352,6 +5363,14 @@ async function builderSend() {
       builderChatState.messages.push({ role: 'assistant', content: rawText || contentEl.textContent });
       // Auto-save
       triggerBuilderAutoSave();
+      // ── COMPLETION STATE: Update BUILDING badge → COMPLETE ──
+      var intentBadge = asstMsg.querySelector('.builder-intent-badge');
+      if (intentBadge) {
+        intentBadge.textContent = '\u2713 COMPLETE';
+        intentBadge.style.background = 'rgba(34,197,94,0.15)';
+        intentBadge.style.color = '#22c55e';
+        intentBadge.style.border = '1px solid rgba(34,197,94,0.3)';
+      }
     }
     msgs.scrollTop = msgs.scrollHeight;
   }

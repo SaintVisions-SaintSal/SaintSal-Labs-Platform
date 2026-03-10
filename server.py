@@ -526,23 +526,21 @@ async def chat(request: Request):
                 print(f"[Chat] xAI/Grok error: {e}")
 
         # Final fallback: use Tavily AI answer or Perplexity answer
+        # NOTE: Do NOT append raw Sources markdown — sources are already rendered as pills above
         if not ai_responded:
             if pplx_result and pplx_result.get("answer"):
                 fallback = pplx_result["answer"]
-                if pplx_result.get("citations"):
-                    fallback += "\n\n**Sources:**\n" + "\n".join(
-                        f"- [{c}]({c})" for c in pplx_result["citations"][:5]
-                    )
+                # Strip any trailing sources/references the model appended
+                import re as _re_strip
+                fallback = _re_strip.sub(r'\n+---\n+\*\*Sources:\*\*[\s\S]*$', '', fallback)
+                fallback = _re_strip.sub(r'\n+\*\*Sources:\*\*\n[\s\S]*$', '', fallback)
+                fallback = _re_strip.sub(r'\n+Sources:\n[\s\S]*$', '', fallback)
             elif tavily_answer:
                 fallback = tavily_answer
-                if sources:
-                    fallback += "\n\n---\n\n**Sources:**\n"
-                    for i, s in enumerate(sources):
-                        fallback += f"[{i+1}] [{s['title']}]({s['url']})\n"
             elif sources:
                 fallback = "Here's what I found from the web:\n\n"
                 for i, s in enumerate(sources):
-                    fallback += f"**[{i+1}] {s['title']}** ({s['domain']})\n{s['content']}\n\n"
+                    fallback += f"**{s['title']}** — {s['content']}\n\n"
             else:
                 fallback = "*I couldn't find results for that query. Please try rephrasing or try a different search.*"
             yield f"data: {json.dumps({'type': 'text', 'content': fallback})}\n\n"
@@ -851,17 +849,14 @@ async def websocket_chat(websocket: WebSocket):
                     print(f"[WS] xAI/Grok error: {e}")
 
             # Final fallback: Tavily AI answer or raw sources
+            # NOTE: Do NOT append raw Sources markdown — sources are already rendered as pills
             if not ai_responded:
                 if tavily_answer:
                     fallback = tavily_answer
-                    if sources:
-                        fallback += "\n\n---\n\n**Sources:**\n"
-                        for i, s in enumerate(sources):
-                            fallback += f"[{i+1}] [{s['title']}]({s['url']})\n"
                 elif sources:
                     fallback = "Here's what I found from the web:\n\n"
                     for i, s in enumerate(sources):
-                        fallback += f"**[{i+1}] {s['title']}** ({s['domain']})\n{s['content']}\n\n"
+                        fallback += f"**{s['title']}** — {s['content']}\n\n"
                 else:
                     fallback = "*I couldn't find results for that query. Please try rephrasing.*"
                 await websocket.send_json({"type": "text", "content": fallback})            
