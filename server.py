@@ -6788,8 +6788,9 @@ async def builder_unified_chat(request: Request):
                             pass
                 return None, text
 
-            # Attempt 1: Use dedicated BUILDER_CODE_SYSTEM prompt (Gemini first — always available)
-            primary_model = "gemini" if GEMINI_API_KEY else ("claude" if os.environ.get("ANTHROPIC_API_KEY") else "gemini")
+            # Attempt 1: Use dedicated BUILDER_CODE_SYSTEM prompt
+            # Pick first available model from chain
+            primary_model = BUILDER_MODEL_CHAIN[0]["id"] if BUILDER_MODEL_CHAIN else "pplx"
             print(f"[Builder Code] Attempt 1 with {primary_model}")
             result = await _builder_ai_call(BUILDER_CODE_SYSTEM, user_msg, primary_model, 64000)
             files_data = None
@@ -6864,7 +6865,8 @@ async def builder_unified_chat(request: Request):
                 except Exception as e:
                     print(f"[Builder] Perplexity error: {e}")
             if not research_text:
-                result = await _builder_ai_call(BUILDER_CHAT_SYSTEM, message, "gemini", 8000)
+                _fb_model = BUILDER_MODEL_CHAIN[0]["id"] if BUILDER_MODEL_CHAIN else "pplx"
+                result = await _builder_ai_call(BUILDER_CHAT_SYSTEM, message, _fb_model, 8000)
                 research_text = result['text']
             if citations:
                 yield f"data: {json.dumps({'type': 'citations', 'citations': citations})}\n\n"
@@ -6906,7 +6908,8 @@ async def builder_unified_chat(request: Request):
             except Exception as e:
                 print(f"[Builder] Claude stream error: {e}")
         if not streamed:
-            result = await _builder_ai_call(BUILDER_CHAT_SYSTEM, message, "gemini", 8000)
+            _fb_model = BUILDER_MODEL_CHAIN[0]["id"] if BUILDER_MODEL_CHAIN else "pplx"
+            result = await _builder_ai_call(BUILDER_CHAT_SYSTEM, message, _fb_model, 8000)
             if result['text']:
                 for i in range(0, len(result['text']), 80):
                     yield f"data: {json.dumps({'type': 'text', 'content': result['text'][i:i+80]})}\n\n"
@@ -6942,15 +6945,23 @@ async def builder_unified_chat(request: Request):
 
 # v7.36.0 — Model chain per architecture doc
 # v7.36.0 — Default model chain (SAL Pro tier). Overridden per compute_tier via TIER_MODEL_ROUTING.
-BUILDER_MODEL_CHAIN = [
-    # Gemini first — API key always available via STITCH_API_KEY fallback
-    {"id": "gemini", "name": "Gemini 2.5 Pro", "provider": "google", "model": "gemini-2.5-pro-preview-06-05", "max_tokens": 65536},
-    {"id": "claude", "name": "Claude Sonnet 4.6", "provider": "anthropic", "model": "claude-sonnet-4-20250514", "max_tokens": 64000},
-    {"id": "grok", "name": "Grok-3", "provider": "xai", "model": "grok-3-beta", "max_tokens": 32000},
-    {"id": "gpt", "name": "GPT-4.1", "provider": "openai", "model": "gpt-4.1", "max_tokens": 32768},
-    # Perplexity as last resort — always has a key, good for research/chat, limited for raw code gen
-    {"id": "pplx", "name": "Perplexity Sonar Pro", "provider": "perplexity", "model": "sonar-pro", "max_tokens": 16000},
+# Build model chain dynamically based on available API keys
+_BUILDER_CHAIN_CANDIDATES = [
+    {"id": "claude", "name": "Claude Sonnet 4.6", "provider": "anthropic", "model": "claude-sonnet-4-20250514", "max_tokens": 64000,
+     "available": bool(os.environ.get("ANTHROPIC_API_KEY", ""))},
+    {"id": "grok", "name": "Grok-3", "provider": "xai", "model": "grok-3-beta", "max_tokens": 32000,
+     "available": bool(os.environ.get("XAI_API_KEY", ""))},
+    {"id": "gemini", "name": "Gemini 2.5 Pro", "provider": "google", "model": "gemini-2.5-pro-preview-06-05", "max_tokens": 65536,
+     "available": bool(os.environ.get("GEMINI_API_KEY", ""))},  # Only a real Gemini key, not Stitch
+    {"id": "gpt", "name": "GPT-4.1", "provider": "openai", "model": "gpt-4.1", "max_tokens": 32768,
+     "available": bool(os.environ.get("OPENAI_API_KEY", ""))},
+    # Perplexity — always available via PPLX_API_KEY
+    {"id": "pplx", "name": "Perplexity Sonar Pro", "provider": "perplexity", "model": "sonar-pro", "max_tokens": 16000,
+     "available": True},
 ]
+# Only include models with available API keys — no wasted timeout on dead providers
+BUILDER_MODEL_CHAIN = [m for m in _BUILDER_CHAIN_CANDIDATES if m.get("available", False)]
+print(f"\u2705 Builder model chain: {[m['id'] for m in BUILDER_MODEL_CHAIN]}")
 
 def get_builder_model_chain(compute_tier: str = "pro") -> list:
     """v7.36.0 — Return the model chain for the given compute tier from architecture doc."""
