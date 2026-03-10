@@ -4118,14 +4118,25 @@ async function builderPublishSocial(platform) {
       body: JSON.stringify({ platform: platform, content: caption.textContent })
     });
     var data = await resp.json();
-    if (data.connected) {
-      showToast('Published to ' + platform + '!', 'success');
+    if (data.published) {
+      // v7.36.0 — Real publish succeeded — show post URL
+      showToast('Published to ' + (data.platform_name || platform) + '!', 'success');
+      if (data.post_url) {
+        var linkEl = document.createElement('div');
+        linkEl.style.cssText = 'background:linear-gradient(135deg,rgba(34,197,94,0.1),rgba(16,185,129,0.1));border:1px solid rgba(34,197,94,0.3);border-radius:10px;padding:12px 14px;margin-top:8px;font-size:13px;';
+        linkEl.innerHTML = '<div style="color:#22c55e;font-weight:600;margin-bottom:4px;">✓ Live on ' + escapeHtml(data.platform_name || platform) + '</div>' +
+          '<a href="' + escapeAttr(data.post_url) + '" target="_blank" style="color:var(--accent-gold);font-weight:600;text-decoration:none;">' + escapeHtml(data.post_url) + ' →</a>';
+        var lastResult = document.querySelector('.builder-social-result');
+        if (lastResult) lastResult.appendChild(linkEl);
+      }
+    } else if (data.connected && data.api_error) {
+      showToast('Publish error: ' + (data.api_error || 'Unknown'), 'error');
     } else {
       showToast(platform + ' not connected yet', 'info');
       var instrEl = document.createElement('div');
       instrEl.style.cssText = 'background:var(--bg-tertiary);border:1px solid var(--border-subtle);border-radius:10px;padding:12px 14px;margin-top:8px;font-size:12px;line-height:1.5;color:var(--text-secondary);';
       instrEl.innerHTML = '<div style="font-weight:600;margin-bottom:6px;color:var(--text-primary);">Connect ' + escapeHtml(data.platform_name || platform) + '</div>' +
-        '<div>' + escapeHtml(data.instructions || 'Link your account in Settings to auto-publish.') + '</div>' +
+        '<div>Link your account credentials as environment variables to auto-publish.</div>' +
         (data.connect_url ? '<a href="' + escapeAttr(data.connect_url) + '" target="_blank" style="display:inline-block;margin-top:8px;color:var(--accent-gold);font-weight:600;text-decoration:none;">Open Developer Portal &rarr;</a>' : '');
       var lastResult = document.querySelector('.builder-social-result');
       if (lastResult) lastResult.appendChild(instrEl);
@@ -5005,11 +5016,12 @@ var builderChatState = {
 };
 
 // Tier → model_id mapping for backend metering
+// v7.36.0 — Maps compute tier → primary model for metering (matches architecture doc)
 var TIER_MODEL_MAP = {
-  'mini': 'claude_haiku',
-  'pro': 'claude_sonnet',
-  'max': 'claude_sonnet_think',
-  'max_pro': 'claude_opus'
+  'mini': 'claude_haiku',         // SAL Mini: Haiku 4.5 / GPT-5 Fast / Gemini Flash / Grok-3 Mini
+  'pro': 'claude_sonnet',         // SAL Pro: Sonnet 4.6 / GPT-5 Core / Gemini 2.5 Pro / Grok-3 Biz
+  'max': 'claude_opus',           // SAL Max: Opus 4.6 / GPT-5 Extended / Gemini Deep
+  'max_pro': 'claude_sonnet_parallel'  // SAL Max Fast: Parallel Sonnet / Batch GPT-5 / Parallel Grok-3
 };
 
 function setBuilderTier(tier) {
@@ -5184,13 +5196,26 @@ async function builderSend() {
     } else if (data.type === 'code_files') {
       // v7.29.0 — Full rewrite: v0/Bolt-style live preview with proper CSS+JS injection
       phaseEl.style.display = 'none'; _stopBuilderTrivia(); if(triviaContainer) triviaContainer.style.display='none';
-      builderChatState.files = data.files || [];
+      // v7.36.0 — Merge new files with existing project (iteration support)
+      var newFiles = data.files || [];
+      if (builderChatState.files.length > 0 && newFiles.length > 0) {
+        // Merge: new files overwrite existing by name, keep untouched files
+        var merged = builderChatState.files.slice();
+        newFiles.forEach(function(nf) {
+          var idx = merged.findIndex(function(ef) { return ef.name === nf.name; });
+          if (idx >= 0) { merged[idx] = nf; } else { merged.push(nf); }
+        });
+        builderChatState.files = merged;
+      } else {
+        builderChatState.files = newFiles;
+      }
       var codeHtml = '<div class="builder-code-preview">';
       
-      // Build a complete preview: inject all CSS and JS into the HTML
-      var htmlFile = data.files.find(function(f) { return /\.html$/i.test(f.name); });
-      var cssFiles = data.files.filter(function(f) { return /\.css$/i.test(f.name); });
-      var jsFiles = data.files.filter(function(f) { return /\.js$/i.test(f.name); });
+      // v7.36.0 — Preview uses full merged project files
+      var allFiles = builderChatState.files;
+      var htmlFile = allFiles.find(function(f) { return f.name === 'index.html' || (/\.html$/i.test(f.name) && !f.name.includes('/')); });
+      var cssFiles = allFiles.filter(function(f) { return /\.css$/i.test(f.name); });
+      var jsFiles = allFiles.filter(function(f) { return /\.js$/i.test(f.name); });
       
       if (htmlFile) {
         var previewContent = htmlFile.content || '';
@@ -5246,9 +5271,9 @@ async function builderSend() {
         }
       }
       
-      // File tags
+      // File tags — show ALL project files (merged)
       codeHtml += '<div class="builder-code-files">';
-      data.files.forEach(function(f, i) {
+      allFiles.forEach(function(f, i) {
         var ext = (f.name || '').split('.').pop().toLowerCase();
         var color = ext === 'html' ? '#ef4444' : ext === 'css' ? '#3b82f6' : (ext === 'js' || ext === 'ts') ? '#f59e0b' : ext === 'py' ? '#22c55e' : ext === 'json' ? '#a855f7' : ext === 'md' ? '#6B7280' : '#6B7280';
         var size = f.content ? (f.content.length > 1000 ? Math.round(f.content.length / 1024) + 'kb' : f.content.length + 'b') : '0b';
@@ -5319,9 +5344,31 @@ async function builderSend() {
         history: builderChatState.messages.slice(-10),
         attached_files: builderAttachedFiles || [],
         model: TIER_MODEL_MAP[builderChatState.selectedTier] || 'claude_sonnet',
+        existing_files: builderChatState.files.length > 0 ? builderChatState.files : [],
+        compute_tier: builderChatState.selectedTier || 'pro',
       }),
     });
-    if (!resp.ok) throw new Error('API error: ' + resp.status);
+    if (!resp.ok) {
+      // v7.36.0 — Handle tier-locked features
+      if (resp.status === 403) {
+        try {
+          var errData = await resp.json();
+          if (errData.type === 'tier_locked') {
+            phaseEl.style.display = 'none'; _stopBuilderTrivia();
+            var lockMsg = '<div class="builder-tier-lock" style="background:linear-gradient(135deg,rgba(239,68,68,0.1),rgba(251,146,60,0.1));border:1px solid rgba(239,68,68,0.3);border-radius:16px;padding:20px;margin:12px 0;text-align:center;">';
+            lockMsg += '<div style="font-size:28px;margin-bottom:8px;">🔒</div>';
+            lockMsg += '<div style="color:#f87171;font-weight:600;font-size:15px;margin-bottom:6px;">' + (errData.error || 'Feature locked') + '</div>';
+            lockMsg += '<div style="color:rgba(255,255,255,0.6);font-size:13px;margin-bottom:12px;">Current tier: <strong>' + (errData.current_tier || 'free').toUpperCase() + '</strong></div>';
+            lockMsg += '<button onclick="navigate('billing')" style="background:linear-gradient(135deg,#f59e0b,#ef4444);color:#fff;border:none;padding:10px 24px;border-radius:10px;font-weight:600;cursor:pointer;font-size:14px;">Upgrade to ' + (errData.upgrade_to || 'Pro').toUpperCase() + '</button>';
+            lockMsg += '</div>';
+            _appendBuilderMsg('assistant', lockMsg);
+            builderChatState.generating = false;
+            return;
+          }
+        } catch(e) {}
+      }
+      throw new Error('API error: ' + resp.status);
+    }
     var reader = resp.body.getReader();
     var decoder = new TextDecoder();
 

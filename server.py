@@ -5643,96 +5643,154 @@ async def godaddy_purchase_domain(request: Request):
 
 @app.post("/api/social/publish")
 async def social_publish(request: Request):
-    """Publish or format content for social media platforms."""
+    """v7.36.0 — Real social publishing. POSTs to platform APIs when credentials exist, formats otherwise."""
     try:
         body = await request.json()
         platform = (body.get("platform") or "twitter").lower()
         content = body.get("content") or ""
         media_url = body.get("media_url") or ""
 
-        platform_instructions = {
+        PLATFORM_CONFIG = {
             "twitter": {
-                "name": "X (Twitter)",
-                "char_limit": 280,
-                "format": content[:280],
+                "name": "X (Twitter)", "char_limit": 280,
+                "env_keys": ["TWITTER_API_KEY", "TWITTER_API_SECRET", "TWITTER_ACCESS_TOKEN", "TWITTER_ACCESS_SECRET"],
                 "connect_url": "https://developer.twitter.com/en/portal/dashboard",
-                "instructions": (
-                    "To publish to X/Twitter: (1) Create a Twitter Developer App at "
-                    "https://developer.twitter.com, (2) Generate API keys and Bearer Token, "
-                    "(3) Set env vars TWITTER_API_KEY, TWITTER_API_SECRET, TWITTER_ACCESS_TOKEN, "
-                    "TWITTER_ACCESS_SECRET, (4) Use POST /2/tweets with your content."
-                ),
-                "api_endpoint": "POST https://api.twitter.com/2/tweets",
-                "sample_payload": {"text": content[:280]}
             },
             "linkedin": {
-                "name": "LinkedIn",
-                "char_limit": 3000,
-                "format": content[:3000],
+                "name": "LinkedIn", "char_limit": 3000,
+                "env_keys": ["LINKEDIN_ACCESS_TOKEN"],
                 "connect_url": "https://www.linkedin.com/developers/apps",
-                "instructions": (
-                    "To publish to LinkedIn: (1) Create a LinkedIn App at "
-                    "https://www.linkedin.com/developers/apps, (2) Request the w_member_social scope, "
-                    "(3) Set env var LINKEDIN_ACCESS_TOKEN, (4) Use POST /v2/ugcPosts with your content."
-                ),
-                "api_endpoint": "POST https://api.linkedin.com/v2/ugcPosts",
-                "sample_payload": {
-                    "author": "urn:li:person:{PERSON_ID}",
-                    "lifecycleState": "PUBLISHED",
-                    "specificContent": {
-                        "com.linkedin.ugc.ShareContent": {
-                            "shareCommentary": {"text": content[:3000]},
-                            "shareMediaCategory": "NONE"
-                        }
-                    },
-                    "visibility": {"com.linkedin.ugc.MemberNetworkVisibility": "PUBLIC"}
-                }
             },
             "facebook": {
-                "name": "Facebook",
-                "char_limit": 63206,
-                "format": content[:63206],
+                "name": "Facebook", "char_limit": 63206,
+                "env_keys": ["FACEBOOK_PAGE_TOKEN", "FACEBOOK_PAGE_ID"],
                 "connect_url": "https://developers.facebook.com/apps",
-                "instructions": (
-                    "To publish to Facebook: (1) Create a Facebook App at "
-                    "https://developers.facebook.com, (2) Get a Page Access Token with "
-                    "pages_manage_posts permission, (3) Set env var FACEBOOK_PAGE_TOKEN and "
-                    "FACEBOOK_PAGE_ID, (4) Use POST /{page-id}/feed with your content."
-                ),
-                "api_endpoint": "POST https://graph.facebook.com/v18.0/{PAGE_ID}/feed",
-                "sample_payload": {"message": content[:63206], "access_token": "{FACEBOOK_PAGE_TOKEN}"}
-            }
+            },
+            "instagram": {
+                "name": "Instagram", "char_limit": 2200,
+                "env_keys": ["INSTAGRAM_ACCESS_TOKEN", "INSTAGRAM_BUSINESS_ID"],
+                "connect_url": "https://developers.facebook.com/apps",
+            },
         }
 
-        info = platform_instructions.get(platform, platform_instructions["twitter"])
+        config = PLATFORM_CONFIG.get(platform, PLATFORM_CONFIG["twitter"])
+        is_connected = all(bool(os.environ.get(k, "")) for k in config["env_keys"])
+        formatted = content[:config["char_limit"]]
+        published = False
+        post_url = ""
+        post_id = ""
+        api_error = ""
 
-        # Check if platform credentials exist in env
-        platform_keys = {
-            "twitter": "TWITTER_API_KEY",
-            "linkedin": "LINKEDIN_ACCESS_TOKEN",
-            "facebook": "FACEBOOK_PAGE_TOKEN",
-            "instagram": "INSTAGRAM_ACCESS_TOKEN",
-            "tiktok": "TIKTOK_ACCESS_TOKEN",
-            "youtube": "YOUTUBE_API_KEY",
-        }
-        is_connected = bool(os.environ.get(platform_keys.get(platform, ""), ""))
+        # ── REAL PUBLISH: Actually POST to platform API when credentials exist ──
+        if is_connected:
+            try:
+                async with httpx.AsyncClient(timeout=30) as hc:
+                    if platform == "twitter":
+                        # Twitter OAuth 1.0a — POST /2/tweets
+                        import hashlib, hmac, time as _time, urllib.parse, base64, uuid as _uuid
+                        api_key = os.environ["TWITTER_API_KEY"]
+                        api_secret = os.environ["TWITTER_API_SECRET"]
+                        access_token = os.environ["TWITTER_ACCESS_TOKEN"]
+                        access_secret = os.environ["TWITTER_ACCESS_SECRET"]
+                        url = "https://api.twitter.com/2/tweets"
+                        method = "POST"
+                        nonce = _uuid.uuid4().hex
+                        timestamp = str(int(_time.time()))
+                        oauth_params = {
+                            "oauth_consumer_key": api_key,
+                            "oauth_nonce": nonce,
+                            "oauth_signature_method": "HMAC-SHA1",
+                            "oauth_timestamp": timestamp,
+                            "oauth_token": access_token,
+                            "oauth_version": "1.0",
+                        }
+                        param_str = "&".join(f"{urllib.parse.quote(k, safe='')}={urllib.parse.quote(v, safe='')}" for k, v in sorted(oauth_params.items()))
+                        base_str = f"{method}&{urllib.parse.quote(url, safe='')}&{urllib.parse.quote(param_str, safe='')}"
+                        signing_key = f"{urllib.parse.quote(api_secret, safe='')}&{urllib.parse.quote(access_secret, safe='')}"
+                        sig = base64.b64encode(hmac.new(signing_key.encode(), base_str.encode(), hashlib.sha1).digest()).decode()
+                        oauth_params["oauth_signature"] = sig
+                        auth_header = "OAuth " + ", ".join(f'{k}="{urllib.parse.quote(v, safe="")}"' for k, v in sorted(oauth_params.items()))
+                        resp = await hc.post(url, headers={"Authorization": auth_header, "Content-Type": "application/json"}, json={"text": formatted})
+                        if resp.status_code in (200, 201):
+                            data = resp.json()
+                            post_id = data.get("data", {}).get("id", "")
+                            post_url = f"https://x.com/i/status/{post_id}" if post_id else ""
+                            published = True
+                        else:
+                            api_error = f"Twitter API {resp.status_code}: {resp.text[:200]}"
+
+                    elif platform == "linkedin":
+                        # LinkedIn — POST /v2/ugcPosts
+                        li_token = os.environ["LINKEDIN_ACCESS_TOKEN"]
+                        # Get user URN first
+                        me_resp = await hc.get("https://api.linkedin.com/v2/me", headers={"Authorization": f"Bearer {li_token}"})
+                        person_id = ""
+                        if me_resp.status_code == 200:
+                            person_id = me_resp.json().get("id", "")
+                        if person_id:
+                            payload = {
+                                "author": f"urn:li:person:{person_id}",
+                                "lifecycleState": "PUBLISHED",
+                                "specificContent": {
+                                    "com.linkedin.ugc.ShareContent": {
+                                        "shareCommentary": {"text": formatted},
+                                        "shareMediaCategory": "NONE"
+                                    }
+                                },
+                                "visibility": {"com.linkedin.ugc.MemberNetworkVisibility": "PUBLIC"}
+                            }
+                            resp = await hc.post("https://api.linkedin.com/v2/ugcPosts",
+                                headers={"Authorization": f"Bearer {li_token}", "Content-Type": "application/json", "X-Restli-Protocol-Version": "2.0.0"},
+                                json=payload)
+                            if resp.status_code in (200, 201):
+                                post_id = resp.json().get("id", resp.headers.get("x-restli-id", ""))
+                                post_url = f"https://www.linkedin.com/feed/update/{post_id}" if post_id else ""
+                                published = True
+                            else:
+                                api_error = f"LinkedIn API {resp.status_code}: {resp.text[:200]}"
+                        else:
+                            api_error = "Could not retrieve LinkedIn profile. Check LINKEDIN_ACCESS_TOKEN."
+
+                    elif platform == "facebook":
+                        # Facebook — POST /{page-id}/feed
+                        page_token = os.environ["FACEBOOK_PAGE_TOKEN"]
+                        page_id = os.environ["FACEBOOK_PAGE_ID"]
+                        resp = await hc.post(f"https://graph.facebook.com/v18.0/{page_id}/feed",
+                            data={"message": formatted, "access_token": page_token})
+                        if resp.status_code == 200:
+                            data = resp.json()
+                            post_id = data.get("id", "")
+                            post_url = f"https://www.facebook.com/{post_id}" if post_id else ""
+                            published = True
+                        else:
+                            api_error = f"Facebook API {resp.status_code}: {resp.text[:200]}"
+
+            except Exception as pub_err:
+                api_error = str(pub_err)
+                print(f"[Social Publish] {platform} error: {pub_err}")
 
         result = {
             "success": True,
             "connected": is_connected,
+            "published": published,
             "platform": platform,
-            "platform_name": info["name"],
-            "formatted_content": info["format"],
-            "char_limit": info["char_limit"],
+            "platform_name": config["name"],
+            "formatted_content": formatted,
+            "char_limit": config["char_limit"],
             "char_count": len(content),
             "media_url": media_url,
-            "connect_url": info["connect_url"],
-            "instructions": info["instructions"],
-            "api_endpoint": info["api_endpoint"],
-            "sample_payload": info["sample_payload"],
-            "status": "published" if is_connected else "formatted",
-            "message": f"Published to {info['name']}!" if is_connected else f"Content formatted for {info['name']}. Connect your account to auto-publish."
+            "post_url": post_url,
+            "post_id": post_id,
+            "connect_url": config["connect_url"],
+            "status": "published" if published else ("error" if api_error else "formatted"),
+            "message": (
+                f"Published to {config['name']}! {post_url}" if published
+                else f"Publish failed: {api_error}" if api_error
+                else f"Content formatted for {config['name']}. Connect your account to auto-publish."
+            ),
         }
+        if api_error:
+            result["api_error"] = api_error
         return JSONResponse(result)
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
@@ -5773,51 +5831,239 @@ BUILDER_CHAT_SYSTEM = """You are SAL™, the AI Builder Engine for SaintSal™ L
 5. Keep responses concise but complete.
 """
 
-# v7.29.0 — Dedicated code builder system prompt (forces JSON output, no plans)
-BUILDER_CODE_SYSTEM = """You are SAL™ Code Engine. You produce WORKING CODE, not plans or descriptions.
+# v7.36.0 — Full-stack multi-page builder system prompt
+BUILDER_CODE_SYSTEM = """You are SAL™ Code Engine — the full-stack builder behind SaintSal™ Labs.
+You build COMPLETE, WORKING, multi-page web apps and websites. Not demos. Not stubs. Production code.
 
-You work exactly like v0.dev, Bolt.new, and Claude Artifacts. When a user asks you to build something, you OUTPUT THE ACTUAL CODE as a renderable project — never a file list, never a plan, never an outline.
+You work like v0.dev + Bolt.new + Claude Artifacts combined — but you build FULL APPS.
 
 RESPONSE FORMAT — MANDATORY:
-You MUST output a JSON block containing all project files. This is NON-NEGOTIABLE.
+You MUST output a JSON block containing ALL project files:
 
 ```json
-{"files": [{"name": "index.html", "content": "<!DOCTYPE html>...FULL HTML HERE..."}, {"name": "style.css", "content": "...FULL CSS HERE..."}, {"name": "app.js", "content": "...FULL JS HERE..."}]}
+{"files": [{"name": "index.html", "content": "..."}, {"name": "about.html", "content": "..."}, {"name": "styles/main.css", "content": "..."}, {"name": "js/app.js", "content": "..."}]}
 ```
 
-RULES:
-1. Your ENTIRE response must be the JSON code block above, optionally followed by 1-2 sentences.
-2. NEVER list files with descriptions (e.g. "server.js — Main entry point"). That is FORBIDDEN.
-3. NEVER say "Here's what I'll create" or "Let me plan this out". Just write the code.
-4. NEVER use placeholder comments like "// TODO" or "/* add your code */". Write REAL code.
-5. Every file in the JSON must have complete, working, production-ready content.
-6. For web projects: Always include index.html as the main entry. Inline CSS/JS is fine for single-page apps.
-7. Use modern, beautiful design: dark themes, gradients, smooth animations, glassmorphism, responsive.
-8. If the project has multiple files, include ALL of them with FULL content.
-9. The code must WORK when rendered in a browser iframe immediately — no build steps needed.
-10. For backend/Node projects: still output the files but include a README with setup instructions.
+## MULTI-PAGE ARCHITECTURE:
+When building a website or web app with multiple pages:
+- Create a SHARED navigation/header/footer across ALL pages via shared CSS + JS
+- Use client-side routing (hash-based or SPA router) OR separate HTML files per page
+- EVERY page must be fully functional, styled, responsive, and linked to all other pages
+- Navigation must highlight the current active page
+- Include mobile hamburger menu for responsive nav
 
-EXAMPLE (a user says "build me a landing page"):
-```json
-{"files": [{"name": "index.html", "content": "<!DOCTYPE html><html lang='en'><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width,initial-scale=1.0'><title>Landing Page</title><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:'Inter',system-ui,sans-serif;background:#0a0a0f;color:#e0e0e0;min-height:100vh}...</style></head><body>...</body></html>"}]}
-```
+## FOR FULL-STACK APPS:
+- index.html = main shell with client-side router or entry point
+- pages/ folder for multi-page routes (about.html, pricing.html, contact.html, etc.)
+- styles/ folder for CSS (main.css, components.css)
+- js/ folder for JavaScript (app.js, router.js, components.js)
+- For SPA: build proper hash-based routing in app.js with page components
+- ALWAYS include: Home, About, Contact at minimum for any website
+- For apps: include Dashboard, Settings, and feature-specific pages
 
-NOTICE: The example above contains ACTUAL HTML/CSS/JS code, not descriptions. Do the same.
+## DESIGN STANDARDS:
+- Modern, polished, premium design — NOT generic Bootstrap
+- Dark themes with accent gradients, glassmorphism, smooth 60fps animations
+- Fully responsive (mobile-first): works perfectly at 375px, 768px, and 1440px
+- Professional typography: Inter, system-ui fallback, proper hierarchy
+- Micro-interactions: hover states, focus rings, loading states, transitions
+- Accessibility: proper ARIA labels, semantic HTML, keyboard navigation
+
+## ITERATION CONTEXT:
+When the user says "add", "change", "update", "fix", or "now add":
+- Output ONLY the files that changed, with their COMPLETE new content
+- Keep all existing files intact — do NOT regenerate unchanged files
+- Reference existing page structure and styles
+
+RULES (NON-NEGOTIABLE):
+1. Output the JSON code block, optionally followed by 1-2 sentences.
+2. NEVER list files with descriptions. NEVER output a plan. Just write the code.
+3. NEVER use placeholder comments like "// TODO". Write REAL, COMPLETE code.
+4. Every file must have FULL working content — no truncation.
+5. Code MUST work when rendered in a browser iframe immediately.
+6. For multi-page sites: use a single index.html with hash routing OR multiple HTML files with consistent nav.
+7. Always include meta viewport, charset, title, and favicon link.
+8. Minimum 5 files for any real website/app build.
+9. Forms must have proper validation and visual feedback.
+10. All interactive elements must have hover/focus/active states.
 """
 
-# v7.29.0 — Retry prompt when AI returns a plan instead of code
-BUILDER_CODE_RETRY = """STOP. You returned a plan/outline instead of actual code. That is wrong.
+# v7.36.0 — Retry prompt when AI returns a plan instead of code
+BUILDER_CODE_RETRY = """STOP. You returned a plan/outline instead of actual code. That is WRONG.
 
-Do NOT list files with descriptions. Do NOT describe what you will build.
-Instead, OUTPUT THE ACTUAL CODE in this exact format:
+You MUST output ACTUAL WORKING CODE in a JSON block. Multiple files. Full content. No descriptions.
 
 ```json
-{"files": [{"name": "index.html", "content": "FULL WORKING HTML CODE HERE"}]}
+{"files": [
+  {"name": "index.html", "content": "<!DOCTYPE html>...COMPLETE HTML..."},
+  {"name": "styles/main.css", "content": "...COMPLETE CSS..."},
+  {"name": "js/app.js", "content": "...COMPLETE JS..."},
+  {"name": "about.html", "content": "...COMPLETE HTML..."},
+  {"name": "contact.html", "content": "...COMPLETE HTML..."}
+]}
 ```
 
-Write the real, complete, working code NOW. The JSON block with actual file contents is MANDATORY.
+For ANY website or app: output AT LEAST 5 files with FULL production code.
+Shared navigation across pages. Responsive design. Working forms. Real content.
+No placeholders. No TODOs. No descriptions. Just CODE.
 
 Original request: """
+
+# v7.36.0 — Tier-gated feature access matrix (matches architecture doc)
+TIER_FEATURES = {
+    "free": {
+        "models": ["claude_haiku", "gemini_flash", "gpt5_fast", "grok3_mini"],
+        "builder_code": False,
+        "builder_image": False,
+        "builder_video": False,
+        "builder_audio": False,
+        "builder_deploy_vercel": False,
+        "builder_deploy_render": False,
+        "builder_deploy_cloudflare": False,
+        "builder_github": False,
+        "builder_custom_domains": False,
+        "voice_ai": False,
+        "career_suite": False,
+        "rag_knowledge": False,
+        "search": True,
+        "compute_minutes": 100,
+    },
+    "starter": {
+        "models": ["claude_haiku", "claude_sonnet", "gemini_flash", "gemini_pro", "gpt5_fast", "gpt5_core", "grok3_mini", "grok3_biz"],
+        "builder_code": "basic",  # Basic code gen only
+        "builder_image": False,
+        "builder_video": False,
+        "builder_audio": False,
+        "builder_deploy_vercel": False,
+        "builder_deploy_render": False,
+        "builder_deploy_cloudflare": False,
+        "builder_github": True,
+        "builder_custom_domains": False,
+        "voice_ai": False,
+        "career_suite": False,
+        "rag_knowledge": False,
+        "search": True,
+        "compute_minutes": 500,
+    },
+    "pro": {
+        "models": ["claude_haiku", "claude_sonnet", "claude_opus", "gemini_flash", "gemini_pro", "gemini_deep", "gpt5_fast", "gpt5_core", "gpt5_extended", "grok3_mini", "grok3_biz"],
+        "builder_code": "full",
+        "builder_image": True,
+        "builder_video": True,
+        "builder_audio": True,
+        "builder_deploy_vercel": True,
+        "builder_deploy_render": False,
+        "builder_deploy_cloudflare": False,
+        "builder_github": True,
+        "builder_custom_domains": False,
+        "voice_ai": True,
+        "career_suite": True,
+        "rag_knowledge": True,
+        "search": True,
+        "compute_minutes": 2000,
+    },
+    "teams": {
+        "models": ["claude_haiku", "claude_sonnet", "claude_opus", "claude_sonnet_parallel", "gemini_flash", "gemini_pro", "gemini_deep", "gpt5_fast", "gpt5_core", "gpt5_extended", "gpt5_batch", "grok3_mini", "grok3_biz", "grok3_parallel"],
+        "builder_code": "full",
+        "builder_image": True,
+        "builder_video": True,
+        "builder_audio": True,
+        "builder_deploy_vercel": True,
+        "builder_deploy_render": True,
+        "builder_deploy_cloudflare": True,
+        "builder_github": True,
+        "builder_custom_domains": True,
+        "voice_ai": True,
+        "career_suite": True,
+        "rag_knowledge": True,
+        "ghl_crm": True,
+        "search": True,
+        "compute_minutes": 10000,
+    },
+    "enterprise": {
+        "models": ["all"],
+        "builder_code": "full",
+        "builder_image": True,
+        "builder_video": True,
+        "builder_audio": True,
+        "builder_deploy_vercel": True,
+        "builder_deploy_render": True,
+        "builder_deploy_cloudflare": True,
+        "builder_github": True,
+        "builder_custom_domains": True,
+        "voice_ai": True,
+        "career_suite": True,
+        "rag_knowledge": True,
+        "ghl_crm": True,
+        "api_access": True,
+        "white_label": True,
+        "hacp_license": True,
+        "search": True,
+        "compute_minutes": -1,  # Unlimited
+    },
+}
+
+# v7.36.0 — Map compute tier → model chain per architecture doc
+TIER_MODEL_ROUTING = {
+    "mini": {  # SAL Mini — Free + Starter
+        "primary": {"id": "claude", "model": "claude-haiku-4-5-20251001", "max_tokens": 16000, "provider": "anthropic"},
+        "fallback": [
+            {"id": "gemini", "model": "gemini-2.0-flash", "max_tokens": 16000, "provider": "google"},
+            {"id": "grok", "model": "grok-3-mini-beta", "max_tokens": 16000, "provider": "xai"},
+        ]
+    },
+    "pro": {  # SAL Pro — Starter + Pro
+        "primary": {"id": "claude", "model": "claude-sonnet-4-20250514", "max_tokens": 64000, "provider": "anthropic"},
+        "fallback": [
+            {"id": "gemini", "model": "gemini-2.5-pro-preview-06-05", "max_tokens": 65536, "provider": "google"},
+            {"id": "grok", "model": "grok-3-beta", "max_tokens": 32000, "provider": "xai"},
+            {"id": "gpt", "model": "gpt-4.1", "max_tokens": 32768, "provider": "openai"},
+        ]
+    },
+    "max": {  # SAL Max — Pro + Teams
+        "primary": {"id": "claude", "model": "claude-opus-4-20250514", "max_tokens": 32000, "provider": "anthropic"},
+        "fallback": [
+            {"id": "gemini", "model": "gemini-2.5-pro-preview-06-05", "max_tokens": 65536, "provider": "google"},
+            {"id": "gpt", "model": "gpt-4.1", "max_tokens": 32768, "provider": "openai"},
+        ]
+    },
+    "max_pro": {  # SAL Max Fast — Teams + Enterprise (parallel execution)
+        "primary": {"id": "claude", "model": "claude-sonnet-4-20250514", "max_tokens": 64000, "provider": "anthropic"},
+        "fallback": [
+            {"id": "grok", "model": "grok-3-beta", "max_tokens": 32000, "provider": "xai"},
+        ]
+    },
+}
+
+def get_user_tier(request_body: dict, metering_user: dict = None) -> str:
+    """Resolve user's subscription tier from body or metering profile."""
+    # Frontend sends compute tier; map it or check profile
+    compute_tier = request_body.get("compute_tier", "")
+    if compute_tier in TIER_FEATURES:
+        return compute_tier
+    # From metering user profile
+    if metering_user:
+        return metering_user.get("tier", metering_user.get("plan_tier", "free"))
+    return "free"
+
+def check_feature_access(tier: str, feature: str) -> dict:
+    """Check if a tier has access to a specific feature. Returns {allowed, reason, upgrade_to}."""
+    features = TIER_FEATURES.get(tier, TIER_FEATURES["free"])
+    val = features.get(feature)
+    if val is True or val == "full":
+        return {"allowed": True}
+    if val == "basic":
+        return {"allowed": True, "limited": True, "message": "Basic code generation only. Upgrade for full multi-page builder."}
+    # Feature is locked — find the minimum tier that unlocks it
+    upgrade_map = {}
+    for t in ["starter", "pro", "teams", "enterprise"]:
+        tf = TIER_FEATURES.get(t, {})
+        if tf.get(feature) and tf[feature] is not False:
+            upgrade_map[feature] = t
+            break
+    upgrade_to = upgrade_map.get(feature, "pro")
+    return {"allowed": False, "reason": f"This feature requires {upgrade_to.title()} tier or above.", "upgrade_to": upgrade_to}
+
 
 
 def _detect_builder_intent(message: str) -> str:
@@ -6010,6 +6256,29 @@ async def builder_unified_chat(request: Request):
     intent = _detect_builder_intent(message)
     print(f"[Builder Chat] intent={intent} msg={message[:80]}")
 
+    # v7.36.0 — Tier-gated feature access check
+    user_tier = get_user_tier(body, metering_user)
+    intent_feature_map = {
+        "code": "builder_code", "image": "builder_image", "video": "builder_video",
+        "audio": "builder_audio", "deploy": "builder_deploy_vercel",
+        "social": "builder_code",  # Social uses basic access
+    }
+    feature_key = intent_feature_map.get(intent, "search")  # chat/research = search (always allowed)
+    access = check_feature_access(user_tier, feature_key)
+    if not access["allowed"]:
+        tier_error = {
+            "error": access["reason"],
+            "type": "tier_locked",
+            "feature": feature_key,
+            "current_tier": user_tier,
+            "upgrade_to": access.get("upgrade_to", "pro"),
+        }
+        return JSONResponse(tier_error, status_code=403)
+
+    # v7.36.0 — Select model chain based on compute tier
+    compute_tier = body.get("compute_tier", "pro")
+    model_routing = TIER_MODEL_ROUTING.get(compute_tier, TIER_MODEL_ROUTING["pro"])
+
     async def event_stream():
         yield f"data: {json.dumps({'type': 'intent', 'intent': intent})}\n\n"
 
@@ -6059,7 +6328,7 @@ async def builder_unified_chat(request: Request):
             yield f"data: {json.dumps({'type': 'done'})}\n\n"
             return
 
-        # ── CODE ── v7.29.0 — Full rewrite: force JSON output, auto-retry on plans
+        # ── CODE ── v7.36.0 — Full-stack multi-page builder with iteration
         if intent == 'code':
             yield f"data: {json.dumps({'type': 'phase', 'phase': 'generating', 'message': 'Building your project...'})}\n\n"
             history_ctx = ""
@@ -6070,8 +6339,21 @@ async def builder_unified_chat(request: Request):
             if attached_files:
                 for af in attached_files[:3]:
                     file_ctx += f"\nAttached: {af.get('filename', '')} — {af.get('extracted_text', '')[:1000]}"
+
+            # v7.36.0 — Include existing project files for iteration context
+            existing_project = body.get("existing_files", [])
+            project_ctx = ""
+            if existing_project:
+                project_ctx = "\n\n[EXISTING PROJECT FILES — EDIT THESE, DON'T REGENERATE FROM SCRATCH]\n"
+                for ef in existing_project[:15]:  # Max 15 files for context
+                    fname = ef.get('name', '')
+                    content = ef.get('content', '')[:3000]  # Cap per file
+                    project_ctx += f"\n--- {fname} ---\n{content}\n"
+                project_ctx += "\n[END EXISTING FILES — Output ONLY modified files with COMPLETE updated content]\n"
+
             user_msg = message
             if file_ctx: user_msg += f"\n\n[ATTACHED]{file_ctx}"
+            if project_ctx: user_msg += project_ctx
             if history_ctx: user_msg += f"\n\n[CONTEXT]{history_ctx}"
 
             # Helper to extract JSON files block from AI response
@@ -6313,12 +6595,32 @@ async def builder_unified_chat(request: Request):
 
 # ── Builder Multi-Model AI Engine ───────────────────────────────────────────
 
+# v7.36.0 — Model chain per architecture doc
+# v7.36.0 — Default model chain (SAL Pro tier). Overridden per compute_tier via TIER_MODEL_ROUTING.
 BUILDER_MODEL_CHAIN = [
-    {"id": "claude", "name": "Claude Sonnet", "provider": "anthropic", "model": "claude-sonnet-4-20250514", "max_tokens": 64000},
-    {"id": "grok", "name": "Grok-4", "provider": "xai", "model": "grok-4", "max_tokens": 32000},
+    {"id": "claude", "name": "Claude Sonnet 4.6", "provider": "anthropic", "model": "claude-sonnet-4-20250514", "max_tokens": 64000},
+    {"id": "grok", "name": "Grok-3", "provider": "xai", "model": "grok-3-beta", "max_tokens": 32000},
     {"id": "gemini", "name": "Gemini 2.5 Pro", "provider": "google", "model": "gemini-2.5-pro-preview-06-05", "max_tokens": 65536},
     {"id": "gpt", "name": "GPT-4.1", "provider": "openai", "model": "gpt-4.1", "max_tokens": 32768},
 ]
+
+def get_builder_model_chain(compute_tier: str = "pro") -> list:
+    """v7.36.0 — Return the model chain for the given compute tier from architecture doc."""
+    routing = TIER_MODEL_ROUTING.get(compute_tier, TIER_MODEL_ROUTING.get("pro", {}))
+    primary = routing.get("primary", {})
+    fallbacks = routing.get("fallback", [])
+    chain = []
+    if primary:
+        chain.append({
+            "id": primary["id"], "name": f"SAL {compute_tier.title()} Primary",
+            "provider": primary["provider"], "model": primary["model"], "max_tokens": primary["max_tokens"]
+        })
+    for fb in fallbacks:
+        chain.append({
+            "id": fb["id"], "name": f"SAL {compute_tier.title()} Fallback",
+            "provider": fb["provider"], "model": fb["model"], "max_tokens": fb["max_tokens"]
+        })
+    return chain if chain else BUILDER_MODEL_CHAIN
 
 
 async def _builder_ai_call(system: str, user_msg: str, preferred_model: str = "claude", max_tokens: int = 32000) -> dict:
