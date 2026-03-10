@@ -850,47 +850,48 @@ function finalizeResponse(answerEl, rawText, typingEl, sources, intent) {
     addTTSButton(answerEl, rawText);
   }
 
-  // Add action toolbar below response
+  // Minimal action row — clean like Perplexity, not cluttered
   var toolbar = document.createElement('div');
   toolbar.className = 'response-toolbar';
-  toolbar.style.cssText = 'display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;';
+  toolbar.style.cssText = 'display:flex;gap:6px;margin-top:10px;opacity:0;transition:opacity 0.2s;';
+  // Show on hover over the message block
+  var parentMsg = answerEl.closest('.chat-msg');
+  if (parentMsg) {
+    parentMsg.addEventListener('mouseenter', function() { toolbar.style.opacity = '1'; });
+    parentMsg.addEventListener('mouseleave', function() { toolbar.style.opacity = '0.5'; });
+  }
+  toolbar.style.opacity = '0.5';
 
-  // Copy button
+  // Copy icon button (compact)
   var copyBtn = document.createElement('button');
   copyBtn.className = 'toolbar-btn';
-  copyBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg> Copy';
-  copyBtn.style.cssText = 'display:inline-flex;align-items:center;gap:4px;padding:6px 12px;border-radius:8px;font-size:12px;background:rgba(255,255,255,0.06);color:rgba(255,255,255,0.6);border:1px solid rgba(255,255,255,0.1);cursor:pointer;transition:all 0.2s;';
+  copyBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>';
+  copyBtn.title = 'Copy';
+  copyBtn.style.cssText = 'display:inline-flex;align-items:center;padding:6px;border-radius:6px;background:none;color:rgba(255,255,255,0.4);border:none;cursor:pointer;transition:all 0.2s;';
+  copyBtn.onmouseenter = function() { copyBtn.style.color = 'rgba(255,255,255,0.8)'; };
+  copyBtn.onmouseleave = function() { copyBtn.style.color = 'rgba(255,255,255,0.4)'; };
   copyBtn.onclick = function() {
     navigator.clipboard.writeText(rawText).then(function() {
-      copyBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg> Copied!';
-      setTimeout(function() { copyBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg> Copy'; }, 2000);
+      copyBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg>';
+      setTimeout(function() { copyBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>'; }, 2000);
     });
   };
   toolbar.appendChild(copyBtn);
 
-  // Generate Document button (if response is substantial)
-  if (rawText.length > 200) {
-    var docBtn = document.createElement('button');
-    docBtn.className = 'toolbar-btn';
-    docBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg> Save as Document';
-    docBtn.style.cssText = 'display:inline-flex;align-items:center;gap:4px;padding:6px 12px;border-radius:8px;font-size:12px;background:rgba(59,130,246,0.12);color:#60a5fa;border:1px solid rgba(59,130,246,0.3);cursor:pointer;transition:all 0.2s;';
-    docBtn.onclick = function() {
-      generateDocFromChat(rawText, 'SAL Response');
-    };
-    toolbar.appendChild(docBtn);
-  }
-
-  // Share button
+  // Share icon button (compact)
   var shareBtn = document.createElement('button');
   shareBtn.className = 'toolbar-btn';
-  shareBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg> Share';
-  shareBtn.style.cssText = 'display:inline-flex;align-items:center;gap:4px;padding:6px 12px;border-radius:8px;font-size:12px;background:rgba(255,255,255,0.06);color:rgba(255,255,255,0.6);border:1px solid rgba(255,255,255,0.1);cursor:pointer;transition:all 0.2s;';
+  shareBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>';
+  shareBtn.title = 'Share';
+  shareBtn.style.cssText = 'display:inline-flex;align-items:center;padding:6px;border-radius:6px;background:none;color:rgba(255,255,255,0.4);border:none;cursor:pointer;transition:all 0.2s;';
+  shareBtn.onmouseenter = function() { shareBtn.style.color = 'rgba(255,255,255,0.8)'; };
+  shareBtn.onmouseleave = function() { shareBtn.style.color = 'rgba(255,255,255,0.4)'; };
   shareBtn.onclick = function() {
     if (navigator.share) {
       navigator.share({ title: 'SaintSal Research', text: rawText.substring(0, 500) });
     } else {
       navigator.clipboard.writeText(rawText);
-      shareBtn.textContent = 'Link copied!';
+      showToast('Copied to clipboard', 'success');
     }
   };
   toolbar.appendChild(shareBtn);
@@ -5380,7 +5381,7 @@ async function builderSend() {
             lockMsg += '<div style="font-size:28px;margin-bottom:8px;">🔒</div>';
             lockMsg += '<div style="color:#f87171;font-weight:600;font-size:15px;margin-bottom:6px;">' + (errData.error || 'Feature locked') + '</div>';
             lockMsg += '<div style="color:rgba(255,255,255,0.6);font-size:13px;margin-bottom:12px;">Current tier: <strong>' + (errData.current_tier || 'free').toUpperCase() + '</strong></div>';
-            lockMsg += '<button onclick="navigate('billing')" style="background:linear-gradient(135deg,#f59e0b,#ef4444);color:#fff;border:none;padding:10px 24px;border-radius:10px;font-weight:600;cursor:pointer;font-size:14px;">Upgrade to ' + (errData.upgrade_to || 'Pro').toUpperCase() + '</button>';
+            lockMsg += '<button onclick="navigate(\'billing\')" style="background:linear-gradient(135deg,#f59e0b,#ef4444);color:#fff;border:none;padding:10px 24px;border-radius:10px;font-weight:600;cursor:pointer;font-size:14px;">Upgrade to ' + (errData.upgrade_to || 'Pro').toUpperCase() + '</button>';
             lockMsg += '</div>';
             _appendBuilderMsg('assistant', lockMsg);
             builderChatState.generating = false;

@@ -6788,9 +6788,10 @@ async def builder_unified_chat(request: Request):
                             pass
                 return None, text
 
-            # Attempt 1: Use dedicated BUILDER_CODE_SYSTEM prompt
-            print(f"[Builder Code] Attempt 1 with BUILDER_CODE_SYSTEM")
-            result = await _builder_ai_call(BUILDER_CODE_SYSTEM, user_msg, "claude", 64000)
+            # Attempt 1: Use dedicated BUILDER_CODE_SYSTEM prompt (Gemini first — always available)
+            primary_model = "gemini" if GEMINI_API_KEY else ("claude" if os.environ.get("ANTHROPIC_API_KEY") else "gemini")
+            print(f"[Builder Code] Attempt 1 with {primary_model}")
+            result = await _builder_ai_call(BUILDER_CODE_SYSTEM, user_msg, primary_model, 64000)
             files_data = None
             desc_text = ""
             if result['text']:
@@ -6798,20 +6799,21 @@ async def builder_unified_chat(request: Request):
 
             # Attempt 2: If no valid JSON files, retry with RETRY prompt
             if not files_data:
-                print(f"[Builder Code] Attempt 1 failed (no JSON files). Retrying...")
+                print(f"[Builder Code] Attempt 1 failed (no JSON files). Retrying with explicit format...")
                 yield f"data: {json.dumps({'type': 'phase', 'phase': 'generating', 'message': 'Generating code...'})}\n\n"
                 retry_msg = BUILDER_CODE_RETRY + user_msg
-                result2 = await _builder_ai_call(BUILDER_CODE_SYSTEM, retry_msg, "claude", 64000)
+                result2 = await _builder_ai_call(BUILDER_CODE_SYSTEM, retry_msg, primary_model, 64000)
                 if result2['text']:
                     files_data, desc_text = _extract_code_files(result2['text'])
                     if files_data:
                         result = result2
 
-            # Attempt 3: Try a different model if Claude failed
+            # Attempt 3: Try a different model
             if not files_data:
-                print(f"[Builder Code] Attempt 2 failed. Trying alternate model (grok)...")
+                alt_model = "claude" if primary_model == "gemini" else "gemini"
+                print(f"[Builder Code] Attempt 2 failed. Trying {alt_model}...")
                 yield f"data: {json.dumps({'type': 'phase', 'phase': 'generating', 'message': 'Switching models...'})}\n\n"
-                result3 = await _builder_ai_call(BUILDER_CODE_SYSTEM, user_msg, "grok", 32000)
+                result3 = await _builder_ai_call(BUILDER_CODE_SYSTEM, user_msg, alt_model, 64000)
                 if result3['text']:
                     files_data, desc_text = _extract_code_files(result3['text'])
                     if files_data:
@@ -6846,7 +6848,7 @@ async def builder_unified_chat(request: Request):
         # ── RESEARCH ──
         if intent == 'research':
             yield f"data: {json.dumps({'type': 'phase', 'phase': 'searching', 'message': 'Researching...'})}\n\n"
-            pplx_key = os.environ.get("PPLX_API_KEY", "")
+            pplx_key = PPLX_API_KEY  # Module-level variable
             research_text = ""
             citations = []
             if pplx_key:
@@ -6862,7 +6864,7 @@ async def builder_unified_chat(request: Request):
                 except Exception as e:
                     print(f"[Builder] Perplexity error: {e}")
             if not research_text:
-                result = await _builder_ai_call(BUILDER_CHAT_SYSTEM, message, "claude", 8000)
+                result = await _builder_ai_call(BUILDER_CHAT_SYSTEM, message, "gemini", 8000)
                 research_text = result['text']
             if citations:
                 yield f"data: {json.dumps({'type': 'citations', 'citations': citations})}\n\n"
@@ -6904,7 +6906,7 @@ async def builder_unified_chat(request: Request):
             except Exception as e:
                 print(f"[Builder] Claude stream error: {e}")
         if not streamed:
-            result = await _builder_ai_call(BUILDER_CHAT_SYSTEM, message, "claude", 8000)
+            result = await _builder_ai_call(BUILDER_CHAT_SYSTEM, message, "gemini", 8000)
             if result['text']:
                 for i in range(0, len(result['text']), 80):
                     yield f"data: {json.dumps({'type': 'text', 'content': result['text'][i:i+80]})}\n\n"
@@ -6941,10 +6943,13 @@ async def builder_unified_chat(request: Request):
 # v7.36.0 — Model chain per architecture doc
 # v7.36.0 — Default model chain (SAL Pro tier). Overridden per compute_tier via TIER_MODEL_ROUTING.
 BUILDER_MODEL_CHAIN = [
+    # Gemini first — API key always available via STITCH_API_KEY fallback
+    {"id": "gemini", "name": "Gemini 2.5 Pro", "provider": "google", "model": "gemini-2.5-pro-preview-06-05", "max_tokens": 65536},
     {"id": "claude", "name": "Claude Sonnet 4.6", "provider": "anthropic", "model": "claude-sonnet-4-20250514", "max_tokens": 64000},
     {"id": "grok", "name": "Grok-3", "provider": "xai", "model": "grok-3-beta", "max_tokens": 32000},
-    {"id": "gemini", "name": "Gemini 2.5 Pro", "provider": "google", "model": "gemini-2.5-pro-preview-06-05", "max_tokens": 65536},
     {"id": "gpt", "name": "GPT-4.1", "provider": "openai", "model": "gpt-4.1", "max_tokens": 32768},
+    # Perplexity as last resort — always has a key, good for research/chat, limited for raw code gen
+    {"id": "pplx", "name": "Perplexity Sonar Pro", "provider": "perplexity", "model": "sonar-pro", "max_tokens": 16000},
 ]
 
 def get_builder_model_chain(compute_tier: str = "pro") -> list:
@@ -6967,7 +6972,7 @@ def get_builder_model_chain(compute_tier: str = "pro") -> list:
 
 
 async def _builder_ai_call(system: str, user_msg: str, preferred_model: str = "claude", max_tokens: int = 32000) -> dict:
-    """Call AI with automatic fallback chain. Returns {text, model_used, provider}."""
+    """Call AI with automatic fallback chain. Uses module-level API key variables (with hardcoded fallbacks)."""
     # Order chain: preferred model first, then rest
     chain = sorted(BUILDER_MODEL_CHAIN, key=lambda m: 0 if m["id"] == preferred_model else 1)
 
@@ -6979,57 +6984,81 @@ async def _builder_ai_call(system: str, user_msg: str, preferred_model: str = "c
             if provider == "anthropic":
                 key = os.environ.get("ANTHROPIC_API_KEY", "")
                 if not key: continue
-                async with httpx.AsyncClient(timeout=180) as client:
-                    r = await client.post("https://api.anthropic.com/v1/messages",
+                async with httpx.AsyncClient(timeout=180) as hc:
+                    r = await hc.post("https://api.anthropic.com/v1/messages",
                         headers={"x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json"},
                         json={"model": model_cfg["model"], "max_tokens": tok, "system": system,
                               "messages": [{"role": "user", "content": user_msg}]})
-                    if r.status_code != 200: continue
+                    if r.status_code != 200:
+                        print(f"[Builder AI] Anthropic {model_cfg['model']} -> {r.status_code}")
+                        continue
                     data = r.json()
                     text = data.get("content", [{}])[0].get("text", "")
                     if text: return {"text": text, "model_used": model_cfg["name"], "provider": provider}
 
             elif provider == "xai":
-                key = os.environ.get("XAI_API_KEY", "")
+                key = XAI_API_KEY  # Module-level variable
                 if not key: continue
-                async with httpx.AsyncClient(timeout=180) as client:
-                    r = await client.post("https://api.x.ai/v1/chat/completions",
+                async with httpx.AsyncClient(timeout=180) as hc:
+                    r = await hc.post("https://api.x.ai/v1/chat/completions",
                         headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
                         json={"model": model_cfg["model"], "max_tokens": tok, "temperature": 0.7,
                               "messages": [{"role": "system", "content": system}, {"role": "user", "content": user_msg}]})
-                    if r.status_code != 200: continue
+                    if r.status_code != 200:
+                        print(f"[Builder AI] xAI {model_cfg['model']} -> {r.status_code}")
+                        continue
                     data = r.json()
                     text = data.get("choices", [{}])[0].get("message", {}).get("content", "")
                     if text: return {"text": text, "model_used": model_cfg["name"], "provider": provider}
 
             elif provider == "google":
-                key = os.environ.get("GEMINI_API_KEY", "")
+                key = GEMINI_API_KEY  # Module-level variable (falls back to STITCH_API_KEY)
                 if not key: continue
-                async with httpx.AsyncClient(timeout=180) as client:
-                    r = await client.post(
+                async with httpx.AsyncClient(timeout=180) as hc:
+                    r = await hc.post(
                         f"https://generativelanguage.googleapis.com/v1beta/models/{model_cfg['model']}:generateContent?key={key}",
                         headers={"Content-Type": "application/json"},
                         json={"contents": [{"parts": [{"text": f"{system}\n\n{user_msg}"}]}],
                               "generationConfig": {"maxOutputTokens": tok, "temperature": 0.7}})
-                    if r.status_code != 200: continue
+                    if r.status_code != 200:
+                        print(f"[Builder AI] Google {model_cfg['model']} -> {r.status_code}")
+                        continue
                     data = r.json()
                     text = data.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "")
                     if text: return {"text": text, "model_used": model_cfg["name"], "provider": provider}
 
             elif provider == "openai":
-                key = os.environ.get("OPENAI_API_KEY", "")
+                key = OPENAI_API_KEY  # Module-level variable
                 if not key: continue
-                async with httpx.AsyncClient(timeout=180) as client:
-                    r = await client.post("https://api.openai.com/v1/chat/completions",
+                async with httpx.AsyncClient(timeout=180) as hc:
+                    r = await hc.post("https://api.openai.com/v1/chat/completions",
                         headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
                         json={"model": model_cfg["model"], "max_tokens": tok, "temperature": 0.7,
                               "messages": [{"role": "system", "content": system}, {"role": "user", "content": user_msg}]})
-                    if r.status_code != 200: continue
+                    if r.status_code != 200:
+                        print(f"[Builder AI] OpenAI {model_cfg['model']} -> {r.status_code}")
+                        continue
                     data = r.json()
                     text = data.get("choices", [{}])[0].get("message", {}).get("content", "")
                     if text: return {"text": text, "model_used": model_cfg["name"], "provider": provider}
 
-        except Exception:
+            elif provider == "perplexity":
+                key = PPLX_API_KEY  # Module-level variable
+                if not key: continue
+                async with httpx.AsyncClient(timeout=180) as hc:
+                    r = await hc.post("https://api.perplexity.ai/chat/completions",
+                        headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+                        json={"model": model_cfg.get("model", "sonar-pro"), "max_tokens": min(tok, 16000),
+                              "messages": [{"role": "system", "content": system}, {"role": "user", "content": user_msg}]})
+                    if r.status_code != 200:
+                        print(f"[Builder AI] Perplexity {model_cfg['model']} -> {r.status_code}")
+                        continue
+                    data = r.json()
+                    text = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+                    if text: return {"text": text, "model_used": model_cfg["name"], "provider": provider}
+
+        except Exception as ex:
+            print(f"[Builder AI] {provider}/{model_cfg.get('model','')} exception: {ex}")
             continue
 
     return {"text": "", "model_used": "none", "provider": "none"}
