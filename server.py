@@ -7034,8 +7034,10 @@ async def builder_unified_chat(request: Request):
             result = {"text": "", "model_used": "none", "provider": "none"}
 
             # Step 1: Primary model with full code system prompt (chain auto-fallback inside _builder_ai_call)
-            print(f"[Builder Code] Step 1 with {primary_model}")
-            result = await _builder_ai_call(BUILDER_CODE_SYSTEM, user_msg, primary_model, 64000, timeout_seconds=90)
+            # Use grok as preferred for code — proven fast for multi-file generation
+            code_preferred = "grok" if "grok" in available_model_ids else primary_model
+            print(f"[Builder Code] Step 1 with {code_preferred} (chain: {available_model_ids})")
+            result = await _builder_ai_call(BUILDER_CODE_SYSTEM, user_msg, code_preferred, 64000, timeout_seconds=75)
             if result['text']:
                 files_data, desc_text = _extract_code_files(result['text'])
 
