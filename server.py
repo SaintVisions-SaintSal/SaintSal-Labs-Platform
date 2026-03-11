@@ -6957,18 +6957,20 @@ async def builder_unified_chat(request: Request):
                 # Strategy 0b: Fix invalid JSON escape sequences (e.g. \s \d \. from regex in code)
                 if '{"files"' in stripped or '"files":' in stripped:
                     try:
+                        _valid_json_escapes = set('"' + chr(92) + 'bfnrtu/')
+                        _bs = chr(92)  # backslash character
                         fixed_chars = []
                         i = 0
                         while i < len(stripped):
-                            if stripped[i] == '\\' and i + 1 < len(stripped):
+                            if stripped[i] == _bs and i + 1 < len(stripped):
                                 nxt = stripped[i+1]
-                                if nxt in '"\\bfnrtu/':
-                                    fixed_chars.append(stripped[i])
+                                if nxt in _valid_json_escapes:
+                                    fixed_chars.append(_bs)
                                     fixed_chars.append(nxt)
                                     i += 2
                                 else:
-                                    fixed_chars.append('\\')
-                                    fixed_chars.append('\\')
+                                    fixed_chars.append(_bs)
+                                    fixed_chars.append(_bs)
                                     fixed_chars.append(nxt)
                                     i += 2
                             else:
