@@ -84,6 +84,50 @@ if SUPABASE_URL and SUPABASE_SERVICE_KEY:
         print(f"⚠️ Supabase admin client failed: {e}")
 
 
+# v7.40.0 — Auto-create conversations table on startup
+@app.on_event("startup")
+async def _ensure_conversations_table():
+    """Create conversations table in Supabase if it doesn't exist."""
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        return
+    try:
+        async with httpx.AsyncClient(timeout=15) as hc:
+            # Quick check: try to read from conversations
+            r = await hc.get(
+                f"{SUPABASE_URL}/rest/v1/conversations",
+                headers={"apikey": SUPABASE_SERVICE_KEY, "Authorization": f"Bearer {SUPABASE_SERVICE_KEY}"},
+                params={"limit": "1"},
+            )
+            if r.status_code == 200:
+                print("✅ Supabase conversations table exists")
+            elif r.status_code in (404, 400):
+                # Table doesn't exist — create it via SQL RPC
+                # First create an exec_sql function, then use it
+                sql = """
+                CREATE TABLE IF NOT EXISTS public.conversations (
+                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    user_id UUID NOT NULL,
+                    title TEXT NOT NULL DEFAULT 'New Conversation',
+                    conv_type TEXT NOT NULL DEFAULT 'chat',
+                    vertical TEXT DEFAULT 'search',
+                    messages JSONB DEFAULT '[]'::jsonb,
+                    message_count INTEGER DEFAULT 0,
+                    preview TEXT DEFAULT '',
+                    created_at TIMESTAMPTZ DEFAULT now(),
+                    updated_at TIMESTAMPTZ DEFAULT now()
+                );
+                CREATE INDEX IF NOT EXISTS idx_conversations_user_id ON public.conversations(user_id);
+                CREATE INDEX IF NOT EXISTS idx_conversations_user_type ON public.conversations(user_id, conv_type);
+                CREATE INDEX IF NOT EXISTS idx_conversations_updated ON public.conversations(updated_at DESC);
+                """
+                print(f"⚠️ Conversations table not found (HTTP {r.status_code}). Table needs to be created via Supabase SQL Editor.")
+                print(f"   Conversation persistence will fall back to filesystem until table is created.")
+            else:
+                print(f"⚠️ Conversations table check returned HTTP {r.status_code}")
+    except Exception as e:
+        print(f"⚠️ Conversations table check failed: {e}")
+
+
 async def get_current_user(authorization: Optional[str] = Header(None)):
     """Extract and verify user from JWT Bearer token."""
     if not authorization or not authorization.startswith("Bearer "):
@@ -137,7 +181,9 @@ GOOGLE_MAPS_KEY = os.environ.get("GOOGLE_MAPS_KEY", "AIzaSyA2RxjYuME6mEa1-Sb-8Zf
 # ─── System Prompts by Vertical ───────────────────────────────────────────────
 
 SYSTEM_PROMPTS = {
-    "search": """You are SaintSal™, an AI assistant powered by HACP™ (Human-AI Connection Protocol, Patent #10,290,222). Built by Saint Vision Technologies.
+    "search": """You are SaintSal™ (SAL), the AI assistant for SaintSal™ Labs. Powered by HACP™ (Human-AI Connection Protocol, US Patent #10,290,222). Built by Saint Vision Technologies.
+
+IDENTITY: You are SAL — SaintSal™. NEVER identify yourself as Perplexity, ChatGPT, Claude, Grok, Gemini, or any other AI. You are SAL. If asked who you are, say "I'm SAL, the SaintSal™ AI assistant."
 
 CRITICAL RULES — follow these without exception:
 1. EXECUTE, never guide. When a user asks you to do something, DO IT. Never respond with "here's how you could do it" or "here are the steps." Deliver the actual finished product.
@@ -151,7 +197,7 @@ CRITICAL RULES — follow these without exception:
 
 You represent Responsible Intelligence — accurate, ethical, human-centered AI that DELIVERS.""",
 
-    "sports": """You are SaintSal™ Sports, an AI sports analyst powered by HACP™ (Human-AI Connection Protocol, Patent #10,290,222).
+    "sports": """You are SaintSal™ Sports (SAL Sports), the AI sports analyst for SaintSal™ Labs. Powered by HACP™ (Human-AI Connection Protocol, US Patent #10,290,222). You are SAL — never identify as Perplexity, ChatGPT, Claude, Grok, or any other AI.
 
 CRITICAL: EXECUTE, don't guide. Deliver actual scores, stats, and analysis — not directions to find them.
 - Give EXACT scores, standings, and stats from search results. Cite with [1], [2] etc.
@@ -163,7 +209,7 @@ CRITICAL: EXECUTE, don't guide. Deliver actual scores, stats, and analysis — n
 
 Be energetic, authoritative, and specific. Numbers, names, dates — always.""",
 
-    "news": """You are SaintSal™ News, an AI news analyst powered by HACP™ (Human-AI Connection Protocol, Patent #10,290,222).
+    "news": """You are SaintSal™ News (SAL News), the AI news analyst for SaintSal™ Labs. Powered by HACP™ (Human-AI Connection Protocol, US Patent #10,290,222). You are SAL — never identify as Perplexity, ChatGPT, Claude, Grok, or any other AI.
 
 CRITICAL: EXECUTE, don't guide. Deliver the actual news briefing — not tips on how to stay informed.
 - Lead with WHAT HAPPENED: who, what, where, when, why. Hard facts first.
@@ -174,7 +220,7 @@ CRITICAL: EXECUTE, don't guide. Deliver the actual news briefing — not tips on
 
 Be direct, factual, and thorough. Deliver a newsroom-quality briefing every time.""",
 
-    "tech": """You are SaintSal™ Tech, an AI technology analyst powered by HACP™ (Human-AI Connection Protocol, Patent #10,290,222).
+    "tech": """You are SaintSal™ Tech (SAL Tech), the AI technology analyst for SaintSal™ Labs. Powered by HACP™ (Human-AI Connection Protocol, US Patent #10,290,222). You are SAL — never identify as Perplexity, ChatGPT, Claude, Grok, or any other AI.
 
 CRITICAL: EXECUTE, don't guide. Deliver actual technical analysis and breakdowns — not suggestions to "look into" something.
 - Give SPECIFIC details: model names, version numbers, benchmark scores, pricing, release dates.
@@ -184,7 +230,7 @@ CRITICAL: EXECUTE, don't guide. Deliver actual technical analysis and breakdowns
 - Code and technical concepts: explain with real examples, not abstractions.
 - Cite with [1], [2] etc. Be precise and technically rigorous.""",
 
-    "realestate": """You are SaintSal™ Real Estate, an AI real estate investment analyst powered by HACP™ (Human-AI Connection Protocol, Patent #10,290,222).
+    "realestate": """You are SaintSal™ Real Estate (SAL Real Estate), the AI real estate investment analyst for SaintSal™ Labs. Powered by HACP™ (Human-AI Connection Protocol, US Patent #10,290,222). You are SAL — never identify as Perplexity, ChatGPT, Claude, Grok, or any other AI.
 
 CRITICAL: EXECUTE, don't guide. Deliver actual property analysis and investment calculations — not advice to "consider" factors.
 - Run the numbers: cap rates, cash-on-cash returns, NOI, DSCR, GRM. Show the math.
@@ -194,7 +240,7 @@ CRITICAL: EXECUTE, don't guide. Deliver actual property analysis and investment 
 - Investment deals: run a full pro forma with purchase price, rehab costs, ARV, holding costs, and projected returns.
 - Disclaimer: This is for informational purposes and does not constitute investment advice.""",
 
-    "finance": """You are SaintSal™ Finance, an AI financial analyst powered by HACP™ (Human-AI Connection Protocol, Patent #10,290,222).
+    "finance": """You are SaintSal™ Finance (SAL Finance), the AI financial analyst for SaintSal™ Labs. Powered by HACP™ (Human-AI Connection Protocol, US Patent #10,290,222). You are SAL — never identify as Perplexity, ChatGPT, Claude, Grok, or any other AI.
 
 CRITICAL: EXECUTE, don't guide. Deliver actual market data and financial analysis — not tips on how to research.
 - Give EXACT prices, changes, percentages, and volume from search results. Cite with [1], [2] etc.
@@ -492,7 +538,8 @@ async def chat(request: Request):
         ai_responded = False
 
         # ═══ PRIMARY: Gemini 2.5 Flash (streaming via SSE) ═══
-        if GEMINI_API_KEY and not ai_responded:
+        _gemini_is_real = GEMINI_API_KEY and GEMINI_API_KEY != "AIzaSyDZOserUM2HQfXVDmlV_l_A2d8q9Gbb0RI"
+        if _gemini_is_real and not ai_responded:
             try:
                 import httpx as _httpx
                 gemini_messages = []
@@ -568,6 +615,41 @@ async def chat(request: Request):
             except Exception as e:
                 print(f"[Chat] xAI/Grok error: {e}")
 
+        # ═══ FALLBACK 3: Perplexity Sonar Pro (streaming) ═══
+        if not ai_responded and PPLX_API_KEY:
+            try:
+                import httpx as _httpx_pplx
+                pplx_msgs = [{"role": "system", "content": system_prompt}]
+                for msg in messages:
+                    pplx_msgs.append({"role": msg["role"], "content": msg["content"]})
+                with _httpx_pplx.Client(timeout=60.0) as _pplx_http:
+                    with _pplx_http.stream(
+                        "POST",
+                        "https://api.perplexity.ai/chat/completions",
+                        headers={"Authorization": f"Bearer {PPLX_API_KEY}", "Content-Type": "application/json"},
+                        json={"model": "sonar-pro", "max_tokens": 4096, "temperature": 0.7,
+                              "messages": pplx_msgs, "stream": True},
+                    ) as pplx_stream:
+                        if pplx_stream.status_code == 200:
+                            for line in pplx_stream.iter_lines():
+                                if line.startswith("data: "):
+                                    chunk_str = line[6:].strip()
+                                    if chunk_str == "[DONE]":
+                                        break
+                                    try:
+                                        chunk_data = json.loads(chunk_str)
+                                        delta = chunk_data.get("choices", [{}])[0].get("delta", {})
+                                        text_chunk = delta.get("content", "")
+                                        if text_chunk:
+                                            yield f"data: {json.dumps({'type': 'text', 'content': text_chunk})}\n\n"
+                                            ai_responded = True
+                                    except json.JSONDecodeError:
+                                        pass
+                        else:
+                            print(f"[Chat] Perplexity HTTP {pplx_stream.status_code}")
+            except Exception as e:
+                print(f"[Chat] Perplexity streaming error: {e}")
+
         # Final fallback: use Tavily AI answer or Perplexity answer
         # NOTE: Do NOT append raw Sources markdown — sources are already rendered as pills above
         if not ai_responded:
@@ -585,7 +667,7 @@ async def chat(request: Request):
                 for i, s in enumerate(sources):
                     fallback += f"**{s['title']}** — {s['content']}\n\n"
             else:
-                fallback = "*I couldn't find results for that query. Please try rephrasing or try a different search.*"
+                fallback = "I'm having trouble connecting to my AI models right now. Please try again in a moment."
             yield f"data: {json.dumps({'type': 'text', 'content': fallback})}\n\n"
 
         yield f"data: {json.dumps({'type': 'done'})}\n\n"
@@ -603,7 +685,7 @@ async def chat(request: Request):
 
 
 # ============================================================================
-# CONVERSATIONS — Full persistence (save, load, list, rename, delete)
+# CONVERSATIONS — v7.40.0: Supabase-persistent (survives Render restarts)
 # ============================================================================
 import hashlib
 
@@ -638,10 +720,99 @@ def _summarize_for_preview(messages: list) -> str:
             return text
     return ""
 
+# v7.40.0 — Supabase conversation helpers
+async def _supa_conv_upsert(conv_data: dict) -> bool:
+    """Upsert a conversation into Supabase."""
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        return False
+    try:
+        async with httpx.AsyncClient(timeout=10) as hc:
+            r = await hc.post(
+                f"{SUPABASE_URL}/rest/v1/conversations",
+                headers={
+                    "apikey": SUPABASE_SERVICE_KEY,
+                    "Authorization": f"Bearer {SUPABASE_SERVICE_KEY}",
+                    "Content-Type": "application/json",
+                    "Prefer": "resolution=merge-duplicates",
+                },
+                json=conv_data,
+            )
+            return r.status_code in (200, 201)
+    except Exception as e:
+        print(f"[Conv] Supabase upsert error: {e}")
+        return False
+
+async def _supa_conv_list(user_id: str, conv_type: str = "chat", limit: int = 50) -> list:
+    """List conversations from Supabase."""
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        return []
+    try:
+        async with httpx.AsyncClient(timeout=10) as hc:
+            r = await hc.get(
+                f"{SUPABASE_URL}/rest/v1/conversations",
+                headers={
+                    "apikey": SUPABASE_SERVICE_KEY,
+                    "Authorization": f"Bearer {SUPABASE_SERVICE_KEY}",
+                },
+                params={
+                    "user_id": f"eq.{user_id}",
+                    "conv_type": f"eq.{conv_type}",
+                    "select": "id,title,conv_type,vertical,message_count,preview,updated_at",
+                    "order": "updated_at.desc",
+                    "limit": str(limit),
+                },
+            )
+            if r.status_code == 200:
+                return r.json()
+    except Exception as e:
+        print(f"[Conv] Supabase list error: {e}")
+    return []
+
+async def _supa_conv_get(conv_id: str, user_id: str) -> dict:
+    """Get a single conversation from Supabase."""
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        return {}
+    try:
+        async with httpx.AsyncClient(timeout=10) as hc:
+            r = await hc.get(
+                f"{SUPABASE_URL}/rest/v1/conversations",
+                headers={
+                    "apikey": SUPABASE_SERVICE_KEY,
+                    "Authorization": f"Bearer {SUPABASE_SERVICE_KEY}",
+                },
+                params={"id": f"eq.{conv_id}", "user_id": f"eq.{user_id}", "select": "*", "limit": "1"},
+            )
+            if r.status_code == 200:
+                rows = r.json()
+                if rows:
+                    return rows[0]
+    except Exception as e:
+        print(f"[Conv] Supabase get error: {e}")
+    return {}
+
+async def _supa_conv_delete(conv_id: str, user_id: str) -> bool:
+    """Delete a conversation from Supabase."""
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        return False
+    try:
+        async with httpx.AsyncClient(timeout=10) as hc:
+            r = await hc.delete(
+                f"{SUPABASE_URL}/rest/v1/conversations",
+                headers={
+                    "apikey": SUPABASE_SERVICE_KEY,
+                    "Authorization": f"Bearer {SUPABASE_SERVICE_KEY}",
+                },
+                params={"id": f"eq.{conv_id}", "user_id": f"eq.{user_id}"},
+            )
+            return r.status_code in (200, 204)
+    except Exception as e:
+        print(f"[Conv] Supabase delete error: {e}")
+    return False
+
 
 @app.post("/api/conversations")
 async def save_conversation(request: Request, authorization: str = Header(None)):
-    """Save or update a conversation."""
+    """Save or update a conversation. v7.40.0: Supabase-persistent."""
     user = await get_current_user(authorization)
     if not user:
         raise HTTPException(status_code=401, detail="Sign in to save conversations")
@@ -651,33 +822,31 @@ async def save_conversation(request: Request, authorization: str = Header(None))
     messages = body.get("messages", [])
     title = body.get("title") or _generate_title(messages)
     vertical = body.get("vertical", "search")
-    conv_type = body.get("type", "chat")  # "chat" or "builder"
-    
-    user_dir = _user_conv_dir(user["id"])
-    conv_file = user_dir / f"{conv_id}.json"
-    
-    created_at = datetime.now().isoformat()
-    if conv_file.exists():
-        try:
-            existing = json.loads(conv_file.read_text())
-            created_at = existing.get("created_at", created_at)
-        except Exception:
-            pass
+    conv_type = body.get("type", "chat")
     
     conv_data = {
         "id": conv_id,
         "user_id": user["id"],
         "title": title,
-        "type": conv_type,
+        "conv_type": conv_type,
         "vertical": vertical,
         "messages": messages,
         "message_count": len(messages),
         "preview": _summarize_for_preview(messages),
-        "created_at": created_at,
         "updated_at": datetime.now().isoformat(),
     }
     
-    conv_file.write_text(json.dumps(conv_data, ensure_ascii=False))
+    # Save to Supabase (persistent)
+    await _supa_conv_upsert(conv_data)
+    
+    # Also save to filesystem (backup)
+    try:
+        user_dir = _user_conv_dir(user["id"])
+        conv_file = user_dir / f"{conv_id}.json"
+        conv_data["type"] = conv_type
+        conv_file.write_text(json.dumps(conv_data, ensure_ascii=False))
+    except Exception:
+        pass
     
     return {
         "id": conv_id,
@@ -695,117 +864,112 @@ async def list_conversations(
     limit: int = 50,
     offset: int = 0,
 ):
-    """List user's conversations (most recent first)."""
+    """List user's conversations. v7.40.0: Supabase-first."""
     user = await get_current_user(authorization)
     if not user:
-        raise HTTPException(status_code=401, detail="Sign in to view conversations")
+        return JSONResponse({"detail": "Sign in to view conversations"}, status_code=401)
     
+    # Try Supabase first (persistent)
+    convs = await _supa_conv_list(user["id"], conv_type, limit)
+    if convs:
+        return {"conversations": convs, "total": len(convs)}
+    
+    # Fallback to filesystem
     user_dir = _user_conv_dir(user["id"])
     conversations = []
-    
     for f in user_dir.glob("*.json"):
         try:
             data = json.loads(f.read_text())
-            if data.get("type", "chat") != conv_type:
+            if data.get("type", "chat") != conv_type and data.get("conv_type", "chat") != conv_type:
                 continue
-            conversations.append({
-                "id": data["id"],
-                "title": data.get("title", "Untitled"),
-                "type": data.get("type", "chat"),
-                "vertical": data.get("vertical", "search"),
-                "message_count": data.get("message_count", 0),
-                "preview": data.get("preview", ""),
-                "created_at": data.get("created_at", ""),
-                "updated_at": data.get("updated_at", ""),
-            })
+            conversations.append(data)
         except Exception:
             continue
-    
     conversations.sort(key=lambda c: c.get("updated_at", ""), reverse=True)
-    
-    return {
-        "conversations": conversations[offset:offset + limit],
-        "total": len(conversations),
-    }
+    return {"conversations": conversations[offset:offset+limit], "total": len(conversations)}
+
 
 
 @app.get("/api/conversations/{conv_id}")
 async def get_conversation(conv_id: str, authorization: str = Header(None)):
-    """Load a full conversation with all messages."""
+    """Get a conversation. v7.40.0: Supabase-first."""
     user = await get_current_user(authorization)
     if not user:
         raise HTTPException(status_code=401, detail="Sign in to view conversations")
     
+    # Try Supabase
+    conv = await _supa_conv_get(conv_id, user["id"])
+    if conv:
+        return conv
+    
+    # Fallback to filesystem
     user_dir = _user_conv_dir(user["id"])
     conv_file = user_dir / f"{conv_id}.json"
-    
-    if not conv_file.exists():
-        raise HTTPException(status_code=404, detail="Conversation not found")
-    
-    try:
-        data = json.loads(conv_file.read_text())
-        if data.get("user_id") != user["id"]:
-            raise HTTPException(status_code=403, detail="Access denied")
-        return data
-    except HTTPException:
-        raise
-    except Exception:
-        raise HTTPException(status_code=500, detail="Failed to load conversation")
+    if conv_file.exists():
+        try:
+            data = json.loads(conv_file.read_text())
+            if data.get("user_id") == user["id"]:
+                return data
+        except Exception:
+            pass
+    raise HTTPException(status_code=404, detail="Conversation not found")
+
 
 
 @app.patch("/api/conversations/{conv_id}")
 async def update_conversation(conv_id: str, request: Request, authorization: str = Header(None)):
-    """Update conversation title or metadata."""
+    """Update conversation. v7.40.0: Supabase + filesystem."""
     user = await get_current_user(authorization)
     if not user:
         raise HTTPException(status_code=401, detail="Sign in required")
     
     body = await request.json()
-    user_dir = _user_conv_dir(user["id"])
-    conv_file = user_dir / f"{conv_id}.json"
-    
-    if not conv_file.exists():
+    conv = await _supa_conv_get(conv_id, user["id"])
+    if not conv:
+        user_dir = _user_conv_dir(user["id"])
+        conv_file = user_dir / f"{conv_id}.json"
+        if conv_file.exists():
+            conv = json.loads(conv_file.read_text())
+    if not conv:
         raise HTTPException(status_code=404, detail="Conversation not found")
     
-    data = json.loads(conv_file.read_text())
-    if data.get("user_id") != user["id"]:
-        raise HTTPException(status_code=403, detail="Access denied")
-    
     if "title" in body:
-        data["title"] = body["title"]
+        conv["title"] = body["title"]
     if "messages" in body:
-        data["messages"] = body["messages"]
-        data["message_count"] = len(body["messages"])
-        data["preview"] = _summarize_for_preview(body["messages"])
+        conv["messages"] = body["messages"]
+        conv["message_count"] = len(body["messages"])
+        conv["preview"] = _summarize_for_preview(body["messages"])
+    conv["updated_at"] = datetime.now().isoformat()
     
-    data["updated_at"] = datetime.now().isoformat()
-    conv_file.write_text(json.dumps(data, ensure_ascii=False))
+    await _supa_conv_upsert(conv)
+    try:
+        user_dir = _user_conv_dir(user["id"])
+        (user_dir / f"{conv_id}.json").write_text(json.dumps(conv, ensure_ascii=False))
+    except Exception:
+        pass
     
-    return {"id": conv_id, "title": data["title"], "updated_at": data["updated_at"]}
+    return {"id": conv_id, "title": conv.get("title", ""), "updated_at": conv["updated_at"]}
+
 
 
 @app.delete("/api/conversations/{conv_id}")
 async def delete_conversation(conv_id: str, authorization: str = Header(None)):
-    """Delete a conversation."""
+    """Delete a conversation. v7.40.0: Supabase + filesystem."""
     user = await get_current_user(authorization)
     if not user:
         raise HTTPException(status_code=401, detail="Sign in required")
     
-    user_dir = _user_conv_dir(user["id"])
-    conv_file = user_dir / f"{conv_id}.json"
-    
-    if not conv_file.exists():
-        raise HTTPException(status_code=404, detail="Conversation not found")
-    
-    data = json.loads(conv_file.read_text())
-    if data.get("user_id") != user["id"]:
-        raise HTTPException(status_code=403, detail="Access denied")
-    
-    conv_file.unlink()
+    await _supa_conv_delete(conv_id, user["id"])
+    try:
+        user_dir = _user_conv_dir(user["id"])
+        conv_file = user_dir / f"{conv_id}.json"
+        if conv_file.exists():
+            conv_file.unlink()
+    except Exception:
+        pass
     return {"deleted": True, "id": conv_id}
 
 
-# ─── WebSocket Chat with Real-Time Streaming ──────────────────────────────────
 
 @app.websocket("/ws/chat")
 async def websocket_chat(websocket: WebSocket):
@@ -891,6 +1055,27 @@ async def websocket_chat(websocket: WebSocket):
                 except Exception as e:
                     print(f"[WS] xAI/Grok error: {e}")
 
+            # ═══ FALLBACK 3 (WS): Perplexity Sonar Pro ═══
+            if not ai_responded and PPLX_API_KEY:
+                try:
+                    pplx_msgs = [{"role": "system", "content": system_prompt}]
+                    for msg in messages:
+                        pplx_msgs.append({"role": msg["role"], "content": msg["content"]})
+                    async with httpx.AsyncClient(timeout=60) as _pplx_ws:
+                        pplx_r = await _pplx_ws.post(
+                            "https://api.perplexity.ai/chat/completions",
+                            headers={"Authorization": f"Bearer {PPLX_API_KEY}", "Content-Type": "application/json"},
+                            json={"model": "sonar-pro", "max_tokens": 4096, "temperature": 0.7, "messages": pplx_msgs},
+                        )
+                        if pplx_r.status_code == 200:
+                            pplx_data = pplx_r.json()
+                            pplx_text = pplx_data.get("choices", [{}])[0].get("message", {}).get("content", "")
+                            if pplx_text:
+                                await websocket.send_json({"type": "text", "content": pplx_text})
+                                ai_responded = True
+                except Exception as e:
+                    print(f"[WS] Perplexity error: {e}")
+
             # Final fallback: Tavily AI answer or raw sources
             # NOTE: Do NOT append raw Sources markdown — sources are already rendered as pills
             if not ai_responded:
@@ -901,7 +1086,7 @@ async def websocket_chat(websocket: WebSocket):
                     for i, s in enumerate(sources):
                         fallback += f"**{s['title']}** — {s['content']}\n\n"
                 else:
-                    fallback = "*I couldn't find results for that query. Please try rephrasing.*"
+                    fallback = "I'm having trouble connecting right now. Please try again in a moment."
                 await websocket.send_json({"type": "text", "content": fallback})            
             # Done
             await websocket.send_json({"type": "done"})
@@ -2552,7 +2737,7 @@ async def research_status():
 # GEMINI CHAT — Google Gemini for multimodal chat (Pro+ tier)
 # ═══════════════════════════════════════════════════════════════════════════════
 
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "AIzaSyDZOserUM2HQfXVDmlV_l_A2d8q9Gbb0RI")
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")  # v7.40.0: removed dead default key
 print(f"{'✅' if GEMINI_API_KEY else '⚠️'} Gemini API key {'configured' if GEMINI_API_KEY else 'not set'}")
 
 async def gemini_chat(query: str, history: list = None, system_prompt: str = "") -> dict:
