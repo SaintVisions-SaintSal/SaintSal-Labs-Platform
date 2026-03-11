@@ -6490,7 +6490,7 @@ Original request: """
 TIER_FEATURES = {
     "free": {
         "models": ["claude_haiku", "gemini_flash", "gpt5_fast", "grok3_mini"],
-        "builder_code": False,
+        "builder_code": "basic",  # v7.41.0 — Allow basic code gen for free tier so Builder actually works
         "builder_image": False,
         "builder_video": False,
         "builder_audio": False,
