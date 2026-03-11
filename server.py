@@ -7022,9 +7022,9 @@ async def builder_unified_chat(request: Request):
                             pass
                 return None, text
 
-            # ═══ CODE GENERATION — v7.41.1 Fast Pipeline (2-step max) ═══
-            # Step 1: Primary model call (90s timeout, falls through chain automatically)
-            # Step 2: Raw text extraction fallback (no extra API call)
+            # ═══ CODE GENERATION — v7.42.0 Keepalive Pipeline ═══
+            # Runs AI call in background task while sending SSE keepalive pings
+            # every 5s to prevent Cloudflare/Render proxy from killing idle connection
             primary_model = BUILDER_MODEL_CHAIN[0]["id"] if BUILDER_MODEL_CHAIN else "pplx"
             available_model_ids = [m["id"] for m in BUILDER_MODEL_CHAIN]
             print(f"[Builder Code] Available models: {available_model_ids}. Primary: {primary_model}")
@@ -7033,11 +7033,40 @@ async def builder_unified_chat(request: Request):
             desc_text = ""
             result = {"text": "", "model_used": "none", "provider": "none"}
 
-            # Step 1: Primary model with full code system prompt (chain auto-fallback inside _builder_ai_call)
             # Use grok as preferred for code — proven fast for multi-file generation
             code_preferred = "grok" if "grok" in available_model_ids else primary_model
             print(f"[Builder Code] Step 1 with {code_preferred} (chain: {available_model_ids})")
-            result = await _builder_ai_call(BUILDER_CODE_SYSTEM, user_msg, code_preferred, 64000, timeout_seconds=75)
+
+            # Run AI call in background while sending keepalive pings
+            import asyncio as _aio_code
+            _code_result_holder = {"done": False, "result": {"text": "", "model_used": "none", "provider": "none"}}
+            _progress_msgs = ["Analyzing your request...", "Generating HTML structure...", "Styling with CSS...",
+                              "Adding interactivity...", "Building responsive layout...", "Optimizing code...",
+                              "Assembling files...", "Finalizing your project...", "Almost there..."]
+
+            async def _run_code_gen():
+                try:
+                    _code_result_holder["result"] = await _builder_ai_call(BUILDER_CODE_SYSTEM, user_msg, code_preferred, 64000, timeout_seconds=90)
+                except Exception as _e:
+                    print(f"[Builder Code] Background task error: {_e}")
+                finally:
+                    _code_result_holder["done"] = True
+
+            _code_task = _aio_code.create_task(_run_code_gen())
+
+            # Send keepalive progress pings every 5 seconds while AI works
+            _ping_count = 0
+            while not _code_result_holder["done"]:
+                await _aio_code.sleep(5)
+                if _code_result_holder["done"]:
+                    break
+                _ping_count += 1
+                _msg = _progress_msgs[min(_ping_count - 1, len(_progress_msgs) - 1)]
+                yield f"data: {json.dumps({'type': 'phase', 'phase': 'generating', 'message': _msg})}\n\n"
+                print(f"[Builder Code] Keepalive ping #{_ping_count}: {_msg}")
+
+            await _code_task  # Ensure task is fully done
+            result = _code_result_holder["result"]
             if result['text']:
                 files_data, desc_text = _extract_code_files(result['text'])
 

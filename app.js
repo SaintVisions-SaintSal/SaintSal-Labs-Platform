@@ -5469,7 +5469,7 @@ async function builderSend() {
       var ib = asstMsg.querySelector('.builder-intent-badge');
       if (ib) { ib.textContent = 'CANCELLED'; ib.style.background = 'rgba(107,114,128,0.15)'; ib.style.color = '#9ca3af'; ib.style.border = '1px solid rgba(107,114,128,0.3)'; }
     } else if (buildTimedOut) {
-      contentEl.innerHTML += '<div style="color:#f59e0b;font-size:13px;padding:8px 0;">Build timed out after 2 minutes. Try a simpler request or try again.</div>';
+      contentEl.innerHTML += '<div style="color:#f59e0b;font-size:13px;padding:8px 0;">Build timed out. Try a simpler request or try again.</div>';
       var ib2 = asstMsg.querySelector('.builder-intent-badge');
       if (ib2) { ib2.textContent = 'TIMED OUT'; ib2.style.background = 'rgba(245,158,11,0.15)'; ib2.style.color = '#f59e0b'; ib2.style.border = '1px solid rgba(245,158,11,0.3)'; }
     } else {
