@@ -6937,6 +6937,53 @@ async def builder_unified_chat(request: Request):
             def _extract_code_files(text: str):
                 """Try multiple strategies to extract {files: [...]} from AI response."""
                 import re as _re2
+
+                # Strategy 0 (v7.42.0): Direct json.loads on full text (handles clean JSON from Grok/Claude)
+                stripped = text.strip()
+                # Remove markdown code fence if present
+                if stripped.startswith('```'):
+                    # Remove opening ``` and optional language tag
+                    stripped = _re2.sub(r'^```(?:json)?\s*', '', stripped)
+                    stripped = _re2.sub(r'\s*```\s*$', '', stripped)
+                try:
+                    parsed = json.loads(stripped)
+                    if isinstance(parsed.get('files'), list) and len(parsed['files']) > 0:
+                        first_file = parsed['files'][0]
+                        if first_file.get('content') and len(first_file['content']) > 50:
+                            return parsed, ''
+                except (json.JSONDecodeError, KeyError, TypeError):
+                    pass
+
+                # Strategy 0b: Fix invalid JSON escape sequences (e.g. \s \d \. from regex in code)
+                if '{"files"' in stripped or '"files":' in stripped:
+                    try:
+                        fixed_chars = []
+                        i = 0
+                        while i < len(stripped):
+                            if stripped[i] == '\\' and i + 1 < len(stripped):
+                                nxt = stripped[i+1]
+                                if nxt in '"\\bfnrtu/':
+                                    fixed_chars.append(stripped[i])
+                                    fixed_chars.append(nxt)
+                                    i += 2
+                                else:
+                                    fixed_chars.append('\\')
+                                    fixed_chars.append('\\')
+                                    fixed_chars.append(nxt)
+                                    i += 2
+                            else:
+                                fixed_chars.append(stripped[i])
+                                i += 1
+                        fixed = ''.join(fixed_chars)
+                        parsed = json.loads(fixed)
+                        if isinstance(parsed.get('files'), list) and len(parsed['files']) > 0:
+                            first_file = parsed['files'][0]
+                            if first_file.get('content') and len(first_file['content']) > 50:
+                                print(f"[Builder Code] Strategy 0b: Fixed JSON escapes, extracted {len(parsed['files'])} files")
+                                return parsed, ''
+                    except (json.JSONDecodeError, KeyError, TypeError) as _fix_err:
+                        print(f"[Builder Code] Strategy 0b failed: {_fix_err}")
+
                 # Strategy 1: ```json ... ``` block
                 m = _re2.search(r'```(?:json)?\s*(\{[\s\S]*?"files"\s*:\s*\[)', text)
                 if m:
