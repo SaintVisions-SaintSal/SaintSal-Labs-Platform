@@ -7022,8 +7022,9 @@ async def builder_unified_chat(request: Request):
                             pass
                 return None, text
 
-            # ═══ CODE GENERATION — v7.39.0 Reliable Pipeline ═══
-            # Only try models that actually exist in the chain (no dead-model timeouts)
+            # ═══ CODE GENERATION — v7.41.1 Fast Pipeline (2-step max) ═══
+            # Step 1: Primary model call (90s timeout, falls through chain automatically)
+            # Step 2: Raw text extraction fallback (no extra API call)
             primary_model = BUILDER_MODEL_CHAIN[0]["id"] if BUILDER_MODEL_CHAIN else "pplx"
             available_model_ids = [m["id"] for m in BUILDER_MODEL_CHAIN]
             print(f"[Builder Code] Available models: {available_model_ids}. Primary: {primary_model}")
@@ -7032,36 +7033,13 @@ async def builder_unified_chat(request: Request):
             desc_text = ""
             result = {"text": "", "model_used": "none", "provider": "none"}
 
-            # Attempt 1: Primary model with full code system prompt
-            print(f"[Builder Code] Attempt 1 with {primary_model}")
-            result = await _builder_ai_call(BUILDER_CODE_SYSTEM, user_msg, primary_model, 64000)
+            # Step 1: Primary model with full code system prompt (chain auto-fallback inside _builder_ai_call)
+            print(f"[Builder Code] Step 1 with {primary_model}")
+            result = await _builder_ai_call(BUILDER_CODE_SYSTEM, user_msg, primary_model, 64000, timeout_seconds=90)
             if result['text']:
                 files_data, desc_text = _extract_code_files(result['text'])
 
-            # Attempt 2: If no valid JSON, retry with explicit RETRY prompt on same model
-            if not files_data:
-                print(f"[Builder Code] Attempt 1 failed (no JSON files). Retrying with explicit format...")
-                yield f"data: {json.dumps({'type': 'phase', 'phase': 'generating', 'message': 'Refining code output...'})}\n\n"
-                retry_msg = BUILDER_CODE_RETRY + user_msg
-                result2 = await _builder_ai_call(BUILDER_CODE_SYSTEM, retry_msg, primary_model, 64000)
-                if result2['text']:
-                    files_data, desc_text = _extract_code_files(result2['text'])
-                    if files_data:
-                        result = result2
-
-            # Attempt 3: Try a DIFFERENT model, but ONLY if it exists in the chain
-            if not files_data and len(BUILDER_MODEL_CHAIN) > 1:
-                # Pick the second model in the chain (guaranteed to have an API key)
-                alt_model = BUILDER_MODEL_CHAIN[1]["id"]
-                print(f"[Builder Code] Attempt 2 failed. Trying alt model {alt_model}...")
-                yield f"data: {json.dumps({'type': 'phase', 'phase': 'generating', 'message': 'Trying alternate engine...'})}\n\n"
-                result3 = await _builder_ai_call(BUILDER_CODE_SYSTEM, user_msg, alt_model, 64000)
-                if result3['text']:
-                    files_data, desc_text = _extract_code_files(result3['text'])
-                    if files_data:
-                        result = result3
-
-            # Attempt 4 (last resort): If we have raw text but no JSON, try to construct files from it
+            # Step 2 (last resort): If we have raw text but no JSON, try to construct files from it
             if not files_data and result.get('text') and len(result['text']) > 500:
                 print(f"[Builder Code] No JSON found. Attempting raw-text-to-files extraction...")
                 raw = result['text']
@@ -7249,8 +7227,8 @@ def get_builder_model_chain(compute_tier: str = "pro") -> list:
     return chain if chain else BUILDER_MODEL_CHAIN
 
 
-async def _builder_ai_call(system: str, user_msg: str, preferred_model: str = "claude", max_tokens: int = 32000) -> dict:
-    """Call AI with automatic fallback chain. Uses module-level API key variables. 60s timeout per model."""
+async def _builder_ai_call(system: str, user_msg: str, preferred_model: str = "claude", max_tokens: int = 32000, timeout_seconds: int = 90) -> dict:
+    """Call AI with automatic fallback chain. Uses module-level API key variables."""
     # Order chain: preferred model first, then rest
     chain = sorted(BUILDER_MODEL_CHAIN, key=lambda m: 0 if m["id"] == preferred_model else 1)
 
@@ -7262,7 +7240,7 @@ async def _builder_ai_call(system: str, user_msg: str, preferred_model: str = "c
             if provider == "anthropic":
                 key = os.environ.get("ANTHROPIC_API_KEY", "")
                 if not key: continue
-                async with httpx.AsyncClient(timeout=60) as hc:
+                async with httpx.AsyncClient(timeout=timeout_seconds) as hc:
                     r = await hc.post("https://api.anthropic.com/v1/messages",
                         headers={"x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json"},
                         json={"model": model_cfg["model"], "max_tokens": tok, "system": system,
@@ -7277,7 +7255,7 @@ async def _builder_ai_call(system: str, user_msg: str, preferred_model: str = "c
             elif provider == "xai":
                 key = XAI_API_KEY  # Module-level variable
                 if not key: continue
-                async with httpx.AsyncClient(timeout=60) as hc:
+                async with httpx.AsyncClient(timeout=timeout_seconds) as hc:
                     r = await hc.post("https://api.x.ai/v1/chat/completions",
                         headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
                         json={"model": model_cfg["model"], "max_tokens": tok, "temperature": 0.7,
@@ -7292,7 +7270,7 @@ async def _builder_ai_call(system: str, user_msg: str, preferred_model: str = "c
             elif provider == "google":
                 key = GEMINI_API_KEY  # Module-level variable (falls back to STITCH_API_KEY)
                 if not key: continue
-                async with httpx.AsyncClient(timeout=60) as hc:
+                async with httpx.AsyncClient(timeout=timeout_seconds) as hc:
                     r = await hc.post(
                         f"https://generativelanguage.googleapis.com/v1beta/models/{model_cfg['model']}:generateContent?key={key}",
                         headers={"Content-Type": "application/json"},
@@ -7308,7 +7286,7 @@ async def _builder_ai_call(system: str, user_msg: str, preferred_model: str = "c
             elif provider == "openai":
                 key = OPENAI_API_KEY  # Module-level variable
                 if not key: continue
-                async with httpx.AsyncClient(timeout=60) as hc:
+                async with httpx.AsyncClient(timeout=timeout_seconds) as hc:
                     r = await hc.post("https://api.openai.com/v1/chat/completions",
                         headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
                         json={"model": model_cfg["model"], "max_tokens": tok, "temperature": 0.7,
@@ -7323,7 +7301,7 @@ async def _builder_ai_call(system: str, user_msg: str, preferred_model: str = "c
             elif provider == "perplexity":
                 key = PPLX_API_KEY  # Module-level variable
                 if not key: continue
-                async with httpx.AsyncClient(timeout=60) as hc:
+                async with httpx.AsyncClient(timeout=timeout_seconds) as hc:
                     r = await hc.post("https://api.perplexity.ai/chat/completions",
                         headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
                         json={"model": model_cfg.get("model", "sonar-pro"), "max_tokens": min(tok, 16000),

@@ -5389,11 +5389,11 @@ async function builderSend() {
   var buildTimedOut = false;
   var buildCancelled = false;
 
-  // 2-minute hard timeout
+  // 3-minute hard timeout (v7.41.1 — allows 90s per model in fallback chain)
   var timeoutId = setTimeout(function() {
     buildTimedOut = true;
     abortController.abort();
-  }, 120000);
+  }, 180000);
 
   // Cancel button handler
   cancelBtn.onclick = function() {
