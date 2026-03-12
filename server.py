@@ -5088,6 +5088,60 @@ SOCIAL_OAUTH_CONFIG = {
         "env_client_secret": "INSTAGRAM_APP_SECRET",
         "pkce": False,
     },
+    "tiktok": {
+        "name": "TikTok",
+        "auth_url": "https://www.tiktok.com/v2/auth/authorize/",
+        "token_url": "https://open.tiktokapis.com/v2/oauth/token/",
+        "scopes": "video.upload,video.list,user.info.basic",
+        "env_client_id": "TIKTOK_CLIENT_KEY",
+        "env_client_secret": "TIKTOK_CLIENT_SECRET",
+        "pkce": True,
+    },
+    "youtube": {
+        "name": "YouTube",
+        "auth_url": "https://accounts.google.com/o/oauth2/v2/auth",
+        "token_url": "https://oauth2.googleapis.com/token",
+        "scopes": "https://www.googleapis.com/auth/youtube https://www.googleapis.com/auth/youtube.upload",
+        "env_client_id": "GOOGLE_CLIENT_ID",
+        "env_client_secret": "GOOGLE_CLIENT_SECRET",
+        "pkce": False,
+    },
+    "snapchat": {
+        "name": "Snapchat",
+        "auth_url": "https://accounts.snapchat.com/accounts/oauth2/auth",
+        "token_url": "https://accounts.snapchat.com/accounts/oauth2/token",
+        "scopes": "snapchat-marketing-api",
+        "env_client_id": "SNAPCHAT_CLIENT_ID",
+        "env_client_secret": "SNAPCHAT_CLIENT_SECRET",
+        "pkce": False,
+    },
+    "whatsapp": {
+        "name": "WhatsApp Business",
+        "auth_url": "https://www.facebook.com/v18.0/dialog/oauth",
+        "token_url": "https://graph.facebook.com/v18.0/oauth/access_token",
+        "scopes": "whatsapp_business_management,whatsapp_business_messaging",
+        "env_client_id": "WHATSAPP_APP_ID",
+        "env_client_secret": "WHATSAPP_APP_SECRET",
+        "pkce": False,
+    },
+    "threads": {
+        "name": "Threads",
+        "auth_url": "https://www.threads.net/oauth/authorize",
+        "token_url": "https://graph.threads.net/oauth/access_token",
+        "scopes": "threads_basic,threads_content_publish,threads_manage_replies",
+        "env_client_id": "THREADS_APP_ID",
+        "env_client_secret": "THREADS_APP_SECRET",
+        "pkce": False,
+    },
+    "discord": {
+        "name": "Discord",
+        "auth_url": "https://discord.com/api/oauth2/authorize",
+        "token_url": "https://discord.com/api/oauth2/token",
+        "scopes": "bot guilds messages.read",
+        "env_client_id": "DISCORD_CLIENT_ID",
+        "env_client_secret": "DISCORD_CLIENT_SECRET",
+        "pkce": False,
+    },
 }
 
 # Temporary store for PKCE code verifiers (in production: use Redis/session)
@@ -5364,6 +5418,8 @@ async def initiate_connector_auth(connector_id: str, request: Request):
         "slack": {"auth_url": "https://slack.com/oauth/v2/authorize", "scopes": "chat:write channels:read"},
         "notion": {"auth_url": "https://api.notion.com/v1/oauth/authorize", "scopes": ""},
         "discord": {"auth_url": "https://discord.com/api/oauth2/authorize", "scopes": "bot messages.read"},
+        "whatsapp": {"auth_url": "https://www.facebook.com/v18.0/dialog/oauth", "scopes": "whatsapp_business_management,whatsapp_business_messaging"},
+        "threads": {"auth_url": "https://www.threads.net/oauth/authorize", "scopes": "threads_basic,threads_content_publish"},
         "coinbase": {"auth_url": "https://www.coinbase.com/oauth/authorize", "scopes": "wallet:accounts:read"},
     }
     
@@ -5777,8 +5833,10 @@ async def upload_avatar(request: Request):
 async def studio_publish_github(request: Request):
     """Publish project files to GitHub via the Contents API."""
     import base64 as _b64
-    GITHUB_PAT = os.environ.get("GITHUB_PAT", "")
+    GITHUB_PAT = os.environ.get("GITHUB_PAT", "") or os.environ.get("GITHUB_PRIVATE_ACCESS_TOKEN", "")
     GITHUB_ORG = "SaintVisions-SaintSal"
+    if not GITHUB_PAT:
+        return JSONResponse({"error": "GITHUB_PAT not configured on server"}, status_code=500)
     try:
         body = await request.json()
         files = body.get("files", [])
@@ -5927,9 +5985,11 @@ async def studio_publish_vercel(request: Request):
 async def studio_publish_render(request: Request):
     """Deploy project to Render by pushing files to GitHub then triggering Render auto-deploy."""
     import base64 as _b64
-    GITHUB_PAT = os.environ.get("GITHUB_PAT", "")
+    GITHUB_PAT = os.environ.get("GITHUB_PAT", "") or os.environ.get("GITHUB_PRIVATE_ACCESS_TOKEN", "")
     GITHUB_ORG = "SaintVisions-SaintSal"
     RENDER_API_KEY = os.environ.get("RENDER_API_KEY", "")
+    if not GITHUB_PAT:
+        return JSONResponse({"error": "GITHUB_PAT not configured on server"}, status_code=500)
     try:
         body = await request.json()
         files = body.get("files", [])
@@ -9819,6 +9879,66 @@ async def update_media(media_id: str, request: Request, authorization: str = Hea
         return {"success": True, "media": result.data[0] if result.data else body}
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.post("/api/social-studio/media/upload")
+async def upload_media_file(file: UploadFile = File(...), title: str = Form(""), tags: str = Form(""), authorization: str = Header(None)):
+    """Upload a file (image/video/audio/document) to the media library from user's device."""
+    user = await get_current_user(authorization)
+    if not user:
+        raise HTTPException(status_code=401, detail="Sign in required")
+    
+    import uuid as _uuid
+    # Determine media type from content type
+    ct = file.content_type or ""
+    if ct.startswith("image"):
+        media_type = "image"
+        subdir = "images"
+    elif ct.startswith("video"):
+        media_type = "video"
+        subdir = "videos"
+    elif ct.startswith("audio"):
+        media_type = "audio"
+        subdir = "audio"
+    else:
+        media_type = "document"
+        subdir = "uploads"
+    
+    # Save file to disk
+    file_id = str(_uuid.uuid4())[:8]
+    ext = (file.filename or "file").split(".")[-1] if "." in (file.filename or "") else "bin"
+    saved_name = f"{file_id}.{ext}"
+    save_path = MEDIA_DIR / subdir / saved_name
+    
+    contents = await file.read()
+    if len(contents) > 50 * 1024 * 1024:  # 50MB limit
+        return JSONResponse({"error": "File too large. Maximum size is 50MB."}, status_code=413)
+    
+    with open(save_path, "wb") as f:
+        f.write(contents)
+    
+    file_url = f"/media_uploads/{subdir}/{saved_name}"
+    tag_list = [t.strip() for t in tags.split(",") if t.strip()] if tags else []
+    
+    try:
+        record = {
+            "user_id": user["id"],
+            "media_type": media_type,
+            "title": title or file.filename or "Uploaded file",
+            "url": file_url,
+            "description": f"Uploaded: {file.filename} ({ct})",
+            "file_size": len(contents),
+            "mime_type": ct,
+            "tags": tag_list,
+        }
+        result = supabase_admin.table("media_library").insert(record).execute()
+        return {"success": True, "media": result.data[0] if result.data else record, "url": file_url}
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+# Serve uploaded media files
+app.mount("/media_uploads", StaticFiles(directory=str(MEDIA_DIR), html=False), name="media_uploads")
 
 
 # ── Static file serving (must be AFTER all API routes) ──────────────────────

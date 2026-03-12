@@ -6212,43 +6212,143 @@ function showUploadMediaForm() {
   if (!form) return;
   form.style.display = form.style.display === 'none' ? 'block' : 'none';
   form.innerHTML = '<div class="brand-card" style="margin-bottom:16px;">' +
-    '<div class="brand-card-title">Add Media</div>' +
-    '<div class="brand-field"><label>Title</label><input type="text" id="mediaTitle" placeholder="Media title" /></div>' +
-    '<div class="brand-field"><label>Type</label><select id="mediaType" class="social-select"><option value="text">Text Content</option><option value="image">Image</option><option value="video">Video</option></select></div>' +
-    '<div class="brand-field"><label>Content / URL</label><textarea id="mediaContent" rows="3" placeholder="Paste text content or media URL..."></textarea></div>' +
+    '<div class="brand-card-title">Upload Media</div>' +
+    '<div class="brand-field"><label>Upload from Device</label>' +
+      '<div class="media-upload-dropzone" id="mediaDropzone" onclick="document.getElementById(\'mediaFileInput\').click()" ondragover="event.preventDefault();this.classList.add(\'drag-over\')" ondragleave="this.classList.remove(\'drag-over\')" ondrop="handleMediaDrop(event)">' +
+        '<svg width="32" height="32" fill="none" viewBox="0 0 24 24" style="opacity:0.4;"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" stroke="currentColor" stroke-width="1.5"/><polyline points="17 8 12 3 7 8" stroke="currentColor" stroke-width="1.5"/><line x1="12" y1="3" x2="12" y2="15" stroke="currentColor" stroke-width="1.5"/></svg>' +
+        '<div style="margin-top:8px;font-size:14px;color:var(--text-secondary);">Click to browse or drag and drop</div>' +
+        '<div style="font-size:12px;color:var(--text-muted);margin-top:4px;">Images, videos, audio, documents — up to 50MB</div>' +
+        '<input type="file" id="mediaFileInput" style="display:none;" accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.txt,.csv" onchange="handleMediaFileSelect(event)" />' +
+      '</div>' +
+      '<div id="mediaFilePreview" style="display:none;margin-top:8px;"></div>' +
+    '</div>' +
+    '<div class="brand-field"><label>Title</label><input type="text" id="mediaTitle" placeholder="Auto-detected from filename" /></div>' +
     '<div class="brand-field"><label>Tags (comma-separated)</label><input type="text" id="mediaTags" placeholder="e.g. announcement, product, launch" /></div>' +
     '<div style="display:flex;gap:8px;">' +
-      '<button class="social-btn primary" onclick="uploadMedia()">Save</button>' +
+      '<button class="social-btn primary" onclick="uploadMedia()" id="mediaUploadBtn">Upload</button>' +
+      '<button class="social-btn secondary" onclick="uploadMediaText()">Or Add Text Content</button>' +
       '<button class="social-btn secondary" onclick="document.getElementById(\'uploadMediaForm\').style.display=\'none\'">Cancel</button>' +
     '</div>' +
   '</div>';
 }
 
+var _mediaSelectedFile = null;
+
+function handleMediaFileSelect(event) {
+  var file = event.target.files[0];
+  if (!file) return;
+  _mediaSelectedFile = file;
+  var preview = document.getElementById('mediaFilePreview');
+  if (!preview) return;
+  preview.style.display = 'block';
+  var sizeStr = file.size > 1024 * 1024 ? (file.size / (1024 * 1024)).toFixed(1) + ' MB' : (file.size / 1024).toFixed(1) + ' KB';
+  preview.innerHTML = '<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:rgba(212,168,67,0.1);border-radius:10px;">' +
+    '<span style="font-size:24px;">' + (file.type.startsWith('image') ? '\ud83d\uddbc' : file.type.startsWith('video') ? '\ud83c\udfac' : file.type.startsWith('audio') ? '\ud83c\udfa7' : '\ud83d\udcc4') + '</span>' +
+    '<div><div style="font-weight:600;font-size:14px;color:var(--text-primary);">' + escHTML(file.name) + '</div>' +
+    '<div style="font-size:12px;color:var(--text-muted);">' + sizeStr + ' \u00b7 ' + escHTML(file.type || 'unknown') + '</div></div>' +
+    '<button class="social-btn small danger" onclick="clearMediaFile()" style="margin-left:auto;">\u00d7</button>' +
+  '</div>';
+  // Auto-fill title from filename
+  var titleInput = document.getElementById('mediaTitle');
+  if (titleInput && !titleInput.value) {
+    titleInput.value = file.name.replace(/\.[^.]+$/, '').replace(/[-_]/g, ' ');
+  }
+}
+
+function handleMediaDrop(event) {
+  event.preventDefault();
+  var dz = document.getElementById('mediaDropzone');
+  if (dz) dz.classList.remove('drag-over');
+  var files = event.dataTransfer.files;
+  if (files.length > 0) {
+    var input = document.getElementById('mediaFileInput');
+    // Can't set files on input, so handle directly
+    _mediaSelectedFile = files[0];
+    handleMediaFileSelect({ target: { files: files } });
+  }
+}
+
+function clearMediaFile() {
+  _mediaSelectedFile = null;
+  var preview = document.getElementById('mediaFilePreview');
+  if (preview) { preview.style.display = 'none'; preview.innerHTML = ''; }
+  var input = document.getElementById('mediaFileInput');
+  if (input) input.value = '';
+}
+
 function uploadMedia() {
+  if (!_mediaSelectedFile) {
+    showToast('Select a file to upload', 'error');
+    return;
+  }
+  var title = (document.getElementById('mediaTitle') || {}).value || _mediaSelectedFile.name;
+  var tags = (document.getElementById('mediaTags') || {}).value || '';
+  var btn = document.getElementById('mediaUploadBtn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Uploading...'; }
+
+  var formData = new FormData();
+  formData.append('file', _mediaSelectedFile);
+  formData.append('title', title);
+  formData.append('tags', tags);
+
+  // Use raw headers without Content-Type (browser sets multipart boundary)
+  var headers = {};
+  if (sessionToken) headers['Authorization'] = 'Bearer ' + sessionToken;
+
+  fetch(API + '/api/social-studio/media/upload', {
+    method: 'POST',
+    headers: headers,
+    body: formData
+  })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (btn) { btn.disabled = false; btn.textContent = 'Upload'; }
+      if (data.error) { showToast(data.error, 'error'); return; }
+      if (data.media) socialStudioState.mediaItems.unshift(data.media);
+      _mediaSelectedFile = null;
+      document.getElementById('uploadMediaForm').style.display = 'none';
+      renderMediaTab(document.getElementById('socialStudioBody'));
+      showToast('File uploaded to Media Library');
+    })
+    .catch(function() {
+      if (btn) { btn.disabled = false; btn.textContent = 'Upload'; }
+      showToast('Upload failed. Check your connection.', 'error');
+    });
+}
+
+function uploadMediaText() {
+  var form = document.getElementById('uploadMediaForm');
+  if (!form) return;
+  form.innerHTML = '<div class="brand-card" style="margin-bottom:16px;">' +
+    '<div class="brand-card-title">Add Text Content</div>' +
+    '<div class="brand-field"><label>Title</label><input type="text" id="mediaTitle" placeholder="Content title" /></div>' +
+    '<div class="brand-field"><label>Content</label><textarea id="mediaContent" rows="4" placeholder="Paste your text content..."></textarea></div>' +
+    '<div class="brand-field"><label>Tags (comma-separated)</label><input type="text" id="mediaTags" placeholder="e.g. announcement, product" /></div>' +
+    '<div style="display:flex;gap:8px;">' +
+      '<button class="social-btn primary" onclick="saveMediaText()">Save</button>' +
+      '<button class="social-btn secondary" onclick="document.getElementById(\'uploadMediaForm\').style.display=\'none\'">Cancel</button>' +
+    '</div>' +
+  '</div>';
+}
+
+function saveMediaText() {
   var title = (document.getElementById('mediaTitle') || {}).value;
-  var mediaType = (document.getElementById('mediaType') || {}).value;
   var content = (document.getElementById('mediaContent') || {}).value;
   var tags = ((document.getElementById('mediaTags') || {}).value || '').split(',').map(function(s) { return s.trim(); }).filter(Boolean);
-
   if (!title) { showToast('Title is required'); return; }
-
-  var payload = { title: title, media_type: mediaType, tags: tags };
-  if (mediaType === 'text') { payload.content_text = content; }
-  else { payload.url = content; payload.description = content; }
-
   fetch(API + '/api/social-studio/media', {
     method: 'POST',
     headers: Object.assign({ 'Content-Type': 'application/json' }, authHeaders()),
-    body: JSON.stringify(payload)
+    body: JSON.stringify({ title: title, media_type: 'text', content_text: content, tags: tags })
   })
     .then(function(r) { return r.json(); })
     .then(function(data) {
       if (data.media) socialStudioState.mediaItems.unshift(data.media);
       document.getElementById('uploadMediaForm').style.display = 'none';
       renderMediaTab(document.getElementById('socialStudioBody'));
-      showToast('Media saved');
+      showToast('Text content saved');
     })
-    .catch(function() { showToast('Failed to save media'); });
+    .catch(function() { showToast('Failed to save'); });
 }
 
 function deleteMedia(mediaId) {
@@ -6287,7 +6387,10 @@ function renderPlatformsList(container) {
     { id: 'facebook', name: 'Facebook', icon: '📘', color: '#1877F2' },
     { id: 'tiktok', name: 'TikTok', icon: '🎵', color: '#000' },
     { id: 'youtube', name: 'YouTube', icon: '▶️', color: '#FF0000' },
-    { id: 'snapchat', name: 'Snapchat', icon: '👻', color: '#FFFC00' }
+    { id: 'snapchat', name: 'Snapchat', icon: '👻', color: '#FFFC00' },
+    { id: 'whatsapp', name: 'WhatsApp', icon: '💬', color: '#25D366' },
+    { id: 'threads', name: 'Threads', icon: '@', color: '#000' },
+    { id: 'discord', name: 'Discord', icon: '🎮', color: '#5865F2' }
   ];
 
   var connected = {};
@@ -6307,7 +6410,7 @@ function renderPlatformsList(container) {
     }).join('') +
   '</div>' +
   '<div style="margin-top:20px;padding:16px;background:rgba(212,168,67,0.08);border-radius:12px;font-size:13px;color:var(--text-secondary);">' +
-    '<strong style="color:var(--accent-gold);">Note:</strong> Platform OAuth connections require API keys to be configured in the backend. Contact your administrator to enable real platform connections.' +
+    '<strong style="color:var(--accent-gold);">10 Platforms</strong> — Click Connect to authenticate via OAuth. Your credentials are securely stored and encrypted.' +
   '</div>';
 }
 
@@ -6318,17 +6421,9 @@ function connectPlatform(platform) {
       if (data.auth_url) {
         window.open(data.auth_url, '_blank', 'width=600,height=700');
       } else if (data.error) {
-        showToast(data.error || 'Connection not available');
+        showToast(data.error, 'error');
       } else {
-        // Fallback: simulate connect for demo
-        fetch(API + '/api/social/simulate-connect/' + platform, {
-          method: 'POST',
-          headers: Object.assign({ 'Content-Type': 'application/json' }, authHeaders()),
-          body: JSON.stringify({ access_token: 'simulated', username: 'demo_user' })
-        }).then(function() {
-          showToast(platform + ' connected (simulated)');
-          renderPlatformsTab(document.getElementById('socialStudioBody'));
-        });
+        showToast(platform + ' OAuth not configured yet', 'error');
       }
     })
     .catch(function() { showToast('Failed to initiate connection'); });

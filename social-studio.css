@@ -414,3 +414,23 @@
   font-weight: 500;
   margin-bottom: 4px;
 }
+
+/* Media Upload Dropzone */
+.media-upload-dropzone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 30px 20px;
+  border: 2px dashed var(--border-primary, rgba(255,255,255,0.1));
+  border-radius: 14px;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-align: center;
+}
+
+.media-upload-dropzone:hover,
+.media-upload-dropzone.drag-over {
+  border-color: var(--accent-gold);
+  background: rgba(212,168,67,0.05);
+}
