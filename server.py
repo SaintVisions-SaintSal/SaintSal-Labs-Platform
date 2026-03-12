@@ -8613,7 +8613,7 @@ async def career_generate_signature(request: Request):
 
 @app.post("/api/career/cards/generate")
 async def career_generate_card(request: Request):
-    """Generate digital business card with QR code."""
+    """Generate digital business card with QR code that saves to phone contacts."""
     body = await request.json()
     name = body.get("name", "")
     title = body.get("title", "")
@@ -8623,29 +8623,71 @@ async def career_generate_card(request: Request):
     website = body.get("website", "")
     linkedin = body.get("linkedin", "")
     tagline = body.get("tagline", "")
-    accent = body.get("accent_color", "#4F8EF7")
+    instagram = body.get("instagram", "")
+    twitter = body.get("twitter", "")
+    address = body.get("address", "")
+    accent = body.get("accent_color", "#D4A843")
     template = body.get("template", "executive")
     card_id = str(uuid.uuid4())[:8]
 
-    card_html = f"""<div style="font-family:Georgia,serif;background:linear-gradient(135deg,#0D0F14 60%,{accent}22);border:1px solid {accent}44;border-radius:16px;padding:28px 32px;width:380px;color:#fff;box-shadow:0 20px 60px rgba(0,0,0,0.5);position:relative;overflow:hidden;">
-  <div style="position:absolute;top:0;right:0;width:100px;height:100px;background:{accent}22;border-radius:0 16px 0 100%"></div>
-  <div style="font-size:11px;letter-spacing:3px;color:{accent};text-transform:uppercase;margin-bottom:8px">{company}</div>
-  <div style="font-size:26px;font-weight:700;margin-bottom:4px">{name}</div>
-  <div style="font-size:13px;color:#aaa;margin-bottom:20px">{title}</div>
-  {f'<div style="font-size:11px;color:{accent};font-style:italic;margin-bottom:20px">"{tagline}"</div>' if tagline else ''}
-  <div style="font-size:11px;line-height:2;color:#ccc">
-    <div>✉ {email}</div><div>📞 {phone}</div>
-    {f'<div>🌐 {website}</div>' if website else ''}
-    {f'<div>in {linkedin}</div>' if linkedin else ''}
-  </div>
-</div>"""
+    # Build vCard 3.0 spec
+    vcard_lines = [
+        "BEGIN:VCARD",
+        "VERSION:3.0",
+        f"FN:{name}",
+    ]
+    if title:
+        vcard_lines.append(f"TITLE:{title}")
+    if company:
+        vcard_lines.append(f"ORG:{company}")
+    if email:
+        vcard_lines.append(f"EMAIL;TYPE=WORK:{email}")
+    if phone:
+        vcard_lines.append(f"TEL;TYPE=CELL:{phone}")
+    if website:
+        vcard_lines.append(f"URL:{website}")
+    if address:
+        vcard_lines.append(f"ADR;TYPE=WORK:;;{address}")
+    if linkedin:
+        vcard_lines.append(f"X-SOCIALPROFILE;TYPE=linkedin:{linkedin}")
+    if instagram:
+        vcard_lines.append(f"X-SOCIALPROFILE;TYPE=instagram:{instagram}")
+    if twitter:
+        vcard_lines.append(f"X-SOCIALPROFILE;TYPE=twitter:{twitter}")
+    if tagline:
+        vcard_lines.append(f"NOTE:{tagline}")
+    vcard_lines.append("END:VCARD")
+    vcard = "\n".join(vcard_lines)
 
-    # Generate vCard data
-    vcard = f"BEGIN:VCARD\nVERSION:3.0\nFN:{name}\nTITLE:{title}\nORG:{company}\nEMAIL:{email}\nTEL:{phone}\nURL:{website}\nNOTE:{tagline}\nEND:VCARD"
     import base64 as _b64
     vcard_b64 = _b64.b64encode(vcard.encode()).decode()
 
-    return {"card_id": card_id, "card_html": card_html, "vcard_b64": vcard_b64, "template": template}
+    # Generate QR code PNG with vCard data embedded
+    qr_png = ""
+    try:
+        import qrcode
+        from io import BytesIO
+        qr = qrcode.QRCode(
+            version=None,
+            error_correction=qrcode.constants.ERROR_CORRECT_M,
+            box_size=10,
+            border=2,
+        )
+        qr.add_data(vcard)
+        qr.make(fit=True)
+        img = qr.make_image(fill_color="#111111", back_color="#ffffff")
+        buf = BytesIO()
+        img.save(buf, format="PNG")
+        qr_png = _b64.b64encode(buf.getvalue()).decode()
+    except Exception as e:
+        print(f"QR generation error: {e}")
+
+    return {
+        "card_id": card_id,
+        "vcard_b64": vcard_b64,
+        "qr_png": qr_png,
+        "template": template
+    }
 
 
 @app.get("/api/career/backgrounds/templates")

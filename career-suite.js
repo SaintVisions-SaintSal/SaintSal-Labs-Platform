@@ -18,11 +18,11 @@ var csState = {
   resumeEnhanced: null,
   resumeLoading: false,
   // Digital Cards
-  cardData: { name: '', title: '', company: '', email: '', phone: '', website: '', linkedin: '', tagline: '', accent_color: '#4F8EF7' },
+  cardData: { name: '', title: '', company: '', email: '', phone: '', website: '', linkedin: '', tagline: '', accent_color: '#D4A843', avatar_b64: '', banner_b64: '', instagram: '', twitter: '', facebook: '', tiktok: '', github: '', address: '' },
   cardPreview: null,
   cardLoading: false,
   // Email Signatures
-  sigData: { name: '', title: '', company: '', email: '', phone: '', website: '', linkedin: '', accent_color: '#4F8EF7', banner_color: '#0D0F14' },
+  sigData: { name: '', title: '', company: '', email: '', phone: '', website: '', linkedin: '', accent_color: '#D4A843', banner_color: '#0D0F14', avatar_b64: '', template: 'executive', show_photo: true, headline: '', instagram: '', twitter: '' },
   sigPreview: null,
   sigLoading: false,
   // AI Coach
@@ -452,52 +452,79 @@ async function csEnhanceResume() {
 function csCards() {
   var d = csState.cardData;
   var html = '';
-  html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;">';
+  html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;">';
 
-  // Form
-  html += '<div style="background:var(--surface-raised,#141414);border-radius:10px;padding:16px;">';
-  html += '<div style="font-size:14px;font-weight:600;color:var(--text-primary);margin-bottom:14px;">Card Information</div>';
+  // ── LEFT: Form ──
+  html += '<div style="background:var(--surface-raised,#141414);border-radius:12px;padding:20px;overflow-y:auto;max-height:calc(100vh - 220px);">';
+  html += '<div style="font-size:16px;font-weight:700;color:var(--text-primary);margin-bottom:16px;">Business Card Details</div>';
+
+  // Core fields
   var fields = [
-    { key: 'name', label: 'Name', ph: 'John Doe' },
-    { key: 'title', label: 'Title', ph: 'CEO & Founder' },
-    { key: 'company', label: 'Company', ph: 'Acme Corp' },
-    { key: 'email', label: 'Email', ph: 'john@acme.com' },
-    { key: 'phone', label: 'Phone', ph: '+1 (555) 123-4567' },
-    { key: 'website', label: 'Website', ph: 'acme.com' },
-    { key: 'linkedin', label: 'LinkedIn', ph: 'linkedin.com/in/johndoe' },
-    { key: 'tagline', label: 'Tagline', ph: 'Building the future, one line at a time.' }
+    { key: 'name', label: 'Full Name', ph: 'Ryan Capatosto' },
+    { key: 'title', label: 'Title', ph: 'CEO' },
+    { key: 'company', label: 'Company', ph: 'Saint Vision Technologies' },
+    { key: 'email', label: 'Email', ph: 'ryan@cookin.io' },
+    { key: 'phone', label: 'Phone', ph: '19494169971' },
+    { key: 'website', label: 'Website', ph: 'https://saintsallabs.com' },
+    { key: 'address', label: 'Address', ph: '221 Main Street Suite J, Huntington Beach, CA' },
+    { key: 'tagline', label: 'Tagline', ph: 'Gotta Guy!!' }
   ];
   fields.forEach(function(f) {
-    html += '<div style="margin-bottom:10px;">';
-    html += '<label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:3px;">' + f.label + '</label>';
-    html += '<input value="' + _esc(d[f.key] || '') + '" placeholder="' + f.ph + '" '
-         + 'oninput="csState.cardData[\'' + f.key + '\']=this.value" '
-         + 'style="width:100%;padding:8px 12px;border-radius:6px;border:1px solid var(--border-subtle,#333);background:var(--surface-base,#0a0a0a);color:var(--text-primary);font-size:12px;box-sizing:border-box;">';
-    html += '</div>';
+    html += '<div style="margin-bottom:10px;"><label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:3px;">' + f.label + '</label>';
+    html += '<input value="' + _esc(d[f.key] || '') + '" placeholder="' + f.ph + '" oninput="csState.cardData[\'' + f.key + '\']=this.value;csUpdateCardPreview()" style="width:100%;padding:8px 12px;border-radius:8px;border:1px solid rgba(255,255,255,.1);background:rgba(0,0,0,.3);color:var(--text-primary);font-size:13px;box-sizing:border-box;"></div>';
   });
-  html += '<div style="margin-bottom:14px;"><label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:3px;">Accent Color</label>';
-  html += '<input type="color" value="' + d.accent_color + '" oninput="csState.cardData.accent_color=this.value" style="width:48px;height:32px;border:none;border-radius:6px;cursor:pointer;background:none;"></div>';
 
-  html += '<button onclick="csGenerateCard()" ' + (csState.cardLoading ? 'disabled' : '') + ' '
-       + 'style="width:100%;padding:10px;border-radius:8px;border:none;background:var(--accent-gold,#D4A843);color:#000;font-weight:600;font-size:13px;cursor:pointer;">'
-       + (csState.cardLoading ? 'Generating...' : '💳 Generate Card') + '</button>';
+  // Social links in 2-col grid
+  html += '<div style="font-size:12px;font-weight:600;color:var(--text-secondary);margin:14px 0 8px;">Social Links</div>';
+  html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">';
+  var socials = [
+    { key: 'linkedin', label: 'LinkedIn', ph: 'linkedin.com/in/...' },
+    { key: 'instagram', label: 'Instagram', ph: '@saintvisions' },
+    { key: 'twitter', label: 'Twitter/X', ph: '@SaintVisions' },
+    { key: 'facebook', label: 'Facebook', ph: 'facebook.com/...' },
+    { key: 'tiktok', label: 'TikTok', ph: '@saintvisions' },
+    { key: 'github', label: 'GitHub', ph: 'github.com/...' }
+  ];
+  socials.forEach(function(s) {
+    html += '<input value="' + _esc(d[s.key] || '') + '" placeholder="' + s.ph + '" oninput="csState.cardData[\'' + s.key + '\']=this.value;csUpdateCardPreview()" style="padding:7px 10px;border-radius:6px;border:1px solid rgba(255,255,255,.08);background:rgba(0,0,0,.3);color:var(--text-primary);font-size:11px;box-sizing:border-box;" title="' + s.label + '">';
+  });
   html += '</div>';
 
-  // Preview
-  html += '<div style="background:var(--surface-raised,#141414);border-radius:10px;padding:16px;">';
-  html += '<div style="font-size:14px;font-weight:600;color:var(--text-primary);margin-bottom:14px;">Card Preview</div>';
-  if (csState.cardPreview) {
-    html += '<div style="display:flex;justify-content:center;margin-bottom:16px;">' + csState.cardPreview.card_html + '</div>';
-    if (csState.cardPreview.vcard_b64) {
-      html += '<div style="text-align:center;">';
-      html += '<a href="data:text/vcard;base64,' + csState.cardPreview.vcard_b64 + '" download="contact.vcf" '
-           + 'style="display:inline-block;padding:8px 20px;border-radius:6px;background:var(--accent-gold,#D4A843);color:#000;font-size:12px;font-weight:600;text-decoration:none;">Download vCard</a>';
-      html += '</div>';
-    }
-  } else {
-    html += '<div style="text-align:center;padding:40px 20px;color:var(--text-muted);">';
-    html += '<div style="font-size:28px;margin-bottom:10px;">💳</div>';
-    html += '<div style="font-size:13px;">Fill out your details and generate an executive digital business card</div>';
+  // Avatar + Banner uploads
+  html += '<div style="display:flex;gap:12px;margin-top:14px;">';
+  html += '<div style="flex:1;"><label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:3px;">Profile Photo</label>';
+  html += '<label style="display:block;padding:10px;border-radius:8px;border:1px dashed rgba(255,255,255,.15);text-align:center;cursor:pointer;font-size:11px;color:var(--text-muted);">' + (d.avatar_b64 ? '✅ Photo loaded' : '📷 Upload') + '<input type="file" accept="image/*" onchange="csHandleUpload(this,\'cardData\',\'avatar_b64\')" style="display:none;"></label></div>';
+  html += '<div style="flex:1;"><label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:3px;">Banner Image</label>';
+  html += '<label style="display:block;padding:10px;border-radius:8px;border:1px dashed rgba(255,255,255,.15);text-align:center;cursor:pointer;font-size:11px;color:var(--text-muted);">' + (d.banner_b64 ? '✅ Banner loaded' : '🖼 Upload') + '<input type="file" accept="image/*" onchange="csHandleUpload(this,\'cardData\',\'banner_b64\')" style="display:none;"></label></div>';
+  html += '</div>';
+
+  // Accent color
+  html += '<div style="margin-top:14px;display:flex;align-items:center;gap:10px;">';
+  html += '<label style="font-size:11px;color:var(--text-muted);">Accent</label>';
+  html += '<input type="color" value="' + d.accent_color + '" oninput="csState.cardData.accent_color=this.value;csUpdateCardPreview()" style="width:40px;height:28px;border:none;border-radius:6px;cursor:pointer;background:none;">';
+  html += '</div>';
+
+  html += '<button onclick="csGenerateCard()" ' + (csState.cardLoading ? 'disabled' : '') + ' style="width:100%;padding:12px;border-radius:10px;border:none;background:var(--accent-gold,#D4A843);color:#000;font-weight:700;font-size:14px;cursor:pointer;margin-top:16px;">' + (csState.cardLoading ? 'Generating...' : '💳 Generate Card + QR Code') + '</button>';
+  html += '</div>';
+
+  // ── RIGHT: Live Preview ──
+  html += '<div style="background:var(--surface-raised,#141414);border-radius:12px;padding:20px;">';
+  html += '<div style="font-size:16px;font-weight:700;color:var(--text-primary);margin-bottom:16px;">Card Preview</div>';
+  html += '<div id="csCardPreview">' + csRenderCardPreview() + '</div>';
+
+  // QR Code section
+  if (csState.cardPreview && csState.cardPreview.qr_png) {
+    html += '<div style="margin-top:20px;text-align:center;">';
+    html += '<div style="font-size:12px;color:var(--text-muted);margin-bottom:8px;">Scan to save contact</div>';
+    html += '<img src="data:image/png;base64,' + csState.cardPreview.qr_png + '" style="width:160px;height:160px;border-radius:12px;background:#fff;padding:8px;" alt="QR Code">';
+    html += '</div>';
+  }
+
+  // Download buttons
+  if (d.name && d.email) {
+    html += '<div style="display:flex;gap:8px;margin-top:16px;">';
+    html += '<button onclick="csDownloadVCard()" style="flex:1;padding:10px;border-radius:8px;border:1px solid rgba(255,255,255,.1);background:none;color:var(--text-secondary);font-size:12px;font-weight:600;cursor:pointer;">📥 Download vCard</button>';
+    html += '<button onclick="csShareCard()" style="flex:1;padding:10px;border-radius:8px;border:1px solid rgba(255,255,255,.1);background:none;color:var(--text-secondary);font-size:12px;font-weight:600;cursor:pointer;">🔗 Share Link</button>';
     html += '</div>';
   }
   html += '</div>';
@@ -505,11 +532,125 @@ function csCards() {
   return html;
 }
 
+function csRenderCardPreview() {
+  var d = csState.cardData;
+  if (!d.name && !d.company) {
+    return '<div style="text-align:center;padding:60px 20px;color:var(--text-muted);"><div style="font-size:36px;margin-bottom:12px;">💳</div><div style="font-size:14px;">Fill in your details to see a live preview</div></div>';
+  }
+  var accent = d.accent_color || '#D4A843';
+  var bannerBg = d.banner_b64 ? 'url(' + d.banner_b64 + ') center/cover' : 'linear-gradient(135deg, #1a1a2e 0%, ' + accent + '33 100%)';
+  var html = '';
+  html += '<div style="border-radius:16px;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,0.5);background:#111;max-width:420px;margin:0 auto;">';
+
+  // Banner
+  html += '<div style="height:120px;background:' + bannerBg + ';position:relative;">';
+  if (d.company) {
+    html += '<div style="position:absolute;top:12px;right:14px;font-size:10px;letter-spacing:2px;color:rgba(255,255,255,.7);text-transform:uppercase;font-weight:600;">' + _esc(d.company) + '</div>';
+  }
+  html += '</div>';
+
+  // Avatar overlapping
+  html += '<div style="padding:0 24px;margin-top:-40px;position:relative;">';
+  if (d.avatar_b64) {
+    html += '<div style="width:80px;height:80px;border-radius:50%;border:3px solid #111;overflow:hidden;background:#222;"><img src="' + d.avatar_b64 + '" style="width:100%;height:100%;object-fit:cover;"></div>';
+  } else {
+    html += '<div style="width:80px;height:80px;border-radius:50%;border:3px solid #111;background:linear-gradient(135deg,' + accent + ',' + accent + '88);display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:700;color:#000;">' + _esc((d.name || 'S')[0]) + '</div>';
+  }
+  html += '</div>';
+
+  // Info
+  html += '<div style="padding:12px 24px 20px;">';
+  html += '<div style="font-size:22px;font-weight:700;color:#fff;">' + _esc(d.name || 'Your Name') + '</div>';
+  html += '<div style="font-size:13px;color:' + accent + ';font-weight:600;margin-top:2px;">' + _esc(d.title || 'Title') + '</div>';
+  if (d.company) html += '<div style="font-size:13px;color:#999;margin-top:1px;">' + _esc(d.company) + '</div>';
+  if (d.tagline) html += '<div style="font-size:12px;color:#777;font-style:italic;margin-top:8px;">' + _esc(d.tagline) + '</div>';
+
+  // Contact details
+  html += '<div style="margin-top:16px;display:flex;flex-direction:column;gap:8px;">';
+  if (d.email) html += '<div style="display:flex;align-items:center;gap:8px;font-size:12px;"><span style="width:28px;height:28px;border-radius:50%;background:' + accent + '22;display:flex;align-items:center;justify-content:center;color:' + accent + ';font-size:14px;">✉</span><span style="color:#ccc;">' + _esc(d.email) + '</span></div>';
+  if (d.phone) html += '<div style="display:flex;align-items:center;gap:8px;font-size:12px;"><span style="width:28px;height:28px;border-radius:50%;background:' + accent + '22;display:flex;align-items:center;justify-content:center;color:' + accent + ';font-size:14px;">📞</span><span style="color:#ccc;">' + _esc(d.phone) + '</span></div>';
+  if (d.website) html += '<div style="display:flex;align-items:center;gap:8px;font-size:12px;"><span style="width:28px;height:28px;border-radius:50%;background:' + accent + '22;display:flex;align-items:center;justify-content:center;color:' + accent + ';font-size:14px;">🌐</span><span style="color:#ccc;">' + _esc(d.website) + '</span></div>';
+  if (d.address) html += '<div style="display:flex;align-items:center;gap:8px;font-size:12px;"><span style="width:28px;height:28px;border-radius:50%;background:' + accent + '22;display:flex;align-items:center;justify-content:center;color:' + accent + ';font-size:14px;">📍</span><span style="color:#ccc;">' + _esc(d.address) + '</span></div>';
+  html += '</div>';
+
+  // Social icons
+  var socialIcons = [];
+  if (d.linkedin) socialIcons.push({icon:'in', color:'#0A66C2', url:d.linkedin});
+  if (d.instagram) socialIcons.push({icon:'📷', color:'#E4405F', url:d.instagram});
+  if (d.twitter) socialIcons.push({icon:'𝕏', color:'#fff', url:d.twitter});
+  if (d.facebook) socialIcons.push({icon:'f', color:'#1877F2', url:d.facebook});
+  if (d.tiktok) socialIcons.push({icon:'♪', color:'#ff0050', url:d.tiktok});
+  if (d.github) socialIcons.push({icon:'⌘', color:'#fff', url:d.github});
+  if (socialIcons.length > 0) {
+    html += '<div style="display:flex;gap:8px;margin-top:16px;">';
+    socialIcons.forEach(function(s) {
+      html += '<div style="width:32px;height:32px;border-radius:50%;background:' + s.color + ';display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:#fff;cursor:pointer;">' + s.icon + '</div>';
+    });
+    html += '</div>';
+  }
+
+  // Save contact button
+  html += '<button onclick="csDownloadVCard()" style="width:100%;margin-top:16px;padding:10px;border-radius:8px;border:none;background:' + accent + ';color:#000;font-weight:700;font-size:13px;cursor:pointer;">Save contact</button>';
+
+  html += '</div></div>';
+  return html;
+}
+
+function csUpdateCardPreview() {
+  var el = document.getElementById('csCardPreview');
+  if (el) el.innerHTML = csRenderCardPreview();
+}
+
+function csHandleUpload(input, stateKey, field) {
+  var file = input.files[0];
+  if (!file) return;
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    csState[stateKey][field] = e.target.result;
+    csUpdateCardPreview();
+    csUpdateSigPreview();
+    renderCareerSuite();
+  };
+  reader.readAsDataURL(file);
+}
+
+function csDownloadVCard() {
+  var d = csState.cardData;
+  if (!d.name) return;
+  var vcard = 'BEGIN:VCARD\nVERSION:3.0\n';
+  vcard += 'FN:' + d.name + '\n';
+  if (d.title) vcard += 'TITLE:' + d.title + '\n';
+  if (d.company) vcard += 'ORG:' + d.company + '\n';
+  if (d.email) vcard += 'EMAIL:' + d.email + '\n';
+  if (d.phone) vcard += 'TEL;TYPE=CELL:' + d.phone + '\n';
+  if (d.website) vcard += 'URL:' + d.website + '\n';
+  if (d.address) vcard += 'ADR;TYPE=WORK:;;' + d.address + '\n';
+  if (d.linkedin) vcard += 'X-SOCIALPROFILE;TYPE=linkedin:' + d.linkedin + '\n';
+  if (d.instagram) vcard += 'X-SOCIALPROFILE;TYPE=instagram:' + d.instagram + '\n';
+  if (d.twitter) vcard += 'X-SOCIALPROFILE;TYPE=twitter:' + d.twitter + '\n';
+  if (d.tagline) vcard += 'NOTE:' + d.tagline + '\n';
+  vcard += 'END:VCARD';
+  var blob = new Blob([vcard], { type: 'text/vcard' });
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = (d.name.replace(/\s+/g, '_') || 'contact') + '.vcf';
+  a.click();
+  csShowToast('vCard downloaded — open to save to contacts');
+}
+
+function csShareCard() {
+  if (navigator.share) {
+    var d = csState.cardData;
+    navigator.share({ title: d.name + ' - Digital Business Card', text: d.name + ' | ' + d.title + ' | ' + d.company + '\n' + d.email + ' | ' + d.phone, url: d.website || 'https://saintsallabs.com' });
+  } else {
+    csShowToast('Sharing not supported — try on mobile');
+  }
+}
+
 async function csGenerateCard() {
   var d = csState.cardData;
   if (!d.name || !d.email) { csShowToast('Enter at least name and email'); return; }
   csState.cardLoading = true;
-  csState.cardPreview = null;
   renderCareerSuite();
   try {
     var r = await fetch(CS_API + '/api/career/cards/generate', {
@@ -524,68 +665,166 @@ async function csGenerateCard() {
 }
 
 
+
+
 /* ══════════════════════════════════════════════════════════════════════════════
    EMAIL SIGNATURES TAB
    ══════════════════════════════════════════════════════════════════════════════ */
 function csSignature() {
   var d = csState.sigData;
   var html = '';
-  html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;">';
+  html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;">';
 
-  // Form
-  html += '<div style="background:var(--surface-raised,#141414);border-radius:10px;padding:16px;">';
-  html += '<div style="font-size:14px;font-weight:600;color:var(--text-primary);margin-bottom:14px;">Signature Details</div>';
+  // ── LEFT: Form ──
+  html += '<div style="background:var(--surface-raised,#141414);border-radius:12px;padding:20px;overflow-y:auto;max-height:calc(100vh - 220px);">';
+  html += '<div style="font-size:16px;font-weight:700;color:var(--text-primary);margin-bottom:16px;">Email Signature</div>';
+
   var fields = [
-    { key: 'name', label: 'Name', ph: 'John Doe' },
-    { key: 'title', label: 'Title', ph: 'CEO & Co-Founder' },
-    { key: 'company', label: 'Company', ph: 'Acme Corp' },
-    { key: 'email', label: 'Email', ph: 'john@acme.com' },
-    { key: 'phone', label: 'Phone', ph: '+1 (555) 123-4567' },
-    { key: 'website', label: 'Website', ph: 'acme.com' },
-    { key: 'linkedin', label: 'LinkedIn', ph: 'linkedin.com/in/johndoe' }
+    { key: 'name', label: 'Full Name', ph: 'Ryan Capatosto' },
+    { key: 'title', label: 'Job Title', ph: 'Chief Executive Officer' },
+    { key: 'company', label: 'Company', ph: 'Saint Vision, Inc.' },
+    { key: 'headline', label: 'Headline', ph: 'Visit Cookin.io' },
+    { key: 'email', label: 'Email', ph: 'ryan@cookin.io' },
+    { key: 'phone', label: 'Phone', ph: '+1(949) 416-9971' },
+    { key: 'website', label: 'Website', ph: 'https://saintsallabs.com' },
+    { key: 'linkedin', label: 'LinkedIn', ph: 'linkedin.com/in/...' },
+    { key: 'instagram', label: 'Instagram', ph: '@saintvisions' },
+    { key: 'twitter', label: 'Twitter/X', ph: '@SaintVisions' }
   ];
   fields.forEach(function(f) {
-    html += '<div style="margin-bottom:10px;">';
-    html += '<label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:3px;">' + f.label + '</label>';
-    html += '<input value="' + _esc(d[f.key] || '') + '" placeholder="' + f.ph + '" '
-         + 'oninput="csState.sigData[\'' + f.key + '\']=this.value" '
-         + 'style="width:100%;padding:8px 12px;border-radius:6px;border:1px solid var(--border-subtle,#333);background:var(--surface-base,#0a0a0a);color:var(--text-primary);font-size:12px;box-sizing:border-box;">';
-    html += '</div>';
+    html += '<div style="margin-bottom:10px;"><label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:3px;">' + f.label + '</label>';
+    html += '<input value="' + _esc(d[f.key] || '') + '" placeholder="' + f.ph + '" oninput="csState.sigData[\'' + f.key + '\']=this.value;csUpdateSigPreview()" style="width:100%;padding:8px 12px;border-radius:8px;border:1px solid rgba(255,255,255,.1);background:rgba(0,0,0,.3);color:var(--text-primary);font-size:13px;box-sizing:border-box;"></div>';
   });
-  html += '<div style="display:flex;gap:12px;margin-bottom:14px;">';
-  html += '<div><label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:3px;">Accent</label>';
-  html += '<input type="color" value="' + d.accent_color + '" oninput="csState.sigData.accent_color=this.value" style="width:48px;height:32px;border:none;border-radius:6px;cursor:pointer;background:none;"></div>';
-  html += '<div><label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:3px;">Banner</label>';
-  html += '<input type="color" value="' + d.banner_color + '" oninput="csState.sigData.banner_color=this.value" style="width:48px;height:32px;border:none;border-radius:6px;cursor:pointer;background:none;"></div>';
+
+  // Photo upload
+  html += '<div style="margin-top:10px;"><label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:3px;">Headshot Photo</label>';
+  html += '<label style="display:block;padding:10px;border-radius:8px;border:1px dashed rgba(255,255,255,.15);text-align:center;cursor:pointer;font-size:11px;color:var(--text-muted);">' + (d.avatar_b64 ? '✅ Photo loaded' : '📷 Upload Photo') + '<input type="file" accept="image/*" onchange="csHandleUpload(this,\'sigData\',\'avatar_b64\')" style="display:none;"></label></div>';
+
+  // Template selector
+  html += '<div style="margin-top:14px;"><label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:6px;">Template</label>';
+  html += '<div style="display:flex;gap:8px;">';
+  ['executive','classic','modern'].forEach(function(t) {
+    var active = d.template === t;
+    html += '<button onclick="csState.sigData.template=\'' + t + '\';csUpdateSigPreview();renderCareerSuite()" style="flex:1;padding:8px;border-radius:8px;border:1px solid ' + (active ? 'var(--accent-gold)' : 'rgba(255,255,255,.1)') + ';background:' + (active ? 'var(--accent-gold-dim,rgba(212,168,67,.15))' : 'none') + ';color:' + (active ? 'var(--accent-gold)' : 'var(--text-muted)') + ';font-size:11px;font-weight:600;cursor:pointer;text-transform:capitalize;">' + t + '</button>';
+  });
+  html += '</div></div>';
+
+  // Accent
+  html += '<div style="margin-top:14px;display:flex;align-items:center;gap:10px;">';
+  html += '<label style="font-size:11px;color:var(--text-muted);">Accent</label>';
+  html += '<input type="color" value="' + d.accent_color + '" oninput="csState.sigData.accent_color=this.value;csUpdateSigPreview()" style="width:40px;height:28px;border:none;border-radius:6px;cursor:pointer;background:none;">';
   html += '</div>';
 
-  html += '<button onclick="csGenerateSignature()" ' + (csState.sigLoading ? 'disabled' : '') + ' '
-       + 'style="width:100%;padding:10px;border-radius:8px;border:none;background:var(--accent-gold,#D4A843);color:#000;font-weight:600;font-size:13px;cursor:pointer;">'
-       + (csState.sigLoading ? 'Generating...' : '✉️ Generate Signature') + '</button>';
+  html += '<button onclick="csGenerateSignature()" ' + (csState.sigLoading ? 'disabled' : '') + ' style="width:100%;padding:12px;border-radius:10px;border:none;background:var(--accent-gold,#D4A843);color:#000;font-weight:700;font-size:14px;cursor:pointer;margin-top:16px;">' + (csState.sigLoading ? 'Generating...' : '✉️ Generate Signature') + '</button>';
   html += '</div>';
 
-  // Preview
-  html += '<div style="background:var(--surface-raised,#141414);border-radius:10px;padding:16px;">';
-  html += '<div style="font-size:14px;font-weight:600;color:var(--text-primary);margin-bottom:14px;">Signature Preview</div>';
-  if (csState.sigPreview) {
-    html += '<div style="background:#fff;border-radius:8px;padding:20px;margin-bottom:12px;">' + csState.sigPreview + '</div>';
-    html += '<button onclick="csCopySignature()" style="width:100%;padding:8px;border-radius:6px;border:1px solid var(--border-subtle,#333);background:none;color:var(--text-secondary);font-size:12px;cursor:pointer;">📋 Copy HTML to Clipboard</button>';
-  } else {
-    html += '<div style="text-align:center;padding:40px 20px;color:var(--text-muted);">';
-    html += '<div style="font-size:28px;margin-bottom:10px;">✉️</div>';
-    html += '<div style="font-size:13px;">Create a professional email signature in seconds</div>';
-    html += '</div>';
-  }
+  // ── RIGHT: Preview ──
+  html += '<div style="background:var(--surface-raised,#141414);border-radius:12px;padding:20px;">';
+  html += '<div style="font-size:16px;font-weight:700;color:var(--text-primary);margin-bottom:16px;">Signature Preview</div>';
+  html += '<div id="csSigPreview" style="background:#fff;border-radius:12px;padding:20px;">' + csRenderSigPreview() + '</div>';
+
+  // Actions
+  html += '<div style="display:flex;gap:8px;margin-top:16px;">';
+  html += '<button onclick="csCopySignature()" style="flex:1;padding:10px;border-radius:8px;border:1px solid rgba(255,255,255,.1);background:none;color:var(--text-secondary);font-size:12px;font-weight:600;cursor:pointer;">📋 Copy HTML</button>';
+  html += '<button onclick="csCopySignaturePlain()" style="flex:1;padding:10px;border-radius:8px;border:1px solid rgba(255,255,255,.1);background:none;color:var(--text-secondary);font-size:12px;font-weight:600;cursor:pointer;">📧 Add to Email</button>';
   html += '</div>';
+  html += '</div>';
+
   html += '</div>';
   return html;
+}
+
+function csRenderSigPreview() {
+  var d = csState.sigData;
+  if (!d.name && !d.company) return '<div style="text-align:center;padding:40px;color:#999;">Fill in details for live preview</div>';
+  var accent = d.accent_color || '#D4A843';
+  var name = _esc(d.name || 'Your Name');
+  var title = _esc(d.title || '');
+  var company = _esc(d.company || '');
+  var headline = _esc(d.headline || '');
+
+  // Build based on template
+  var h = '';
+  if (d.template === 'modern') {
+    h += '<table cellpadding="0" cellspacing="0" style="font-family:Arial,sans-serif;font-size:13px;color:#333;">';
+    h += '<tr><td style="border-left:4px solid ' + accent + ';padding-left:14px;">';
+    h += '<table cellpadding="0" cellspacing="0"><tr>';
+    if (d.avatar_b64 && d.show_photo !== false) {
+      h += '<td style="padding-right:14px;vertical-align:top;"><img src="' + d.avatar_b64 + '" width="80" height="80" style="border-radius:50%;object-fit:cover;border:2px solid ' + accent + ';" alt=""></td>';
+    }
+    h += '<td style="vertical-align:top;">';
+    h += '<div style="font-size:18px;font-weight:700;color:#111;">' + name + '</div>';
+    h += '<div style="font-size:13px;color:' + accent + ';font-weight:600;">' + title + '</div>';
+    h += '<div style="font-size:12px;color:#666;">' + company + '</div>';
+    if (headline) h += '<div style="font-size:11px;color:#999;margin-top:4px;">' + headline + '</div>';
+    h += '<div style="margin-top:10px;font-size:12px;color:#555;">';
+    if (d.email) h += '<div>✉ <a href="mailto:' + _esc(d.email) + '" style="color:' + accent + ';text-decoration:none;">' + _esc(d.email) + '</a></div>';
+    if (d.phone) h += '<div>📞 ' + _esc(d.phone) + '</div>';
+    if (d.website) h += '<div>🌐 <a href="' + _esc(d.website) + '" style="color:' + accent + ';text-decoration:none;">' + _esc(d.website) + '</a></div>';
+    h += '</div>';
+    h += '</td></tr></table></td></tr></table>';
+  } else if (d.template === 'classic') {
+    h += '<table cellpadding="0" cellspacing="0" style="font-family:Georgia,serif;font-size:13px;color:#333;"><tr>';
+    if (d.avatar_b64 && d.show_photo !== false) {
+      h += '<td style="padding-right:16px;vertical-align:top;"><img src="' + d.avatar_b64 + '" width="90" height="90" style="border-radius:8px;object-fit:cover;" alt=""></td>';
+    }
+    h += '<td style="vertical-align:top;">';
+    h += '<div style="font-size:18px;font-weight:700;color:#111;">' + name + '</div>';
+    h += '<div style="font-size:13px;color:#555;">' + title + (company ? ' · ' + company : '') + '</div>';
+    if (headline) h += '<div style="font-size:11px;color:#888;">' + headline + '</div>';
+    h += '<div style="width:60px;height:2px;background:' + accent + ';margin:10px 0;"></div>';
+    h += '<div style="font-size:11px;line-height:1.8;color:#555;">';
+    if (d.email) h += '✉ <a href="mailto:' + _esc(d.email) + '" style="color:#333;text-decoration:none;">' + _esc(d.email) + '</a><br>';
+    if (d.phone) h += '📞 ' + _esc(d.phone) + '<br>';
+    if (d.website) h += '🌐 <a href="' + _esc(d.website) + '" style="color:#333;text-decoration:none;">' + _esc(d.website) + '</a>';
+    h += '</div></td></tr></table>';
+  } else {
+    // Executive (default)
+    h += '<table cellpadding="0" cellspacing="0" style="font-family:Arial,sans-serif;font-size:13px;color:#333;">';
+    h += '<tr><td style="padding-bottom:12px;">';
+    h += '<table cellpadding="0" cellspacing="0"><tr>';
+    if (d.avatar_b64 && d.show_photo !== false) {
+      h += '<td style="padding-right:14px;vertical-align:top;"><img src="' + d.avatar_b64 + '" width="80" height="80" style="border-radius:50%;object-fit:cover;" alt=""></td>';
+    }
+    h += '<td style="vertical-align:top;">';
+    h += '<div style="font-size:18px;font-weight:700;color:#111;">' + name + '</div>';
+    h += '<div style="font-size:13px;color:' + accent + ';font-weight:600;">' + title + '</div>';
+    h += '<div style="font-size:12px;color:#666;">' + company + '</div>';
+    if (headline) h += '<div style="font-size:11px;color:#888;margin-top:2px;">' + headline + '</div>';
+    h += '</td></tr></table></td></tr>';
+    h += '<tr><td style="border-top:2px solid ' + accent + ';padding-top:10px;">';
+    h += '<table cellpadding="0" cellspacing="0" style="font-size:11px;color:#555;"><tr>';
+    if (d.email) h += '<td style="padding-right:20px;">✉ <a href="mailto:' + _esc(d.email) + '" style="color:#333;text-decoration:none;">' + _esc(d.email) + '</a></td>';
+    if (d.phone) h += '<td style="padding-right:20px;">📞 ' + _esc(d.phone) + '</td>';
+    h += '</tr></table>';
+    if (d.website) h += '<div style="margin-top:4px;font-size:11px;">🌐 <a href="' + _esc(d.website) + '" style="color:' + accent + ';text-decoration:none;">' + _esc(d.website) + '</a></div>';
+    h += '</td></tr></table>';
+  }
+
+  // Social icons
+  var icons = [];
+  if (d.linkedin) icons.push('<a href="' + _esc(d.linkedin) + '" style="display:inline-block;width:24px;height:24px;border-radius:50%;background:#0A66C2;text-align:center;line-height:24px;color:#fff;font-size:11px;font-weight:700;text-decoration:none;">in</a>');
+  if (d.instagram) icons.push('<a href="' + _esc(d.instagram) + '" style="display:inline-block;width:24px;height:24px;border-radius:50%;background:#E4405F;text-align:center;line-height:24px;color:#fff;font-size:11px;text-decoration:none;">📷</a>');
+  if (d.twitter) icons.push('<a href="' + _esc(d.twitter) + '" style="display:inline-block;width:24px;height:24px;border-radius:50%;background:#333;text-align:center;line-height:24px;color:#fff;font-size:11px;text-decoration:none;">𝕏</a>');
+  if (icons.length > 0) {
+    h += '<div style="margin-top:10px;display:flex;gap:6px;">' + icons.join('') + '</div>';
+  }
+
+  // Powered by badge
+  h += '<div style="margin-top:12px;font-size:9px;color:#bbb;letter-spacing:1px;">POWERED BY SAINTSAL™ AI</div>';
+
+  return h;
+}
+
+function csUpdateSigPreview() {
+  var el = document.getElementById('csSigPreview');
+  if (el) el.innerHTML = csRenderSigPreview();
 }
 
 async function csGenerateSignature() {
   var d = csState.sigData;
   if (!d.name || !d.email) { csShowToast('Enter at least name and email'); return; }
   csState.sigLoading = true;
-  csState.sigPreview = null;
   renderCareerSuite();
   try {
     var r = await fetch(CS_API + '/api/career/signature/generate', {
@@ -594,18 +833,30 @@ async function csGenerateSignature() {
       body: JSON.stringify(d)
     });
     var data = await r.json();
-    csState.sigPreview = data.signature_html || null;
-  } catch(e) { console.error(e); }
+    csState.sigPreview = data.signature_html || csRenderSigPreview();
+  } catch(e) { csState.sigPreview = csRenderSigPreview(); }
   csState.sigLoading = false;
   renderCareerSuite();
 }
 
 function csCopySignature() {
-  if (!csState.sigPreview) return;
-  navigator.clipboard.writeText(csState.sigPreview).then(function() {
-    csShowToast('Signature HTML copied');
+  var html = csState.sigPreview || csRenderSigPreview();
+  if (!html) return;
+  var blob = new Blob([html], { type: 'text/html' });
+  var item = new ClipboardItem({ 'text/html': blob, 'text/plain': new Blob([html], { type: 'text/plain' }) });
+  navigator.clipboard.write([item]).then(function() {
+    csShowToast('Signature copied — paste into your email settings');
+  }).catch(function() {
+    navigator.clipboard.writeText(html).then(function() { csShowToast('HTML copied to clipboard'); });
   });
 }
+
+function csCopySignaturePlain() {
+  csShowToast('To add: Go to Gmail Settings → Signature → Paste the copied HTML. Or Outlook → File → Options → Mail → Signatures.');
+  csCopySignature();
+}
+
+
 
 
 /* ══════════════════════════════════════════════════════════════════════════════
