@@ -5900,11 +5900,24 @@ async def studio_publish_vercel(request: Request):
             deploy_url = data.get("url") or data.get("alias", [""])[0] if data.get("alias") else ""
             if deploy_url and not deploy_url.startswith("http"):
                 deploy_url = f"https://{deploy_url}"
+            final_url = deploy_url or f"https://{project_name}.vercel.app"
+            custom_domain = project.get("custom_domain", "")
+            dns_instructions = None
+            if custom_domain:
+                dns_instructions = {
+                    "domain": custom_domain,
+                    "records": [
+                        {"type": "A", "name": "@", "value": "76.76.21.21", "note": f"Points {custom_domain} to Vercel"},
+                        {"type": "CNAME", "name": "www", "value": "cname.vercel-dns.com", "note": f"Points www.{custom_domain} to Vercel"},
+                    ],
+                    "instructions": f"Add these DNS records at your domain registrar to connect {custom_domain} and www.{custom_domain} to your Vercel deployment."
+                }
             return JSONResponse({
                 "success": True,
-                "url": deploy_url or f"https://{project_name}.vercel.app",
+                "url": final_url,
                 "deploymentId": data.get("id", ""),
-                "message": f"Deployed to Vercel: {deploy_url}"
+                "message": f"Deployed to Vercel: {final_url}",
+                "dns": dns_instructions,
             })
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
@@ -6409,60 +6422,74 @@ BUILDER_CHAT_SYSTEM = """You are SAL™, the AI Builder Engine for SaintSal™ L
 """
 
 # v7.36.0 — Full-stack multi-page builder system prompt
-BUILDER_CODE_SYSTEM = """You are SAL™ Code Engine — the full-stack builder behind SaintSal™ Labs.
-You build COMPLETE, WORKING, multi-page web apps and websites. Not demos. Not stubs. Production code.
+BUILDER_CODE_SYSTEM = """You are SAL™ Builder — the AI-powered full-stack web builder behind SaintSal™ Labs.
+You are an expert web developer, designer, and project planner.
 
-You work like v0.dev + Bolt.new + Claude Artifacts combined — but you build FULL APPS.
+## YOUR WORKFLOW:
 
-RESPONSE FORMAT — MANDATORY:
-You MUST output a JSON block containing ALL project files:
+### Phase 1 — UNDERSTAND (if request is vague or first message)
+If the user gives a general request like "build me a restaurant website" or "I need a portfolio":
+- Ask 2-3 SHORT clarifying questions to nail down the vision:
+  - What pages do you need? (home, about, menu, contact, etc.)
+  - Any brand preferences? (colors, style, vibe)
+  - Any specific features? (booking form, gallery, testimonials)
+- Keep questions conversational, one short paragraph. Do NOT output code yet.
+- Respond in plain text only — no JSON.
+
+### Phase 2 — PLAN (once you have answers)
+- Briefly confirm the plan: "I'll build a 5-page site with: Home, About, Menu, Gallery, Contact. Dark elegant theme with gold accents. Here we go..."
+- Then IMMEDIATELY build it — output the code JSON.
+
+### Phase 3 — BUILD (output code)
+Output a JSON block with ALL project files:
 
 ```json
-{"files": [{"name": "index.html", "content": "..."}, {"name": "about.html", "content": "..."}, {"name": "styles/main.css", "content": "..."}, {"name": "js/app.js", "content": "..."}]}
+{"files": [{"name": "index.html", "content": "..."}, {"name": "about.html", "content": "..."}, {"name": "styles.css", "content": "..."}, {"name": "script.js", "content": "..."}], "description": "Brief summary of what was built"}
 ```
 
-## MULTI-PAGE ARCHITECTURE:
-When building a website or web app with multiple pages:
-- Create a SHARED navigation/header/footer across ALL pages via shared CSS + JS
-- Use client-side routing (hash-based or SPA router) OR separate HTML files per page
-- EVERY page must be fully functional, styled, responsive, and linked to all other pages
-- Navigation must highlight the current active page
-- Include mobile hamburger menu for responsive nav
+### Phase 4 — ITERATE (unlimited follow-ups)
+When the user says "add", "change", "update", "fix", "make it more", "now add":
+- Output ONLY the files that changed with their COMPLETE updated content
+- Do NOT regenerate unchanged files
+- Keep iterating until the user is fully satisfied
 
-## FOR FULL-STACK APPS:
-- index.html = main shell with client-side router or entry point
-- pages/ folder for multi-page routes (about.html, pricing.html, contact.html, etc.)
-- styles/ folder for CSS (main.css, components.css)
-- js/ folder for JavaScript (app.js, router.js, components.js)
-- For SPA: build proper hash-based routing in app.js with page components
-- ALWAYS include: Home, About, Contact at minimum for any website
-- For apps: include Dashboard, Settings, and feature-specific pages
+## MULTI-PAGE RULES (CRITICAL):
+- Every HTML page MUST include a consistent <nav> header linking to ALL other pages
+- Navigation links use relative paths: href="index.html", href="about.html", href="contact.html"
+- ALL pages share one styles.css via <link rel="stylesheet" href="styles.css">
+- ALL pages share one script.js via <script src="script.js"></script>
+- Each page is a COMPLETE standalone HTML document with <!DOCTYPE html>, <head>, <body>
+- Navigation highlights the current active page
+- Include a responsive mobile hamburger menu in the shared JS
+- Minimum pages for any website: Home (index.html), About, Contact
+- For businesses: add Services/Menu/Products page
+- For apps: add Dashboard, Settings pages
 
 ## DESIGN STANDARDS:
-- Modern, polished, premium design — NOT generic Bootstrap
-- Dark themes with accent gradients, glassmorphism, smooth 60fps animations
-- Fully responsive (mobile-first): works perfectly at 375px, 768px, and 1440px
-- Professional typography: Inter, system-ui fallback, proper hierarchy
-- Micro-interactions: hover states, focus rings, loading states, transitions
-- Accessibility: proper ARIA labels, semantic HTML, keyboard navigation
+- Modern, polished, PREMIUM design — NOT generic Bootstrap
+- Clean aesthetic with gradients, glassmorphism, smooth animations
+- Fully responsive: mobile-first, works at 375px, 768px, 1440px
+- Professional typography via Google Fonts CDN (Inter, Poppins, or Playfair Display)
+- Micro-interactions: hover effects, focus rings, smooth transitions
+- Accessibility: semantic HTML, ARIA labels, keyboard nav
+- Use CSS custom properties for theming (--primary, --secondary, --accent)
+- Hero sections with compelling CTAs
+- Proper spacing, visual hierarchy, contrast ratios
 
-## ITERATION CONTEXT:
-When the user says "add", "change", "update", "fix", or "now add":
-- Output ONLY the files that changed, with their COMPLETE new content
-- Keep all existing files intact — do NOT regenerate unchanged files
-- Reference existing page structure and styles
+## STITCH INTEGRATION:
+If the user mentions "design", "stitch", or "UI design", you can suggest using Google Stitch for interactive prototyping before building.
 
-RULES (NON-NEGOTIABLE):
-1. Output the JSON code block, optionally followed by 1-2 sentences.
-2. NEVER list files with descriptions. NEVER output a plan. Just write the code.
-3. NEVER use placeholder comments like "// TODO". Write REAL, COMPLETE code.
-4. Every file must have FULL working content — no truncation.
-5. Code MUST work when rendered in a browser iframe immediately.
-6. For multi-page sites: use a single index.html with hash routing OR multiple HTML files with consistent nav.
-7. Always include meta viewport, charset, title, and favicon link.
-8. Minimum 5 files for any real website/app build.
-9. Forms must have proper validation and visual feedback.
-10. All interactive elements must have hover/focus/active states.
+## CODE RULES (NON-NEGOTIABLE):
+1. Output JSON code block when building. Plain text when conversing.
+2. NEVER use placeholder comments like "// TODO" or "Lorem ipsum" for main content.
+3. Every file MUST have FULL working content — no truncation.
+4. Code MUST work when rendered in a browser iframe immediately.
+5. Always include meta viewport, charset, title tags.
+6. Minimum 4 files for any website build.
+7. Forms must have validation and visual feedback.
+8. All interactive elements need hover/focus/active states.
+9. Images use placeholder services (unsplash source URLs or gradient backgrounds).
+10. Include smooth scroll behavior and page transition effects.
 """
 
 # v7.36.0 — Retry prompt when AI returns a plan instead of code
@@ -6644,9 +6671,14 @@ def check_feature_access(tier: str, feature: str) -> dict:
 
 
 def _detect_builder_intent(message: str) -> str:
-    """Detect what the user wants from their message."""
+    """Detect what the user wants from their message. v8.0 — chat-first flow support."""
     import re as _re
     msg = message.lower().strip()
+    
+    # v8.0 — Iteration/follow-up detection (user is continuing a build)
+    if any(w in msg for w in ['add a', 'change the', 'update the', 'fix the', 'make it', 'now add', 'can you add', 'modify', 'adjust the', 'move the', 'remove the', 'delete the', 'swap the', 'replace the', 'add more', 'change color', 'new page', 'add page', 'another page']):
+        return 'code'
+    
     # Image generation
     if any(w in msg for w in ['generate image', 'create image', 'make image', 'draw', 'logo', 'banner', 'illustration', 'picture of', 'photo of', 'graphic of', 'design a logo', 'make me a logo', 'generate a logo', 'create a graphic', 'make a banner', 'poster', 'icon design', 'album art', 'cover art', 'avatar', 'profile picture', 'thumbnail image']):
         return 'image'
@@ -6661,7 +6693,7 @@ def _detect_builder_intent(message: str) -> str:
     # Social
     if any(w in msg for w in ['post to', 'social media', 'instagram post', 'linkedin post', 'tweet', 'facebook post', 'tiktok', 'youtube thumbnail', 'social content', 'post for instagram', 'post for linkedin', 'post for twitter', 'post for x', 'share on']):
         return 'social'
-    # Code/Build
+    # Code/Build — explicit build requests
     if any(w in msg for w in ['build me', 'build a', 'create a website', 'create a web', 'create an app', 'landing page', 'make a site', 'make a website', 'make a page', 'make an app', 'build website', 'build app', 'code a', 'write code', 'html page', 'react app', 'next.js', 'saas', 'ecommerce', 'portfolio', 'dashboard app', 'widget', 'pwa', 'chrome extension']):
         return 'code'
     if _re.search(r'\b(build|create|make|code|develop|write)\b.*\b(app|site|page|website|frontend|backend|api|widget|dashboard|form|calculator)\b', msg):
@@ -6669,8 +6701,8 @@ def _detect_builder_intent(message: str) -> str:
     # Deploy
     if any(w in msg for w in ['deploy', 'publish', 'push to github', 'push to vercel', 'push to render', 'go live', 'make it live', 'ship it']):
         return 'deploy'
-    # Design
-    if any(w in msg for w in ['design a ui', 'ui design', 'wireframe', 'mockup', 'prototype', 'stitch design']):
+    # Design / Stitch
+    if any(w in msg for w in ['design a ui', 'ui design', 'wireframe', 'mockup', 'prototype', 'stitch design', 'stitch', 'design with stitch']):
         return 'design'
     # Research
     if any(w in msg for w in ['research', 'look up', 'find out', 'what is the', 'who is', 'how does', 'compare', 'analyze', 'market research', 'competitor analysis']):
@@ -6678,6 +6710,7 @@ def _detect_builder_intent(message: str) -> str:
     # Document
     if any(w in msg for w in ['write a document', 'create a doc', 'business plan', 'pitch deck', 'report', 'whitepaper', 'proposal', 'resume', 'cover letter']):
         return 'document'
+    # v8.0 — Everything else is chat (supports planning/clarification flow)
     return 'chat'
 
 
@@ -7153,14 +7186,16 @@ async def builder_unified_chat(request: Request):
                     file_names = ', '.join(f.get('name', '?') for f in files_data['files'][:5])
                     yield f"data: {json.dumps({'type': 'text', 'content': f'Built {file_count} files ({file_names}) via {result["model_used"]}. Preview it above — iterate, refine, or deploy.'})}\n\n"
             else:
-                # All attempts failed — show what we got but warn user
-                print(f"[Builder Code] All attempts failed to produce files")
-                fallback_text = result.get('text', '') if result.get('text') else 'Build engine encountered an issue. Please try rephrasing your request or be more specific about what you want built.'
-                # If it's a long response, it's likely the AI gave a plan — show it as text
-                if len(fallback_text) > 200:
+                # v8.0 — Chat-first flow: if AI responded with questions/planning, show as natural conversation
+                fallback_text = result.get('text', '') if result.get('text') else ''
+                if fallback_text and len(fallback_text) > 50:
+                    # This is likely a planning/clarification response — show it naturally
+                    print(f"[Builder Code] Chat-first response (planning/clarifying): {len(fallback_text)} chars")
+                    yield f"data: {json.dumps({'type': 'text', 'content': fallback_text})}\n\n"
+                elif fallback_text:
                     yield f"data: {json.dumps({'type': 'text', 'content': fallback_text})}\n\n"
                 else:
-                    yield f"data: {json.dumps({'type': 'text', 'content': 'Build had trouble generating code. Try being more specific, e.g.: "Build a 3-page website for a pizza shop with home, menu, and contact pages."'})}\n\n"
+                    yield f"data: {json.dumps({'type': 'text', 'content': 'Tell me more about what you want to build — what pages, features, and style do you have in mind?'})}\n\n"
             yield f"data: {json.dumps({'type': 'done'})}\n\n"
             return
 
@@ -9257,6 +9292,531 @@ async def admin_delete_user(user_id: str, authorization: Optional[str] = Header(
                 return {"success": True, "user_id": user_id}
             else:
                 return JSONResponse({"error": resp.text[:300]}, status_code=resp.status_code)
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+# ═══════════════════════════════════════════════
+# SOCIAL STUDIO — Brand DNA, Campaigns, Media Library
+# v8.0.0
+# ═══════════════════════════════════════════════
+
+# ── Brand DNA CRUD ──
+
+@app.get("/api/social-studio/brand-dna")
+async def get_brand_dna(request: Request, authorization: str = Header(None)):
+    """Get user's brand DNA profile."""
+    user = await get_current_user(authorization)
+    if not user:
+        raise HTTPException(status_code=401, detail="Sign in required")
+    try:
+        if supabase_admin:
+            result = supabase_admin.table("brand_profiles").select("*").eq("user_id", user["id"]).eq("is_active", True).execute()
+            if result.data:
+                return {"brand": result.data[0]}
+        return {"brand": None}
+    except Exception as e:
+        return {"brand": None, "error": str(e)}
+
+
+@app.post("/api/social-studio/brand-dna")
+async def save_brand_dna(request: Request, authorization: str = Header(None)):
+    """Create or update brand DNA profile."""
+    user = await get_current_user(authorization)
+    if not user:
+        raise HTTPException(status_code=401, detail="Sign in required")
+    body = await request.json()
+    brand_data = {
+        "user_id": user["id"],
+        "brand_name": body.get("brand_name", "My Brand"),
+        "tagline": body.get("tagline"),
+        "logo_url": body.get("logo_url"),
+        "primary_color": body.get("primary_color", "#00ff88"),
+        "secondary_color": body.get("secondary_color", "#1a1a2e"),
+        "accent_color": body.get("accent_color", "#e94560"),
+        "font_primary": body.get("font_primary", "Inter"),
+        "font_secondary": body.get("font_secondary", "Orbitron"),
+        "voice_tone": body.get("voice_tone", "professional"),
+        "voice_personality": body.get("voice_personality", []),
+        "writing_style": body.get("writing_style"),
+        "keywords": body.get("keywords", []),
+        "avoid_words": body.get("avoid_words", []),
+        "target_audience": body.get("target_audience"),
+        "audience_demographics": body.get("audience_demographics", {}),
+        "audience_pain_points": body.get("audience_pain_points", []),
+        "content_pillars": body.get("content_pillars", []),
+        "competitor_urls": body.get("competitor_urls", []),
+        "industry": body.get("industry"),
+        "unique_value_prop": body.get("unique_value_prop"),
+        "platform_configs": body.get("platform_configs", {}),
+        "updated_at": datetime.now().isoformat(),
+    }
+    try:
+        brand_id = body.get("id")
+        if brand_id:
+            result = supabase_admin.table("brand_profiles").update(brand_data).eq("id", brand_id).eq("user_id", user["id"]).execute()
+        else:
+            result = supabase_admin.table("brand_profiles").insert(brand_data).execute()
+        return {"success": True, "brand": result.data[0] if result.data else brand_data}
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.post("/api/social-studio/brand-dna/analyze")
+async def analyze_brand_competitors(request: Request, authorization: str = Header(None)):
+    """AI-powered competitor analysis for Brand DNA."""
+    user = await get_current_user(authorization)
+    if not user:
+        raise HTTPException(status_code=401, detail="Sign in required")
+    body = await request.json()
+    competitor_urls = body.get("competitor_urls", [])
+    industry = body.get("industry", "")
+    brand_name = body.get("brand_name", "")
+
+    prompt = f"""Analyze these competitors for the brand "{brand_name}" in the {industry} industry.
+Competitor URLs/brands: {json.dumps(competitor_urls)}
+
+Provide analysis as JSON:
+{{
+  "competitor_analysis": {{
+    "strengths": ["what competitors do well"],
+    "weaknesses": ["gaps we can exploit"],
+    "content_themes": ["themes they use"],
+    "posting_frequency": "estimated posting frequency",
+    "audience_overlap": "estimated audience overlap"
+  }},
+  "recommendations": [
+    "specific actionable recommendation 1",
+    "specific actionable recommendation 2",
+    "specific actionable recommendation 3"
+  ],
+  "content_pillars_suggested": ["pillar1", "pillar2", "pillar3", "pillar4"],
+  "differentiation_angles": ["angle1", "angle2"]
+}}"""
+
+    # Use AI chain: xAI → Gemini fallback
+    analysis = None
+    xai_key = os.environ.get("XAI_API_KEY", "")
+    if xai_key:
+        try:
+            async with httpx.AsyncClient(timeout=45.0) as http:
+                resp = await http.post(
+                    "https://api.x.ai/v1/chat/completions",
+                    headers={"Authorization": f"Bearer {xai_key}", "Content-Type": "application/json"},
+                    json={"model": "grok-3-mini", "messages": [{"role": "user", "content": prompt}], "temperature": 0.3}
+                )
+                if resp.status_code == 200:
+                    text = resp.json()["choices"][0]["message"]["content"]
+                    json_match = re.search(r'\{[\s\S]*\}', text)
+                    if json_match:
+                        analysis = json.loads(json_match.group())
+        except Exception:
+            pass
+
+    if not analysis:
+        analysis = {
+            "competitor_analysis": {"strengths": [], "weaknesses": [], "content_themes": [], "posting_frequency": "unknown", "audience_overlap": "unknown"},
+            "recommendations": ["Connect competitor URLs for detailed analysis"],
+            "content_pillars_suggested": ["thought leadership", "product updates", "community", "education"],
+            "differentiation_angles": ["Unique value proposition needed"]
+        }
+
+    # Save analysis to brand profile
+    try:
+        brand_id = body.get("brand_id")
+        if brand_id and supabase_admin:
+            supabase_admin.table("brand_profiles").update({
+                "competitor_analysis": analysis.get("competitor_analysis", {}),
+                "ai_recommendations": analysis.get("recommendations", []),
+                "last_analysis_at": datetime.now().isoformat()
+            }).eq("id", brand_id).eq("user_id", user["id"]).execute()
+    except Exception:
+        pass
+
+    return {"analysis": analysis}
+
+
+# ── Campaigns CRUD ──
+
+@app.get("/api/social-studio/campaigns")
+async def list_campaigns(request: Request, authorization: str = Header(None)):
+    """List user's campaigns."""
+    user = await get_current_user(authorization)
+    if not user:
+        raise HTTPException(status_code=401, detail="Sign in required")
+    try:
+        result = supabase_admin.table("campaigns").select("*").eq("user_id", user["id"]).order("updated_at", desc=True).execute()
+        return {"campaigns": result.data or []}
+    except Exception as e:
+        return {"campaigns": [], "error": str(e)}
+
+
+@app.post("/api/social-studio/campaigns")
+async def create_campaign(request: Request, authorization: str = Header(None)):
+    """Create a new campaign."""
+    user = await get_current_user(authorization)
+    if not user:
+        raise HTTPException(status_code=401, detail="Sign in required")
+    body = await request.json()
+    campaign_data = {
+        "user_id": user["id"],
+        "brand_id": body.get("brand_id"),
+        "name": body.get("name", "Untitled Campaign"),
+        "description": body.get("description"),
+        "status": "draft",
+        "goal": body.get("goal"),
+        "platforms": body.get("platforms", []),
+        "start_date": body.get("start_date"),
+        "end_date": body.get("end_date"),
+        "tags": body.get("tags", []),
+    }
+    try:
+        result = supabase_admin.table("campaigns").insert(campaign_data).execute()
+        return {"success": True, "campaign": result.data[0] if result.data else campaign_data}
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.patch("/api/social-studio/campaigns/{campaign_id}")
+async def update_campaign(campaign_id: str, request: Request, authorization: str = Header(None)):
+    """Update a campaign."""
+    user = await get_current_user(authorization)
+    if not user:
+        raise HTTPException(status_code=401, detail="Sign in required")
+    body = await request.json()
+    body["updated_at"] = datetime.now().isoformat()
+    try:
+        result = supabase_admin.table("campaigns").update(body).eq("id", campaign_id).eq("user_id", user["id"]).execute()
+        return {"success": True, "campaign": result.data[0] if result.data else body}
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.delete("/api/social-studio/campaigns/{campaign_id}")
+async def delete_campaign(campaign_id: str, request: Request, authorization: str = Header(None)):
+    """Delete a campaign and its items."""
+    user = await get_current_user(authorization)
+    if not user:
+        raise HTTPException(status_code=401, detail="Sign in required")
+    try:
+        supabase_admin.table("campaign_items").delete().eq("campaign_id", campaign_id).eq("user_id", user["id"]).execute()
+        supabase_admin.table("campaigns").delete().eq("id", campaign_id).eq("user_id", user["id"]).execute()
+        return {"success": True}
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+# ── Campaign Items CRUD ──
+
+@app.get("/api/social-studio/campaigns/{campaign_id}/items")
+async def list_campaign_items(campaign_id: str, request: Request, authorization: str = Header(None)):
+    """List items in a campaign."""
+    user = await get_current_user(authorization)
+    if not user:
+        raise HTTPException(status_code=401, detail="Sign in required")
+    try:
+        result = supabase_admin.table("campaign_items").select("*").eq("campaign_id", campaign_id).eq("user_id", user["id"]).order("created_at", desc=True).execute()
+        return {"items": result.data or []}
+    except Exception as e:
+        return {"items": [], "error": str(e)}
+
+
+@app.post("/api/social-studio/campaigns/{campaign_id}/items")
+async def add_campaign_item(campaign_id: str, request: Request, authorization: str = Header(None)):
+    """Add an item to a campaign."""
+    user = await get_current_user(authorization)
+    if not user:
+        raise HTTPException(status_code=401, detail="Sign in required")
+    body = await request.json()
+    item_data = {
+        "campaign_id": campaign_id,
+        "user_id": user["id"],
+        "content_type": body.get("content_type", "image"),
+        "platform": body.get("platform", "instagram"),
+        "caption": body.get("caption"),
+        "hashtags": body.get("hashtags", []),
+        "media_urls": body.get("media_urls", []),
+        "thumbnail_url": body.get("thumbnail_url"),
+        "status": body.get("status", "draft"),
+        "scheduled_at": body.get("scheduled_at"),
+        "ai_prompt": body.get("ai_prompt"),
+        "ai_model": body.get("ai_model"),
+        "brand_dna_applied": body.get("brand_dna_applied", False),
+    }
+    try:
+        result = supabase_admin.table("campaign_items").insert(item_data).execute()
+        # Update campaign post count
+        supabase_admin.rpc("increment_campaign_posts", {"cid": campaign_id}).execute()
+        return {"success": True, "item": result.data[0] if result.data else item_data}
+    except Exception:
+        try:
+            result = supabase_admin.table("campaign_items").insert(item_data).execute()
+            return {"success": True, "item": result.data[0] if result.data else item_data}
+        except Exception as e:
+            return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.delete("/api/social-studio/campaign-items/{item_id}")
+async def delete_campaign_item(item_id: str, request: Request, authorization: str = Header(None)):
+    """Delete a campaign item."""
+    user = await get_current_user(authorization)
+    if not user:
+        raise HTTPException(status_code=401, detail="Sign in required")
+    try:
+        supabase_admin.table("campaign_items").delete().eq("id", item_id).eq("user_id", user["id"]).execute()
+        return {"success": True}
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+# ── Platform-Aware Content Generation ──
+
+@app.post("/api/social-studio/generate")
+async def social_studio_generate(request: Request, authorization: str = Header(None)):
+    """Generate platform-optimized content with Brand DNA applied."""
+    user = await get_current_user(authorization)
+    if not user:
+        raise HTTPException(status_code=401, detail="Sign in required")
+    body = await request.json()
+    prompt = body.get("prompt", "")
+    platform = body.get("platform", "instagram")
+    content_type = body.get("content_type", "image")  # image, video, carousel, story, reel
+    brand_id = body.get("brand_id")
+    campaign_id = body.get("campaign_id")
+
+    if not prompt:
+        return JSONResponse({"error": "Prompt required"}, status_code=400)
+
+    # Load Brand DNA if available
+    brand_context = ""
+    if brand_id:
+        try:
+            br = supabase_admin.table("brand_profiles").select("*").eq("id", brand_id).execute()
+            if br.data:
+                b = br.data[0]
+                brand_context = f"""
+Brand: {b.get('brand_name', '')}
+Voice: {b.get('voice_tone', 'professional')}
+Personality: {', '.join(b.get('voice_personality', []))}
+Keywords: {', '.join(b.get('keywords', []))}
+Audience: {b.get('target_audience', '')}
+Industry: {b.get('industry', '')}
+Colors: {b.get('primary_color', '#00ff88')}, {b.get('secondary_color', '#1a1a2e')}, {b.get('accent_color', '#e94560')}
+"""
+        except Exception:
+            pass
+
+    # Platform specs
+    PLATFORM_SPECS = {
+        "instagram": {"size": "1080x1080", "aspect": "1:1", "max_chars": 2200, "hashtag_limit": 30, "style": "visually stunning, clean aesthetic"},
+        "instagram_story": {"size": "1080x1920", "aspect": "9:16", "max_chars": 200, "style": "bold, eye-catching, vertical"},
+        "instagram_reel": {"size": "1080x1920", "aspect": "9:16", "max_chars": 2200, "style": "dynamic, trendy, vertical video"},
+        "tiktok": {"size": "1080x1920", "aspect": "9:16", "max_chars": 4000, "style": "trendy, authentic, fast-paced"},
+        "youtube": {"size": "1280x720", "aspect": "16:9", "max_chars": 5000, "style": "professional thumbnail, clickable"},
+        "youtube_short": {"size": "1080x1920", "aspect": "9:16", "max_chars": 100, "style": "attention-grabbing vertical"},
+        "linkedin": {"size": "1200x627", "aspect": "16:9", "max_chars": 3000, "style": "professional, thought leadership"},
+        "facebook": {"size": "1200x630", "aspect": "16:9", "max_chars": 63206, "style": "engaging, community-focused"},
+        "x": {"size": "1200x675", "aspect": "16:9", "max_chars": 280, "style": "punchy, concise, shareable"},
+    }
+    spec = PLATFORM_SPECS.get(platform, PLATFORM_SPECS["instagram"])
+
+    results = {"platform": platform, "content_type": content_type}
+
+    # Step 1: Generate caption + image prompt via AI
+    caption_prompt = f"""You are an expert social media content creator.
+Create content for {platform} about: {prompt}
+{brand_context}
+Platform: {platform} (max {spec['max_chars']} chars, style: {spec['style']})
+
+Return JSON only:
+{{
+  "caption": "optimized post caption for {platform}",
+  "hashtags": ["relevant", "hashtags"],
+  "image_prompt": "detailed image generation prompt matching the brand and platform aesthetic, {spec['size']} dimensions, {spec['style']}",
+  "hook": "attention-grabbing opening"
+}}"""
+
+    xai_key = os.environ.get("XAI_API_KEY", "")
+    caption_data = None
+
+    if xai_key:
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as http:
+                resp = await http.post(
+                    "https://api.x.ai/v1/chat/completions",
+                    headers={"Authorization": f"Bearer {xai_key}"},
+                    json={"model": "grok-3-mini", "messages": [{"role": "user", "content": caption_prompt}], "temperature": 0.7}
+                )
+                if resp.status_code == 200:
+                    text = resp.json()["choices"][0]["message"]["content"]
+                    jm = re.search(r'\{[\s\S]*\}', text)
+                    if jm:
+                        caption_data = json.loads(jm.group())
+        except Exception:
+            pass
+
+    if not caption_data:
+        caption_data = {"caption": prompt, "hashtags": [], "image_prompt": prompt, "hook": ""}
+
+    results["caption"] = caption_data.get("caption", "")
+    results["hashtags"] = caption_data.get("hashtags", [])
+    results["hook"] = caption_data.get("hook", "")
+
+    # Step 2: Generate image if image content type
+    if content_type in ("image", "carousel", "story", "reel"):
+        image_prompt = caption_data.get("image_prompt", prompt)
+        # Use existing studio image generation logic
+        try:
+            # Try OpenAI first, then xAI
+            image_url = None
+            openai_key = os.environ.get("OPENAI_API_KEY", "")
+            if openai_key:
+                try:
+                    async with httpx.AsyncClient(timeout=60.0) as http:
+                        resp = await http.post(
+                            "https://api.openai.com/v1/images/generations",
+                            headers={"Authorization": f"Bearer {openai_key}"},
+                            json={"model": "dall-e-3", "prompt": image_prompt, "n": 1, "size": "1024x1024", "quality": "hd"}
+                        )
+                        if resp.status_code == 200:
+                            image_url = resp.json()["data"][0].get("url")
+                except Exception:
+                    pass
+
+            if not image_url and xai_key:
+                try:
+                    async with httpx.AsyncClient(timeout=60.0) as http:
+                        resp = await http.post(
+                            "https://api.x.ai/v1/images/generations",
+                            headers={"Authorization": f"Bearer {xai_key}"},
+                            json={"model": "grok-2-image", "prompt": image_prompt, "n": 1}
+                        )
+                        if resp.status_code == 200:
+                            image_url = resp.json()["data"][0].get("url")
+                except Exception:
+                    pass
+
+            if image_url:
+                results["image_url"] = image_url
+                results["image_prompt"] = image_prompt
+        except Exception as e:
+            results["image_error"] = str(e)
+
+    # Step 3: Save to media library if image was generated
+    if results.get("image_url"):
+        try:
+            media_data = {
+                "user_id": user["id"],
+                "brand_id": brand_id,
+                "campaign_id": campaign_id,
+                "filename": f"social_{platform}_{int(datetime.now().timestamp())}.png",
+                "file_url": results["image_url"],
+                "media_type": "image",
+                "title": prompt[:100],
+                "ai_generated": True,
+                "ai_prompt": prompt,
+                "platform_optimized": platform,
+                "tags": caption_data.get("hashtags", [])[:5],
+            }
+            supabase_admin.table("media_library").insert(media_data).execute()
+        except Exception:
+            pass
+
+    # Step 4: Auto-add to campaign if campaign_id provided
+    if campaign_id and (results.get("image_url") or results.get("caption")):
+        try:
+            item = {
+                "campaign_id": campaign_id,
+                "user_id": user["id"],
+                "content_type": content_type,
+                "platform": platform,
+                "caption": results.get("caption", ""),
+                "hashtags": results.get("hashtags", []),
+                "media_urls": [results["image_url"]] if results.get("image_url") else [],
+                "status": "draft",
+                "ai_prompt": prompt,
+                "brand_dna_applied": bool(brand_id),
+            }
+            supabase_admin.table("campaign_items").insert(item).execute()
+        except Exception:
+            pass
+
+    return results
+
+
+# ── Media Library ──
+
+@app.get("/api/social-studio/media")
+async def list_media(request: Request, authorization: str = Header(None), media_type: str = None, folder: str = None):
+    """List user's media library."""
+    user = await get_current_user(authorization)
+    if not user:
+        raise HTTPException(status_code=401, detail="Sign in required")
+    try:
+        query = supabase_admin.table("media_library").select("*").eq("user_id", user["id"])
+        if media_type:
+            query = query.eq("media_type", media_type)
+        if folder:
+            query = query.eq("folder", folder)
+        result = query.order("created_at", desc=True).limit(100).execute()
+        return {"media": result.data or []}
+    except Exception as e:
+        return {"media": [], "error": str(e)}
+
+
+@app.post("/api/social-studio/media")
+async def save_media(request: Request, authorization: str = Header(None)):
+    """Save media to library."""
+    user = await get_current_user(authorization)
+    if not user:
+        raise HTTPException(status_code=401, detail="Sign in required")
+    body = await request.json()
+    media_data = {
+        "user_id": user["id"],
+        "brand_id": body.get("brand_id"),
+        "campaign_id": body.get("campaign_id"),
+        "filename": body.get("filename", "untitled"),
+        "file_url": body.get("file_url"),
+        "thumbnail_url": body.get("thumbnail_url"),
+        "media_type": body.get("media_type", "image"),
+        "title": body.get("title"),
+        "description": body.get("description"),
+        "tags": body.get("tags", []),
+        "ai_generated": body.get("ai_generated", False),
+        "ai_prompt": body.get("ai_prompt"),
+        "platform_optimized": body.get("platform_optimized"),
+        "folder": body.get("folder", "general"),
+    }
+    try:
+        result = supabase_admin.table("media_library").insert(media_data).execute()
+        return {"success": True, "media": result.data[0] if result.data else media_data}
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.delete("/api/social-studio/media/{media_id}")
+async def delete_media(media_id: str, request: Request, authorization: str = Header(None)):
+    """Delete media from library."""
+    user = await get_current_user(authorization)
+    if not user:
+        raise HTTPException(status_code=401, detail="Sign in required")
+    try:
+        supabase_admin.table("media_library").delete().eq("id", media_id).eq("user_id", user["id"]).execute()
+        return {"success": True}
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.patch("/api/social-studio/media/{media_id}")
+async def update_media(media_id: str, request: Request, authorization: str = Header(None)):
+    """Update media metadata (favorite, folder, tags)."""
+    user = await get_current_user(authorization)
+    if not user:
+        raise HTTPException(status_code=401, detail="Sign in required")
+    body = await request.json()
+    try:
+        result = supabase_admin.table("media_library").update(body).eq("id", media_id).eq("user_id", user["id"]).execute()
+        return {"success": True, "media": result.data[0] if result.data else body}
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
 

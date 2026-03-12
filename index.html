@@ -77,6 +77,7 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
 <link rel="stylesheet" href="style.css">
 <link rel="stylesheet" href="connectors-domains.css">
 <link rel="stylesheet" href="admin-fulfillment.css">
+<link rel="stylesheet" href="social-studio.css">
 <link rel="stylesheet" href="realestate.css">
     <link rel="stylesheet" href="medical.css">
   <script src="https://unpkg.com/@elevenlabs/convai-widget-embed" async type="text/javascript"></script>
@@ -140,7 +141,11 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
 
       <div class="nav-divider"></div>
 
-      <div class="nav-section-label">Build</div>
+      <div class="nav-section-label">Create</div>
+      <div class="nav-item" data-view="social" onclick="setView('social')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z"/></svg>
+        Social Studio
+      </div>
       <div class="nav-item" data-view="studio" onclick="setView('studio')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/><line x1="12" y1="2" x2="12" y2="22" stroke-dasharray="2 4" opacity="0.3"/></svg>
         Builder
@@ -1057,6 +1062,18 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
     <div class="view career-view" id="careerView">
       <div id="careerSuiteRoot"></div>
       <div class="app-footer">SaintSal™ <span class="footer-labs-green">LABS</span> · Responsible Intelligence · Patent #10,290,222 · <a href="https://www.perplexity.ai/computer" target="_blank" rel="noopener noreferrer">Created with Perplexity Computer</a></div>
+    </div>
+
+    <!-- v8.0 — Social Studio View -->
+    <div class="view social-view" id="socialView">
+      <div id="socialStudioRoot"></div>
+      <div class="app-footer">SaintSal™ <span class="footer-labs-green">LABS</span> · Responsible Intelligence · Patent #10,290,222</div>
+    </div>
+
+    <!-- v8.0 — Calendar View -->
+    <div class="view calendar-view" id="calendarView">
+      <div id="calendarRoot"></div>
+      <div class="app-footer">SaintSal™ <span class="footer-labs-green">LABS</span> · Responsible Intelligence</div>
     </div>
 
   </div><!-- end main-content -->

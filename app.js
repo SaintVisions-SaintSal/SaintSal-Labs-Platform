@@ -35,7 +35,9 @@ var views = {
   landing: document.getElementById('landingView'),
   personality: document.getElementById('personalityView'),
   admin: document.getElementById('adminView'),
-  career: document.getElementById('careerView')
+  career: document.getElementById('careerView'),
+  social: document.getElementById('socialView'),
+  calendar: document.getElementById('calendarView')
 };
 
 /* ============================================
@@ -89,6 +91,12 @@ function setView(view) {
   if (view === 'career') {
     setTimeout(initCareerSuite, 50);
   }
+  if (view === 'social') {
+    setTimeout(renderSocialStudio, 50);
+  }
+  if (view === 'calendar') {
+    setTimeout(renderCalendarView, 50);
+  }
 
   // Update sidebar active for non-vertical views
   document.querySelectorAll('.nav-item[data-view]').forEach(function(item) {
@@ -104,7 +112,7 @@ function setView(view) {
     document.getElementById('topbarBreadcrumb').innerHTML = '<span>' + (verticalNames[currentVertical] || 'Search') + '</span>';
   } else {
     document.querySelectorAll('.nav-item[data-vertical]').forEach(function(i) { i.classList.remove('active'); });
-    var breadcrumbMap = { pricing:'Pricing', welcome:'Welcome', account:'Account', studio:'Builder', domains:'Domains & SSL', launchpad:'Business Center', connectors:'Integrations', bizplan:'Business Plan', voice:'Voice AI', dashboard:'Dashboard', landing:'Home', personality:'SAL Personality', career:'Career Suite' };
+    var breadcrumbMap = { pricing:'Pricing', welcome:'Welcome', account:'Account', studio:'Builder', domains:'Domains & SSL', launchpad:'Business Center', connectors:'Integrations', bizplan:'Business Plan', voice:'Voice AI', dashboard:'Dashboard', landing:'Home', personality:'SAL Personality', career:'Career Suite', social:'Social Studio', calendar:'Calendar' };
     document.getElementById('topbarBreadcrumb').innerHTML = '<span>' + (breadcrumbMap[view] || view) + '</span>';
   }
 
@@ -5112,6 +5120,47 @@ function builderQuickPrompt(text) {
   builderSend();
 }
 
+// v8.0 — Multi-page tab switching in Builder preview
+function builderSwitchPage(btn, iframeId) {
+  var pageName = btn.getAttribute('data-page');
+  var files = builderChatState.files;
+  var htmlFile = files.find(function(f) { return f.name === pageName; });
+  if (!htmlFile) return;
+  var cssFiles = files.filter(function(f) { return /\.css$/i.test(f.name); });
+  var jsFiles = files.filter(function(f) { return /\.js$/i.test(f.name); });
+  var previewContent = htmlFile.content || '';
+  cssFiles.forEach(function(cf) {
+    var cssContent = cf.content || '';
+    var linkPattern = new RegExp('<link[^>]*href=["\']' + cf.name.replace(/\./g, '\\.') + '["\'][^>]*>', 'gi');
+    if (linkPattern.test(previewContent)) {
+      previewContent = previewContent.replace(linkPattern, '<style>' + cssContent + '</style>');
+    } else if (previewContent.indexOf('</head>') > -1) {
+      previewContent = previewContent.replace('</head>', '<style>' + cssContent + '</style></head>');
+    } else {
+      previewContent = '<style>' + cssContent + '</style>' + previewContent;
+    }
+  });
+  jsFiles.forEach(function(jf) {
+    var jsContent = jf.content || '';
+    var scriptPattern = new RegExp('<script[^>]*src=["\']' + jf.name.replace(/\./g, '\\.') + '["\'][^>]*>\\s*</script>', 'gi');
+    if (scriptPattern.test(previewContent)) {
+      previewContent = previewContent.replace(scriptPattern, '<script>' + jsContent + '<\/script>');
+    } else if (previewContent.indexOf('</body>') > -1) {
+      previewContent = previewContent.replace('</body>', '<script>' + jsContent + '<\/script></body>');
+    } else {
+      previewContent += '<script>' + jsContent + '<\/script>';
+    }
+  });
+  var blob = new Blob([previewContent], { type: 'text/html' });
+  var blobUrl = URL.createObjectURL(blob);
+  var iframe = document.getElementById(iframeId);
+  if (iframe) iframe.src = blobUrl;
+  var tabs = btn.parentElement.querySelectorAll('.builder-page-tab');
+  tabs.forEach(function(t) { t.style.background = 'rgba(255,255,255,0.1)'; t.style.color = 'rgba(255,255,255,0.7)'; });
+  btn.style.background = 'var(--accent-gold,#d4af37)';
+  btn.style.color = '#000';
+}
+
 async function builderSend() {
   if (builderChatState.generating) return;
   var promptEl = document.getElementById('builderPrompt');
@@ -5302,6 +5351,20 @@ async function builderSend() {
           codeHtml += '</div>';
           codeHtml += '<pre style="background:#0d0d1a;color:#e0e0e0;padding:16px;font-size:12px;line-height:1.5;max-height:400px;overflow:auto;border-radius:0 0 8px 8px;margin:0;"><code>' + escapeHtml((firstFile.content || '').substring(0, 5000)) + '</code></pre>';
         }
+      }
+      
+      // v8.0 — Multi-page navigation tabs
+      var htmlPages = allFiles.filter(function(f) { return /\.html$/i.test(f.name); });
+      if (htmlPages.length > 1) {
+        codeHtml += '<div class="builder-page-tabs" style="display:flex;gap:4px;padding:6px 8px;background:rgba(255,255,255,0.05);border-radius:8px;margin-top:6px;flex-wrap:wrap;">';
+        htmlPages.forEach(function(page) {
+          var isActive = htmlFile && page.name === htmlFile.name;
+          var tabStyle = isActive ? 'background:var(--accent-gold,#d4af37);color:#000;' : 'background:rgba(255,255,255,0.1);color:rgba(255,255,255,0.7);';
+          var displayName = page.name.replace('.html', '').replace('index', 'Home');
+          displayName = displayName.charAt(0).toUpperCase() + displayName.slice(1);
+          codeHtml += '<button class="builder-page-tab" data-page="' + page.name + '" onclick="builderSwitchPage(this,\'' + previewId + '\')" style="' + tabStyle + 'border:none;padding:4px 12px;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;transition:all 0.2s;">' + escapeHtml(displayName) + '</button>';
+        });
+        codeHtml += '</div>';
       }
       
       // File tags — show ALL project files (merged)
@@ -5551,3 +5614,759 @@ function toggleBuilderMic() {
   builderMicRecognition.start();
 }
 
+/* ============================================
+   SOCIAL STUDIO — Full Frontend
+   Brand DNA · Campaigns · Content Gen · Media Library · Connected Platforms
+   ============================================ */
+
+var socialStudioState = {
+  tab: 'brand-dna',
+  brandDNA: null,
+  campaigns: [],
+  mediaItems: [],
+  connectedPlatforms: [],
+  generating: false,
+  loadingBrand: false,
+  loadingCampaigns: false,
+  loadingMedia: false
+};
+
+function renderSocialStudio() {
+  var root = document.getElementById('socialStudioRoot');
+  if (!root) return;
+
+  root.innerHTML = '<div class="social-studio-container">' +
+    '<div class="social-studio-header">' +
+      '<div style="display:flex;align-items:center;gap:12px;">' +
+        '<svg width="28" height="28" fill="none" viewBox="0 0 24 24"><path d="M17 2H7a5 5 0 00-5 5v10a5 5 0 005 5h10a5 5 0 005-5V7a5 5 0 00-5-5z" stroke="var(--accent-gold)" stroke-width="1.5"/><circle cx="12" cy="12" r="3" stroke="var(--accent-gold)" stroke-width="1.5"/><circle cx="17.5" cy="6.5" r="1.5" fill="var(--accent-gold)"/></svg>' +
+        '<div><div class="social-studio-title">Social Studio</div>' +
+        '<div class="social-studio-subtitle">Brand DNA · Content Generation · Campaign Management</div></div>' +
+      '</div>' +
+    '</div>' +
+    '<div class="social-studio-tabs" id="socialStudioTabs"></div>' +
+    '<div class="social-studio-body" id="socialStudioBody"></div>' +
+  '</div>';
+
+  renderSocialStudioTabs();
+  renderSocialStudioTab(socialStudioState.tab);
+}
+
+function renderSocialStudioTabs() {
+  var tabs = [
+    { id: 'brand-dna', label: 'Brand DNA', icon: '🧬' },
+    { id: 'create', label: 'Create', icon: '✨' },
+    { id: 'campaigns', label: 'Campaigns', icon: '📋' },
+    { id: 'media', label: 'Media Library', icon: '🖼' },
+    { id: 'platforms', label: 'Platforms', icon: '🔗' }
+  ];
+  var el = document.getElementById('socialStudioTabs');
+  if (!el) return;
+  el.innerHTML = tabs.map(function(t) {
+    return '<div class="social-tab' + (socialStudioState.tab === t.id ? ' active' : '') + '" onclick="switchSocialTab(\'' + t.id + '\')">' +
+      '<span>' + t.icon + '</span> ' + t.label + '</div>';
+  }).join('');
+}
+
+function switchSocialTab(tab) {
+  socialStudioState.tab = tab;
+  renderSocialStudioTabs();
+  renderSocialStudioTab(tab);
+}
+
+function renderSocialStudioTab(tab) {
+  var body = document.getElementById('socialStudioBody');
+  if (!body) return;
+
+  if (tab === 'brand-dna') { renderBrandDNATab(body); }
+  else if (tab === 'create') { renderCreateTab(body); }
+  else if (tab === 'campaigns') { renderCampaignsTab(body); }
+  else if (tab === 'media') { renderMediaTab(body); }
+  else if (tab === 'platforms') { renderPlatformsTab(body); }
+}
+
+/* ---- BRAND DNA TAB ---- */
+function renderBrandDNATab(container) {
+  if (socialStudioState.loadingBrand) {
+    container.innerHTML = '<div class="social-loading">Loading Brand DNA...</div>';
+    return;
+  }
+
+  if (!socialStudioState.brandDNA) {
+    loadBrandDNA(container);
+    return;
+  }
+
+  var b = socialStudioState.brandDNA;
+  container.innerHTML = '<div class="brand-dna-grid">' +
+    '<div class="brand-card">' +
+      '<div class="brand-card-title">Brand Identity</div>' +
+      '<div class="brand-field"><label>Brand Name</label><input type="text" id="brandName" value="' + escHTML(b.brand_name || '') + '" placeholder="Your brand name" /></div>' +
+      '<div class="brand-field"><label>Tagline</label><input type="text" id="brandTagline" value="' + escHTML(b.tagline || '') + '" placeholder="Your tagline" /></div>' +
+      '<div class="brand-field"><label>Mission</label><textarea id="brandMission" rows="3" placeholder="What drives your brand?">' + escHTML(b.mission || '') + '</textarea></div>' +
+      '<div class="brand-field"><label>Industry</label><input type="text" id="brandIndustry" value="' + escHTML(b.industry || '') + '" placeholder="e.g. AI Technology" /></div>' +
+    '</div>' +
+    '<div class="brand-card">' +
+      '<div class="brand-card-title">Voice & Tone</div>' +
+      '<div class="brand-field"><label>Voice</label><input type="text" id="brandVoice" value="' + escHTML(b.voice || '') + '" placeholder="e.g. Professional, Bold, Approachable" /></div>' +
+      '<div class="brand-field"><label>Tone Keywords</label><input type="text" id="brandToneKeywords" value="' + escHTML((b.tone_keywords || []).join(', ')) + '" placeholder="e.g. innovative, trustworthy, bold" /></div>' +
+      '<div class="brand-field"><label>Key Phrases</label><textarea id="brandPhrases" rows="2" placeholder="Signature phrases your brand uses">' + escHTML((b.key_phrases || []).join('\n')) + '</textarea></div>' +
+    '</div>' +
+    '<div class="brand-card">' +
+      '<div class="brand-card-title">Audience & Strategy</div>' +
+      '<div class="brand-field"><label>Target Audience</label><textarea id="brandAudience" rows="2" placeholder="Who are you speaking to?">' + escHTML(b.target_audience || '') + '</textarea></div>' +
+      '<div class="brand-field"><label>Content Pillars</label><input type="text" id="brandPillars" value="' + escHTML((b.content_pillars || []).join(', ')) + '" placeholder="e.g. Education, Innovation, Community" /></div>' +
+      '<div class="brand-field"><label>Hashtag Strategy</label><input type="text" id="brandHashtags" value="' + escHTML((b.hashtag_strategy || []).join(', ')) + '" placeholder="#yourbrand #innovation" /></div>' +
+    '</div>' +
+    '<div class="brand-card">' +
+      '<div class="brand-card-title">Visual Identity</div>' +
+      '<div class="brand-field"><label>Primary Color</label><div style="display:flex;gap:8px;align-items:center;"><input type="color" id="brandColorPrimary" value="' + (b.color_palette && b.color_palette.primary ? b.color_palette.primary : '#d4a843') + '" style="width:40px;height:32px;border:none;background:transparent;cursor:pointer;" /><span id="brandColorPrimaryLabel" style="font-size:13px;color:var(--text-secondary);">' + (b.color_palette && b.color_palette.primary ? b.color_palette.primary : '#d4a843') + '</span></div></div>' +
+      '<div class="brand-field"><label>Secondary Color</label><div style="display:flex;gap:8px;align-items:center;"><input type="color" id="brandColorSecondary" value="' + (b.color_palette && b.color_palette.secondary ? b.color_palette.secondary : '#2ecc71') + '" style="width:40px;height:32px;border:none;background:transparent;cursor:pointer;" /><span id="brandColorSecondaryLabel" style="font-size:13px;color:var(--text-secondary);">' + (b.color_palette && b.color_palette.secondary ? b.color_palette.secondary : '#2ecc71') + '</span></div></div>' +
+      '<div class="brand-field"><label>Font Preferences</label><input type="text" id="brandFonts" value="' + escHTML(b.font_preferences || '') + '" placeholder="e.g. Orbitron, Inter" /></div>' +
+    '</div>' +
+  '</div>' +
+  '<div style="display:flex;gap:12px;margin-top:20px;">' +
+    '<button class="social-btn primary" onclick="saveBrandDNA()">Save Brand DNA</button>' +
+    '<button class="social-btn secondary" onclick="analyzeBrandDNA()">AI Analyze & Enhance</button>' +
+  '</div>' +
+  '<div id="brandDNAStatus" style="margin-top:12px;font-size:13px;"></div>';
+}
+
+function loadBrandDNA(container) {
+  socialStudioState.loadingBrand = true;
+  if (container) container.innerHTML = '<div class="social-loading">Loading Brand DNA...</div>';
+  fetch(API + '/api/social-studio/brand-dna', { headers: authHeaders() })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      socialStudioState.loadingBrand = false;
+      if (data.brand_dna) {
+        socialStudioState.brandDNA = data.brand_dna;
+      } else {
+        socialStudioState.brandDNA = { brand_name: '', tagline: '', mission: '', industry: '', voice: '', tone_keywords: [], key_phrases: [], target_audience: '', content_pillars: [], hashtag_strategy: [], color_palette: { primary: '#d4a843', secondary: '#2ecc71' }, font_preferences: '' };
+      }
+      renderBrandDNATab(container || document.getElementById('socialStudioBody'));
+    })
+    .catch(function() {
+      socialStudioState.loadingBrand = false;
+      socialStudioState.brandDNA = { brand_name: '', tagline: '', mission: '', industry: '', voice: '', tone_keywords: [], key_phrases: [], target_audience: '', content_pillars: [], hashtag_strategy: [], color_palette: { primary: '#d4a843', secondary: '#2ecc71' }, font_preferences: '' };
+      renderBrandDNATab(container || document.getElementById('socialStudioBody'));
+    });
+}
+
+function collectBrandDNA() {
+  return {
+    brand_name: (document.getElementById('brandName') || {}).value || '',
+    tagline: (document.getElementById('brandTagline') || {}).value || '',
+    mission: (document.getElementById('brandMission') || {}).value || '',
+    industry: (document.getElementById('brandIndustry') || {}).value || '',
+    voice: (document.getElementById('brandVoice') || {}).value || '',
+    tone_keywords: ((document.getElementById('brandToneKeywords') || {}).value || '').split(',').map(function(s) { return s.trim(); }).filter(Boolean),
+    key_phrases: ((document.getElementById('brandPhrases') || {}).value || '').split('\n').map(function(s) { return s.trim(); }).filter(Boolean),
+    target_audience: (document.getElementById('brandAudience') || {}).value || '',
+    content_pillars: ((document.getElementById('brandPillars') || {}).value || '').split(',').map(function(s) { return s.trim(); }).filter(Boolean),
+    hashtag_strategy: ((document.getElementById('brandHashtags') || {}).value || '').split(',').map(function(s) { return s.trim(); }).filter(Boolean),
+    color_palette: {
+      primary: (document.getElementById('brandColorPrimary') || {}).value || '#d4a843',
+      secondary: (document.getElementById('brandColorSecondary') || {}).value || '#2ecc71'
+    },
+    font_preferences: (document.getElementById('brandFonts') || {}).value || ''
+  };
+}
+
+function saveBrandDNA() {
+  var status = document.getElementById('brandDNAStatus');
+  if (status) status.innerHTML = '<span style="color:var(--text-muted);">Saving...</span>';
+  var data = collectBrandDNA();
+  fetch(API + '/api/social-studio/brand-dna', {
+    method: 'POST',
+    headers: Object.assign({ 'Content-Type': 'application/json' }, authHeaders()),
+    body: JSON.stringify(data)
+  })
+    .then(function(r) { return r.json(); })
+    .then(function(res) {
+      if (res.brand_dna) socialStudioState.brandDNA = res.brand_dna;
+      if (status) status.innerHTML = '<span style="color:var(--accent-gold);">Brand DNA saved.</span>';
+      setTimeout(function() { if (status) status.innerHTML = ''; }, 3000);
+    })
+    .catch(function() {
+      if (status) status.innerHTML = '<span style="color:#ff6b6b;">Failed to save.</span>';
+    });
+}
+
+function analyzeBrandDNA() {
+  var status = document.getElementById('brandDNAStatus');
+  if (status) status.innerHTML = '<span style="color:var(--text-muted);">AI analyzing your brand...</span>';
+  var data = collectBrandDNA();
+  fetch(API + '/api/social-studio/brand-dna/analyze', {
+    method: 'POST',
+    headers: Object.assign({ 'Content-Type': 'application/json' }, authHeaders()),
+    body: JSON.stringify(data)
+  })
+    .then(function(r) { return r.json(); })
+    .then(function(res) {
+      if (res.enhanced_profile) {
+        socialStudioState.brandDNA = Object.assign(socialStudioState.brandDNA || {}, res.enhanced_profile);
+        renderBrandDNATab(document.getElementById('socialStudioBody'));
+      }
+      if (status) status.innerHTML = '<span style="color:var(--accent-gold);">Brand DNA enhanced by AI.</span>';
+    })
+    .catch(function() {
+      if (status) status.innerHTML = '<span style="color:#ff6b6b;">Analysis failed.</span>';
+    });
+}
+
+/* ---- CREATE (Content Gen) TAB ---- */
+function renderCreateTab(container) {
+  container.innerHTML = '<div class="create-content-grid">' +
+    '<div class="create-left">' +
+      '<div class="brand-card">' +
+        '<div class="brand-card-title">Generate Content</div>' +
+        '<div class="brand-field"><label>Platform</label>' +
+          '<select id="genPlatform" class="social-select">' +
+            '<option value="twitter">Twitter / X</option>' +
+            '<option value="instagram">Instagram</option>' +
+            '<option value="linkedin">LinkedIn</option>' +
+            '<option value="facebook">Facebook</option>' +
+            '<option value="tiktok">TikTok</option>' +
+            '<option value="youtube">YouTube</option>' +
+          '</select>' +
+        '</div>' +
+        '<div class="brand-field"><label>Content Type</label>' +
+          '<select id="genContentType" class="social-select">' +
+            '<option value="post">Post / Caption</option>' +
+            '<option value="thread">Thread / Carousel</option>' +
+            '<option value="story">Story Script</option>' +
+            '<option value="reel">Reel / Short Script</option>' +
+            '<option value="article">Long-form Article</option>' +
+          '</select>' +
+        '</div>' +
+        '<div class="brand-field"><label>Topic / Prompt</label><textarea id="genTopic" rows="3" placeholder="What do you want to post about?"></textarea></div>' +
+        '<div class="brand-field"><label>Tone Override (optional)</label><input type="text" id="genTone" placeholder="e.g. casual, urgent, celebratory" /></div>' +
+        '<button class="social-btn primary" onclick="generateSocialContent()" id="genBtn" style="margin-top:8px;">Generate</button>' +
+      '</div>' +
+    '</div>' +
+    '<div class="create-right">' +
+      '<div class="brand-card" style="min-height:300px;">' +
+        '<div class="brand-card-title">Preview</div>' +
+        '<div id="genPreview" class="gen-preview-area"><div style="color:var(--text-muted);font-size:14px;text-align:center;padding:60px 20px;">Your generated content will appear here</div></div>' +
+      '</div>' +
+    '</div>' +
+  '</div>';
+}
+
+function generateSocialContent() {
+  var btn = document.getElementById('genBtn');
+  var preview = document.getElementById('genPreview');
+  if (!preview) return;
+
+  var platform = (document.getElementById('genPlatform') || {}).value || 'twitter';
+  var contentType = (document.getElementById('genContentType') || {}).value || 'post';
+  var topic = (document.getElementById('genTopic') || {}).value || '';
+  var tone = (document.getElementById('genTone') || {}).value || '';
+
+  if (!topic.trim()) {
+    preview.innerHTML = '<div style="color:#ff6b6b;">Please enter a topic or prompt.</div>';
+    return;
+  }
+
+  if (btn) btn.disabled = true;
+  if (btn) btn.textContent = 'Generating...';
+  socialStudioState.generating = true;
+  preview.innerHTML = '<div class="social-loading">Generating content...</div>';
+
+  fetch(API + '/api/social-studio/generate', {
+    method: 'POST',
+    headers: Object.assign({ 'Content-Type': 'application/json' }, authHeaders()),
+    body: JSON.stringify({ platform: platform, content_type: contentType, topic: topic, tone: tone })
+  })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      socialStudioState.generating = false;
+      if (btn) { btn.disabled = false; btn.textContent = 'Generate'; }
+      if (data.error) {
+        preview.innerHTML = '<div style="color:#ff6b6b;">' + escHTML(data.error) + '</div>';
+        return;
+      }
+      var content = data.content || data.generated_content || '';
+      var hashtags = data.hashtags || [];
+      preview.innerHTML = '<div class="gen-result">' +
+        '<div class="gen-platform-badge">' + platform.toUpperCase() + ' · ' + contentType.toUpperCase() + '</div>' +
+        '<div class="gen-content-text">' + escHTML(content).replace(/\n/g, '<br>') + '</div>' +
+        (hashtags.length ? '<div class="gen-hashtags">' + hashtags.map(function(h) { return '<span class="gen-tag">' + escHTML(h) + '</span>'; }).join(' ') + '</div>' : '') +
+        '<div class="gen-actions">' +
+          '<button class="social-btn small" onclick="copyGenContent()">Copy</button>' +
+          '<button class="social-btn small secondary" onclick="saveToMediaLibrary(\'' + escHTML(platform) + '\', \'' + escHTML(contentType) + '\')">Save to Library</button>' +
+          '<button class="social-btn small" onclick="publishGenContent(\'' + escHTML(platform) + '\')">Publish</button>' +
+        '</div>' +
+      '</div>';
+    })
+    .catch(function(err) {
+      socialStudioState.generating = false;
+      if (btn) { btn.disabled = false; btn.textContent = 'Generate'; }
+      preview.innerHTML = '<div style="color:#ff6b6b;">Generation failed. Check your connection.</div>';
+    });
+}
+
+function copyGenContent() {
+  var el = document.querySelector('.gen-content-text');
+  if (el) {
+    navigator.clipboard.writeText(el.innerText).then(function() {
+      showToast('Content copied to clipboard');
+    });
+  }
+}
+
+function saveToMediaLibrary(platform, contentType) {
+  var el = document.querySelector('.gen-content-text');
+  if (!el) return;
+  var content = el.innerText;
+  fetch(API + '/api/social-studio/media', {
+    method: 'POST',
+    headers: Object.assign({ 'Content-Type': 'application/json' }, authHeaders()),
+    body: JSON.stringify({
+      media_type: 'text',
+      title: content.substring(0, 60) + '...',
+      description: 'Generated for ' + platform + ' (' + contentType + ')',
+      content_text: content,
+      tags: [platform, contentType, 'ai-generated']
+    })
+  })
+    .then(function(r) { return r.json(); })
+    .then(function() { showToast('Saved to Media Library'); })
+    .catch(function() { showToast('Failed to save'); });
+}
+
+function publishGenContent(platform) {
+  var el = document.querySelector('.gen-content-text');
+  if (!el) return;
+  var content = el.innerText;
+  fetch(API + '/api/social/publish', {
+    method: 'POST',
+    headers: Object.assign({ 'Content-Type': 'application/json' }, authHeaders()),
+    body: JSON.stringify({ platform: platform, content: content })
+  })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data.error) { showToast(data.error); }
+      else { showToast('Published to ' + platform); }
+    })
+    .catch(function() { showToast('Publish failed'); });
+}
+
+/* ---- CAMPAIGNS TAB ---- */
+function renderCampaignsTab(container) {
+  if (socialStudioState.loadingCampaigns) {
+    container.innerHTML = '<div class="social-loading">Loading campaigns...</div>';
+    return;
+  }
+  if (!socialStudioState.campaigns.length && !socialStudioState._campaignsLoaded) {
+    loadCampaigns(container);
+    return;
+  }
+
+  var camps = socialStudioState.campaigns;
+  container.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">' +
+    '<div style="font-size:15px;color:var(--text-secondary);">' + camps.length + ' Campaign' + (camps.length !== 1 ? 's' : '') + '</div>' +
+    '<button class="social-btn primary" onclick="showNewCampaignForm()">+ New Campaign</button>' +
+  '</div>' +
+  '<div id="newCampaignForm" style="display:none;"></div>' +
+  '<div class="campaigns-list" id="campaignsList">' +
+    (camps.length === 0 ? '<div class="social-empty">No campaigns yet. Create your first campaign to organize your content.</div>' :
+    camps.map(function(c) {
+      var statusColor = c.status === 'active' ? 'var(--accent-gold)' : c.status === 'draft' ? 'var(--text-muted)' : '#2ecc71';
+      return '<div class="campaign-card" onclick="viewCampaign(\'' + c.id + '\')">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;">' +
+          '<div class="campaign-name">' + escHTML(c.name) + '</div>' +
+          '<span class="campaign-status" style="color:' + statusColor + ';">' + (c.status || 'draft').toUpperCase() + '</span>' +
+        '</div>' +
+        '<div class="campaign-desc">' + escHTML(c.description || 'No description') + '</div>' +
+        '<div class="campaign-meta">' +
+          (c.platforms ? '<span>' + (c.platforms || []).join(', ') + '</span>' : '') +
+          (c.start_date ? '<span> · Starts ' + new Date(c.start_date).toLocaleDateString() + '</span>' : '') +
+        '</div>' +
+      '</div>';
+    }).join('')) +
+  '</div>';
+}
+
+function loadCampaigns(container) {
+  socialStudioState.loadingCampaigns = true;
+  if (container) container.innerHTML = '<div class="social-loading">Loading campaigns...</div>';
+  fetch(API + '/api/social-studio/campaigns', { headers: authHeaders() })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      socialStudioState.loadingCampaigns = false;
+      socialStudioState._campaignsLoaded = true;
+      socialStudioState.campaigns = data.campaigns || [];
+      renderCampaignsTab(container || document.getElementById('socialStudioBody'));
+    })
+    .catch(function() {
+      socialStudioState.loadingCampaigns = false;
+      socialStudioState._campaignsLoaded = true;
+      socialStudioState.campaigns = [];
+      renderCampaignsTab(container || document.getElementById('socialStudioBody'));
+    });
+}
+
+function showNewCampaignForm() {
+  var form = document.getElementById('newCampaignForm');
+  if (!form) return;
+  form.style.display = form.style.display === 'none' ? 'block' : 'none';
+  form.innerHTML = '<div class="brand-card" style="margin-bottom:16px;">' +
+    '<div class="brand-card-title">New Campaign</div>' +
+    '<div class="brand-field"><label>Name</label><input type="text" id="newCampName" placeholder="Campaign name" /></div>' +
+    '<div class="brand-field"><label>Description</label><textarea id="newCampDesc" rows="2" placeholder="What is this campaign about?"></textarea></div>' +
+    '<div class="brand-field"><label>Platforms</label><input type="text" id="newCampPlatforms" placeholder="twitter, instagram, linkedin" /></div>' +
+    '<div class="brand-field"><label>Start Date</label><input type="date" id="newCampStart" /></div>' +
+    '<div class="brand-field"><label>End Date</label><input type="date" id="newCampEnd" /></div>' +
+    '<div style="display:flex;gap:8px;">' +
+      '<button class="social-btn primary" onclick="createCampaign()">Create</button>' +
+      '<button class="social-btn secondary" onclick="document.getElementById(\'newCampaignForm\').style.display=\'none\'">Cancel</button>' +
+    '</div>' +
+  '</div>';
+}
+
+function createCampaign() {
+  var name = (document.getElementById('newCampName') || {}).value;
+  var desc = (document.getElementById('newCampDesc') || {}).value;
+  var platforms = ((document.getElementById('newCampPlatforms') || {}).value || '').split(',').map(function(s) { return s.trim(); }).filter(Boolean);
+  var startDate = (document.getElementById('newCampStart') || {}).value;
+  var endDate = (document.getElementById('newCampEnd') || {}).value;
+
+  if (!name) { showToast('Campaign name is required'); return; }
+
+  fetch(API + '/api/social-studio/campaigns', {
+    method: 'POST',
+    headers: Object.assign({ 'Content-Type': 'application/json' }, authHeaders()),
+    body: JSON.stringify({ name: name, description: desc, platforms: platforms, start_date: startDate || null, end_date: endDate || null })
+  })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data.campaign) {
+        socialStudioState.campaigns.unshift(data.campaign);
+        document.getElementById('newCampaignForm').style.display = 'none';
+        renderCampaignsTab(document.getElementById('socialStudioBody'));
+        showToast('Campaign created');
+      }
+    })
+    .catch(function() { showToast('Failed to create campaign'); });
+}
+
+function viewCampaign(campaignId) {
+  var body = document.getElementById('socialStudioBody');
+  if (!body) return;
+  var camp = socialStudioState.campaigns.find(function(c) { return c.id === campaignId; });
+  if (!camp) return;
+
+  body.innerHTML = '<div class="campaign-detail">' +
+    '<button class="social-btn secondary" onclick="switchSocialTab(\'campaigns\')" style="margin-bottom:16px;">&larr; Back to Campaigns</button>' +
+    '<div class="brand-card">' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;">' +
+        '<div class="brand-card-title">' + escHTML(camp.name) + '</div>' +
+        '<div style="display:flex;gap:8px;">' +
+          '<button class="social-btn small" onclick="addCampaignItem(\'' + campaignId + '\')">+ Add Content</button>' +
+          '<button class="social-btn small danger" onclick="deleteCampaign(\'' + campaignId + '\')">Delete</button>' +
+        '</div>' +
+      '</div>' +
+      '<div style="color:var(--text-secondary);margin-bottom:16px;">' + escHTML(camp.description || '') + '</div>' +
+      '<div id="campaignItems" class="social-loading">Loading content items...</div>' +
+    '</div>' +
+  '</div>';
+
+  fetch(API + '/api/social-studio/campaigns/' + campaignId + '/items', { headers: authHeaders() })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      var items = data.items || [];
+      var el = document.getElementById('campaignItems');
+      if (!el) return;
+      if (items.length === 0) {
+        el.innerHTML = '<div class="social-empty">No content items yet. Click "+ Add Content" to create one.</div>';
+        return;
+      }
+      el.innerHTML = items.map(function(item) {
+        return '<div class="campaign-item">' +
+          '<div style="display:flex;justify-content:space-between;align-items:start;">' +
+            '<div><div style="font-weight:600;color:var(--text-primary);margin-bottom:4px;">' + escHTML(item.platform || 'general') + ' · ' + escHTML(item.content_type || 'post') + '</div>' +
+            '<div style="font-size:13px;color:var(--text-secondary);max-width:600px;white-space:pre-wrap;">' + escHTML((item.content || '').substring(0, 200)) + (item.content && item.content.length > 200 ? '...' : '') + '</div></div>' +
+            '<div style="display:flex;gap:8px;">' +
+              '<span style="font-size:12px;color:var(--text-muted);">' + (item.status || 'draft') + '</span>' +
+              '<button class="social-btn small danger" onclick="deleteCampaignItem(\'' + item.id + '\',\'' + campaignId + '\')">×</button>' +
+            '</div>' +
+          '</div>' +
+        '</div>';
+      }).join('');
+    });
+}
+
+function addCampaignItem(campaignId) {
+  var el = document.getElementById('campaignItems');
+  if (!el) return;
+  var existingForm = document.getElementById('addItemForm');
+  if (existingForm) { existingForm.remove(); return; }
+
+  var formDiv = document.createElement('div');
+  formDiv.id = 'addItemForm';
+  formDiv.className = 'brand-card';
+  formDiv.style.marginBottom = '16px';
+  formDiv.innerHTML = '<div class="brand-card-title">Add Content Item</div>' +
+    '<div class="brand-field"><label>Platform</label><select id="itemPlatform" class="social-select"><option value="twitter">Twitter</option><option value="instagram">Instagram</option><option value="linkedin">LinkedIn</option><option value="facebook">Facebook</option><option value="tiktok">TikTok</option></select></div>' +
+    '<div class="brand-field"><label>Content Type</label><select id="itemContentType" class="social-select"><option value="post">Post</option><option value="story">Story</option><option value="reel">Reel</option><option value="article">Article</option></select></div>' +
+    '<div class="brand-field"><label>Content</label><textarea id="itemContent" rows="3" placeholder="Write or paste your content..."></textarea></div>' +
+    '<div class="brand-field"><label>Scheduled Date (optional)</label><input type="datetime-local" id="itemScheduled" /></div>' +
+    '<div style="display:flex;gap:8px;"><button class="social-btn primary" onclick="submitCampaignItem(\'' + campaignId + '\')">Add</button><button class="social-btn secondary" onclick="document.getElementById(\'addItemForm\').remove()">Cancel</button></div>';
+  el.parentNode.insertBefore(formDiv, el);
+}
+
+function submitCampaignItem(campaignId) {
+  var platform = (document.getElementById('itemPlatform') || {}).value;
+  var contentType = (document.getElementById('itemContentType') || {}).value;
+  var content = (document.getElementById('itemContent') || {}).value;
+  var scheduled = (document.getElementById('itemScheduled') || {}).value;
+
+  if (!content) { showToast('Content is required'); return; }
+
+  fetch(API + '/api/social-studio/campaigns/' + campaignId + '/items', {
+    method: 'POST',
+    headers: Object.assign({ 'Content-Type': 'application/json' }, authHeaders()),
+    body: JSON.stringify({ platform: platform, content_type: contentType, content: content, scheduled_at: scheduled || null })
+  })
+    .then(function(r) { return r.json(); })
+    .then(function() {
+      viewCampaign(campaignId);
+      showToast('Item added');
+    })
+    .catch(function() { showToast('Failed to add item'); });
+}
+
+function deleteCampaignItem(itemId, campaignId) {
+  if (!confirm('Delete this content item?')) return;
+  fetch(API + '/api/social-studio/campaign-items/' + itemId, {
+    method: 'DELETE',
+    headers: authHeaders()
+  }).then(function() { viewCampaign(campaignId); });
+}
+
+function deleteCampaign(campaignId) {
+  if (!confirm('Delete this entire campaign?')) return;
+  fetch(API + '/api/social-studio/campaigns/' + campaignId, {
+    method: 'DELETE',
+    headers: authHeaders()
+  }).then(function() {
+    socialStudioState.campaigns = socialStudioState.campaigns.filter(function(c) { return c.id !== campaignId; });
+    switchSocialTab('campaigns');
+    showToast('Campaign deleted');
+  });
+}
+
+/* ---- MEDIA LIBRARY TAB ---- */
+function renderMediaTab(container) {
+  if (socialStudioState.loadingMedia) {
+    container.innerHTML = '<div class="social-loading">Loading media library...</div>';
+    return;
+  }
+  if (!socialStudioState.mediaItems.length && !socialStudioState._mediaLoaded) {
+    loadMediaLibrary(container);
+    return;
+  }
+
+  var items = socialStudioState.mediaItems;
+  container.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">' +
+    '<div style="font-size:15px;color:var(--text-secondary);">' + items.length + ' item' + (items.length !== 1 ? 's' : '') + '</div>' +
+    '<button class="social-btn primary" onclick="showUploadMediaForm()">+ Upload Media</button>' +
+  '</div>' +
+  '<div id="uploadMediaForm" style="display:none;"></div>' +
+  '<div class="media-grid">' +
+    (items.length === 0 ? '<div class="social-empty" style="grid-column:1/-1;">No media yet. Upload or save generated content to build your library.</div>' :
+    items.map(function(m) {
+      var icon = m.media_type === 'image' ? '🖼' : m.media_type === 'video' ? '🎬' : '📝';
+      return '<div class="media-card">' +
+        '<div class="media-card-icon">' + icon + '</div>' +
+        '<div class="media-card-title">' + escHTML(m.title || 'Untitled') + '</div>' +
+        '<div class="media-card-type">' + escHTML(m.media_type || 'text') + '</div>' +
+        (m.tags && m.tags.length ? '<div class="media-card-tags">' + m.tags.slice(0, 3).map(function(t) { return '<span class="gen-tag">' + escHTML(t) + '</span>'; }).join('') + '</div>' : '') +
+        '<button class="social-btn small danger" onclick="deleteMedia(\'' + m.id + '\')" style="margin-top:8px;">Delete</button>' +
+      '</div>';
+    }).join('')) +
+  '</div>';
+}
+
+function loadMediaLibrary(container) {
+  socialStudioState.loadingMedia = true;
+  if (container) container.innerHTML = '<div class="social-loading">Loading media...</div>';
+  fetch(API + '/api/social-studio/media', { headers: authHeaders() })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      socialStudioState.loadingMedia = false;
+      socialStudioState._mediaLoaded = true;
+      socialStudioState.mediaItems = data.media || [];
+      renderMediaTab(container || document.getElementById('socialStudioBody'));
+    })
+    .catch(function() {
+      socialStudioState.loadingMedia = false;
+      socialStudioState._mediaLoaded = true;
+      renderMediaTab(container || document.getElementById('socialStudioBody'));
+    });
+}
+
+function showUploadMediaForm() {
+  var form = document.getElementById('uploadMediaForm');
+  if (!form) return;
+  form.style.display = form.style.display === 'none' ? 'block' : 'none';
+  form.innerHTML = '<div class="brand-card" style="margin-bottom:16px;">' +
+    '<div class="brand-card-title">Add Media</div>' +
+    '<div class="brand-field"><label>Title</label><input type="text" id="mediaTitle" placeholder="Media title" /></div>' +
+    '<div class="brand-field"><label>Type</label><select id="mediaType" class="social-select"><option value="text">Text Content</option><option value="image">Image</option><option value="video">Video</option></select></div>' +
+    '<div class="brand-field"><label>Content / URL</label><textarea id="mediaContent" rows="3" placeholder="Paste text content or media URL..."></textarea></div>' +
+    '<div class="brand-field"><label>Tags (comma-separated)</label><input type="text" id="mediaTags" placeholder="e.g. announcement, product, launch" /></div>' +
+    '<div style="display:flex;gap:8px;">' +
+      '<button class="social-btn primary" onclick="uploadMedia()">Save</button>' +
+      '<button class="social-btn secondary" onclick="document.getElementById(\'uploadMediaForm\').style.display=\'none\'">Cancel</button>' +
+    '</div>' +
+  '</div>';
+}
+
+function uploadMedia() {
+  var title = (document.getElementById('mediaTitle') || {}).value;
+  var mediaType = (document.getElementById('mediaType') || {}).value;
+  var content = (document.getElementById('mediaContent') || {}).value;
+  var tags = ((document.getElementById('mediaTags') || {}).value || '').split(',').map(function(s) { return s.trim(); }).filter(Boolean);
+
+  if (!title) { showToast('Title is required'); return; }
+
+  var payload = { title: title, media_type: mediaType, tags: tags };
+  if (mediaType === 'text') { payload.content_text = content; }
+  else { payload.url = content; payload.description = content; }
+
+  fetch(API + '/api/social-studio/media', {
+    method: 'POST',
+    headers: Object.assign({ 'Content-Type': 'application/json' }, authHeaders()),
+    body: JSON.stringify(payload)
+  })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data.media) socialStudioState.mediaItems.unshift(data.media);
+      document.getElementById('uploadMediaForm').style.display = 'none';
+      renderMediaTab(document.getElementById('socialStudioBody'));
+      showToast('Media saved');
+    })
+    .catch(function() { showToast('Failed to save media'); });
+}
+
+function deleteMedia(mediaId) {
+  if (!confirm('Delete this media item?')) return;
+  fetch(API + '/api/social-studio/media/' + mediaId, {
+    method: 'DELETE',
+    headers: authHeaders()
+  }).then(function() {
+    socialStudioState.mediaItems = socialStudioState.mediaItems.filter(function(m) { return m.id !== mediaId; });
+    renderMediaTab(document.getElementById('socialStudioBody'));
+    showToast('Media deleted');
+  });
+}
+
+/* ---- PLATFORMS TAB ---- */
+function renderPlatformsTab(container) {
+  container.innerHTML = '<div class="social-loading">Loading platform connections...</div>';
+
+  fetch(API + '/api/social/connections', { headers: authHeaders() })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      socialStudioState.connectedPlatforms = data.connections || [];
+      renderPlatformsList(container);
+    })
+    .catch(function() {
+      socialStudioState.connectedPlatforms = [];
+      renderPlatformsList(container);
+    });
+}
+
+function renderPlatformsList(container) {
+  var platforms = [
+    { id: 'twitter', name: 'Twitter / X', icon: '𝕏', color: '#000' },
+    { id: 'instagram', name: 'Instagram', icon: '📷', color: '#E4405F' },
+    { id: 'linkedin', name: 'LinkedIn', icon: '💼', color: '#0A66C2' },
+    { id: 'facebook', name: 'Facebook', icon: '📘', color: '#1877F2' },
+    { id: 'tiktok', name: 'TikTok', icon: '🎵', color: '#000' },
+    { id: 'youtube', name: 'YouTube', icon: '▶️', color: '#FF0000' },
+    { id: 'snapchat', name: 'Snapchat', icon: '👻', color: '#FFFC00' }
+  ];
+
+  var connected = {};
+  socialStudioState.connectedPlatforms.forEach(function(c) { connected[c.platform] = c; });
+
+  container.innerHTML = '<div class="platforms-grid">' +
+    platforms.map(function(p) {
+      var isConnected = !!connected[p.id];
+      return '<div class="platform-card' + (isConnected ? ' connected' : '') + '">' +
+        '<div class="platform-icon" style="font-size:28px;">' + p.icon + '</div>' +
+        '<div class="platform-name">' + escHTML(p.name) + '</div>' +
+        '<div class="platform-status" style="color:' + (isConnected ? 'var(--accent-gold)' : 'var(--text-muted)') + ';">' + (isConnected ? 'Connected' : 'Not Connected') + '</div>' +
+        (isConnected ?
+          '<div style="display:flex;gap:8px;margin-top:8px;"><button class="social-btn small danger" onclick="disconnectPlatform(\'' + p.id + '\')">Disconnect</button></div>' :
+          '<button class="social-btn small" onclick="connectPlatform(\'' + p.id + '\')" style="margin-top:8px;">Connect</button>') +
+      '</div>';
+    }).join('') +
+  '</div>' +
+  '<div style="margin-top:20px;padding:16px;background:rgba(212,168,67,0.08);border-radius:12px;font-size:13px;color:var(--text-secondary);">' +
+    '<strong style="color:var(--accent-gold);">Note:</strong> Platform OAuth connections require API keys to be configured in the backend. Contact your administrator to enable real platform connections.' +
+  '</div>';
+}
+
+function connectPlatform(platform) {
+  fetch(API + '/api/social/auth/' + platform, { headers: authHeaders() })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data.auth_url) {
+        window.open(data.auth_url, '_blank', 'width=600,height=700');
+      } else if (data.error) {
+        showToast(data.error || 'Connection not available');
+      } else {
+        // Fallback: simulate connect for demo
+        fetch(API + '/api/social/simulate-connect/' + platform, {
+          method: 'POST',
+          headers: Object.assign({ 'Content-Type': 'application/json' }, authHeaders()),
+          body: JSON.stringify({ access_token: 'simulated', username: 'demo_user' })
+        }).then(function() {
+          showToast(platform + ' connected (simulated)');
+          renderPlatformsTab(document.getElementById('socialStudioBody'));
+        });
+      }
+    })
+    .catch(function() { showToast('Failed to initiate connection'); });
+}
+
+function disconnectPlatform(platform) {
+  if (!confirm('Disconnect ' + platform + '?')) return;
+  fetch(API + '/api/social/disconnect/' + platform, {
+    method: 'POST',
+    headers: authHeaders()
+  }).then(function() {
+    showToast(platform + ' disconnected');
+    renderPlatformsTab(document.getElementById('socialStudioBody'));
+  });
+}
+
+/* ---- CALENDAR VIEW (Placeholder) ---- */
+function renderCalendarView() {
+  var root = document.getElementById('calendarRoot');
+  if (!root) return;
+  root.innerHTML = '<div class="social-studio-container">' +
+    '<div class="social-studio-header">' +
+      '<div style="display:flex;align-items:center;gap:12px;">' +
+        '<svg width="28" height="28" fill="none" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" stroke="var(--accent-gold)" stroke-width="1.5"/><path d="M16 2v4M8 2v4M3 10h18" stroke="var(--accent-gold)" stroke-width="1.5"/></svg>' +
+        '<div><div class="social-studio-title">Calendar</div>' +
+        '<div class="social-studio-subtitle">Schedule content and manage your publishing calendar</div></div>' +
+      '</div>' +
+    '</div>' +
+    '<div class="brand-card" style="margin-top:20px;text-align:center;padding:60px 20px;">' +
+      '<div style="font-size:48px;margin-bottom:16px;">📅</div>' +
+      '<div style="font-size:18px;font-weight:600;color:var(--text-primary);margin-bottom:8px;">Calendar Coming Soon</div>' +
+      '<div style="font-size:14px;color:var(--text-secondary);max-width:400px;margin:0 auto;">Content scheduling calendar with Google Calendar and Outlook integration. Wire your publishing schedule directly into your workflow.</div>' +
+    '</div>' +
+  '</div>';
+}
+
+/* ---- HELPER ---- */
+function escHTML(str) {
+  if (typeof str !== 'string') return '';
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
