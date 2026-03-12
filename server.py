@@ -2319,25 +2319,55 @@ async def get_distressed_summary():
 
 @app.get("/api/realestate/distressed/{category}")
 async def get_distressed(category: str, state: str = "", city: str = ""):
-    """Get distressed properties by category: foreclosure, pre_foreclosure, tax_lien, nod."""
-    # Try live data from RentCast first for foreclosure category
+    """Get distressed properties by category — ALL live from RentCast.
+    Categories: foreclosure, pre_foreclosure, tax_lien, nod, bankruptcy, off_market, cash_buyer, notes_due"""
     RENTCAST_KEY = os.environ.get("RENTCAST_API_KEY", "")
-    if RENTCAST_KEY and category == "foreclosure":
+    
+    # Map category to RentCast query strategy
+    status_map = {
+        "foreclosure": "Foreclosure",
+        "pre_foreclosure": "Pre-Foreclosure",
+        "nod": "Foreclosure",  # NODs are early-stage foreclosures
+    }
+    
+    # Categories that use listings/sale endpoint
+    listing_cats = ["foreclosure", "pre_foreclosure", "nod", "bankruptcy", "cash_buyer"]
+    # Categories that use properties endpoint (off-market = not currently listed)
+    property_cats = ["tax_lien", "off_market", "notes_due"]
+    
+    if RENTCAST_KEY:
         try:
-            params = {"status": "Foreclosure", "limit": 20}
+            params = {"limit": 20}
             if state:
                 params["state"] = state.upper()
             if city:
                 params["city"] = city
-            async with httpx.AsyncClient(timeout=10) as http:
-                resp = await http.get(
-                    "https://api.rentcast.io/v1/listings/sale",
-                    params=params,
-                    headers={"X-Api-Key": RENTCAST_KEY, "Accept": "application/json"}
-                )
+            
+            if category in status_map:
+                params["status"] = status_map[category]
+            
+            async with httpx.AsyncClient(timeout=15) as http:
+                if category in listing_cats:
+                    endpoint = f"{RENTCAST_BASE}/listings/sale"
+                else:
+                    endpoint = f"{RENTCAST_BASE}/properties"
+                
+                resp = await http.get(endpoint, params=params, headers=RENTCAST_HEADERS)
+                
                 if resp.status_code == 200:
                     live_data = resp.json()
-                    if live_data and len(live_data) > 0:
+                    if isinstance(live_data, list) and len(live_data) > 0:
+                        # Normalize label
+                        label_map = {
+                            "foreclosure": "Foreclosure",
+                            "pre_foreclosure": "Pre-Foreclosure",
+                            "nod": "Notice of Default",
+                            "tax_lien": "Tax Lien",
+                            "bankruptcy": "Bankruptcy/REO",
+                            "off_market": "Off-Market",
+                            "cash_buyer": "Cash Buyer Opportunity",
+                            "notes_due": "Note Coming Due",
+                        }
                         properties = [
                             {
                                 "address": p.get("formattedAddress", p.get("addressLine1", "")),
@@ -2348,8 +2378,8 @@ async def get_distressed(category: str, state: str = "", city: str = ""):
                                 "baths": p.get("bathrooms", 0),
                                 "sqft": p.get("squareFootage", 0),
                                 "year_built": p.get("yearBuilt", 0),
-                                "estimated_value": p.get("price", 0),
-                                "status": "Foreclosure",
+                                "estimated_value": p.get("price", p.get("assessorValues", {}).get("totalValue", 0) if isinstance(p.get("assessorValues"), dict) else 0),
+                                "status": label_map.get(category, category),
                                 "property_type": p.get("propertyType", "Single Family"),
                                 "lat": p.get("latitude"),
                                 "lng": p.get("longitude"),
@@ -2358,8 +2388,9 @@ async def get_distressed(category: str, state: str = "", city: str = ""):
                         ]
                         return {"category": category, "properties": properties, "total": len(properties), "source": "rentcast_live"}
         except Exception as e:
-            print(f"[RE Distressed] RentCast API error, using cached data: {e}")
-    # Fallback: mock/cached data
+            print(f"[RE Distressed] RentCast API error for {category}: {e}")
+    
+    # Fallback: cached data
     properties = DISTRESSED_PROPERTIES.get(category, [])
     if state:
         properties = [p for p in properties if p.get("state", "").upper() == state.upper()]
@@ -10151,7 +10182,7 @@ async def property_lookup(
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
-@app.get("/api/realestate/distressed/search")
+@app.get("/api/realestate/distressed-search")
 async def distressed_search(
     category: str = "foreclosure",
     state: Optional[str] = None,
