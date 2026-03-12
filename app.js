@@ -54,12 +54,12 @@ function setView(view) {
   if (sb) { sb.style.pointerEvents = 'auto'; sb.style.zIndex = '100'; }
   // Close mobile more menu on any navigation
   if (typeof closeMobileMore === 'function') closeMobileMore();
-  // Sync mobile tab bar active state
-  var mobileTabMap = { chat: 0, studio: 1, social: 2, launchpad: 3 };
-  var mobileTabs = document.querySelectorAll('.mobile-tab');
-  if (mobileTabs.length > 0) {
-    mobileTabs.forEach(function(t) { t.classList.remove('active'); });
-    if (typeof mobileTabMap[view] === 'number') { mobileTabs[mobileTabMap[view]].classList.add('active'); }
+  // Sync mobile bottom nav active state (v8.5.0)
+  var mobileNavItems = document.querySelectorAll('.mobile-nav-item[data-view]');
+  if (mobileNavItems.length > 0) {
+    mobileNavItems.forEach(function(item) {
+      item.classList.toggle('active', item.getAttribute('data-view') === view);
+    });
   }
 
   // If leaving Builder with unsaved work and not logged in, prompt to save
@@ -1065,14 +1065,8 @@ function toggleSidebar() {
   document.getElementById('sidebarOverlay').classList.toggle('open', sidebarOpen);
 }
 
-function setMobileTab(el) {
-  document.querySelectorAll('.mobile-tab').forEach(function(t) { t.classList.remove('active'); });
-  el.classList.add('active');
-  closeMobileMore();
-}
-
-function toggleMobileMore() { document.getElementById('mobileMoreMenu').classList.toggle('active'); }
-function closeMobileMore() { document.getElementById('mobileMoreMenu').classList.remove('active'); }
+// Old mobile-tab functions removed in v8.5.0 — using mobileNav system
+function setMobileTab(el) { /* no-op: legacy compat */ }
 
 /* ============================================
    THEME
@@ -4235,24 +4229,18 @@ async function builderLinkSocial(platform) {
 // mobile-bottom-nav:upgrade_mobile
 // ─── Mobile Bottom Navigation ─────────────────────────────────────────
 function mobileNav(view, btn) {
-  // Update active state
-  document.querySelectorAll('.mobile-nav-item').forEach(function(i) { i.classList.remove('active'); });
-  if (btn) btn.classList.add('active');
+  // Update active state on bottom tab buttons
+  document.querySelectorAll('.mobile-nav-item[data-view]').forEach(function(i) { i.classList.remove('active'); });
+  if (btn && btn.getAttribute('data-view')) btn.classList.add('active');
+  // If navigating to a tab that has a data-view button, highlight it
+  var matchBtn = document.querySelector('.mobile-nav-item[data-view="' + view + '"]');
+  if (matchBtn) matchBtn.classList.add('active');
   
   // Close more menu if open
   closeMobileMore();
   
-  // Navigate
-  if (view === 'chat') {
-    navigate('chat');
-  } else if (view === 'studio') {
-    navigate('studio');
-  } else if (view === 'dashboard') {
-    navigate('dashboard');
-  } else if (view === 'account') {
-    navigate('account');
-    if (typeof renderAccountProfile === 'function') renderAccountProfile();
-  }
+  // Navigate to any view
+  navigate(view);
 }
 
 function toggleMobileMore() {

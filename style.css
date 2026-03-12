@@ -881,7 +881,7 @@ ul, ol { list-style: none; }
   .sidebar { position: fixed; left: 0; top: 0; transform: translateX(-100%); }
   .sidebar.open { transform: translateX(0); }
   .hamburger-btn { display: block; }
-  .mobile-tabs { display: block; }
+  /* .mobile-tabs removed in v8.5.0 — using mobile-bottom-nav */
   .main-content { padding-bottom: 56px; }
   .pricing-cards { grid-template-columns: 1fr; }
   .studio-layout { flex-direction: column; }
@@ -3377,6 +3377,16 @@ ul, ol { list-style: none; }
 }
 .studio-action-btn:hover {
   background: rgba(212,160,23,0.12); border-color: var(--accent-gold); color: var(--accent-gold);
+}
+
+
+.mobile-more-header {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-faint, #666);
+  padding: 0 4px 8px;
 }
 
 /* mobile-bottom-nav:upgrade_mobile */
