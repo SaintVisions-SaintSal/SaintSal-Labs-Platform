@@ -6769,3 +6769,187 @@ ul, ol { list-style: none; }
 @media (max-width: 640px) {
   #careerSuiteRoot { padding: 12px 10px 100px !important; }
 }
+
+
+/* ============================================
+   ADMIN DASHBOARD v8.2
+   ============================================ */
+.admin-dashboard-wrap {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 24px 20px 60px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+.admin-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.admin-title {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+.admin-subtitle {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+.admin-refresh-btn {
+  background: var(--bg-surface-2);
+  border: none;
+  color: var(--text-secondary);
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.admin-refresh-btn:hover { background: var(--bg-surface-3); color: var(--text-primary); }
+.admin-stats-row {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 12px;
+}
+.admin-stat-card {
+  background: var(--bg-surface-2);
+  border-radius: 12px;
+  padding: 20px;
+  text-align: center;
+}
+.admin-stat-label {
+  font-size: 12px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 8px;
+}
+.admin-stat-value {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--accent-gold);
+}
+.admin-section {
+  background: var(--bg-surface-2);
+  border-radius: 12px;
+  padding: 20px;
+}
+.admin-section-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 16px;
+}
+.admin-add-user-form {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.admin-input {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-primary, #333);
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 13px;
+  color: var(--text-primary);
+  outline: none;
+  flex: 1;
+  min-width: 180px;
+}
+.admin-input:focus { border-color: var(--accent-gold); }
+.admin-select {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-primary, #333);
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 13px;
+  color: var(--text-primary);
+  outline: none;
+  cursor: pointer;
+}
+.admin-select:focus { border-color: var(--accent-gold); }
+.admin-btn {
+  padding: 10px 20px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  border: none;
+  transition: all 0.2s;
+}
+.admin-btn.primary {
+  background: var(--accent-gold);
+  color: #000;
+}
+.admin-btn.primary:hover { opacity: 0.9; }
+.admin-btn.small {
+  padding: 6px 12px;
+  font-size: 11px;
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-primary, #333);
+  margin-right: 4px;
+}
+.admin-btn.small:hover { color: var(--text-primary); background: var(--bg-surface-3); }
+.admin-btn.small.danger { color: #ef4444; border-color: rgba(239,68,68,0.3); }
+.admin-btn.small.danger:hover { background: rgba(239,68,68,0.1); }
+.admin-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.admin-table th {
+  text-align: left;
+  padding: 10px 12px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border-primary, #222);
+}
+.admin-table td {
+  padding: 12px;
+  border-bottom: 1px solid rgba(255,255,255,0.03);
+  color: var(--text-secondary);
+}
+.admin-table tr:hover td { background: rgba(255,255,255,0.02); }
+.admin-metering-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+}
+.admin-meter-card {
+  background: var(--bg-surface);
+  border-radius: 10px;
+  padding: 16px;
+  text-align: center;
+}
+.admin-meter-name {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--accent-gold);
+  margin-bottom: 4px;
+}
+.admin-meter-rate {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 6px;
+}
+.admin-meter-desc {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+@media (max-width: 900px) {
+  .admin-stats-row { grid-template-columns: repeat(3, 1fr); }
+  .admin-metering-grid { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 600px) {
+  .admin-stats-row { grid-template-columns: repeat(2, 1fr); }
+  .admin-metering-grid { grid-template-columns: 1fr 1fr; }
+  .admin-add-user-form { flex-direction: column; }
+  .admin-input { width: 100%; min-width: unset; }
+}

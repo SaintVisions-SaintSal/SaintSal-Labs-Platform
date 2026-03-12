@@ -65,7 +65,7 @@
 /* ── Ghost Button ── */
 .admin-btn-ghost {
   background: transparent;
-  color: #555;
+  color: var(--text-secondary, #999);
   font-size: 11px;
   border: 1px solid #222;
   border-radius: 5px;
@@ -170,7 +170,7 @@
 }
 .admin-order-meta {
   font-size: 12px;
-  color: #555;
+  color: var(--text-secondary, #999);
   margin-bottom: 2px;
 }
 .admin-order-email {
@@ -274,7 +274,7 @@
 }
 .admin-input-label {
   font-size: 10px;
-  color: #555;
+  color: var(--text-secondary, #999);
   letter-spacing: 0.1em;
   text-transform: uppercase;
   display: block;
@@ -334,7 +334,7 @@
   display: flex;
   gap: 0;
   margin-bottom: 28px;
-  border-bottom: 1px solid rgba(0,0,0,.06);
+  border-bottom: 1px solid rgba(255,255,255,.06);
 }
 .admin-tab {
   padding: 12px 24px;
@@ -350,7 +350,7 @@
 }
 .admin-tab:hover { color: #333; }
 .admin-tab.active {
-  color: #111;
+  color: var(--text-primary, #e0e0e0);
   border-bottom-color: #D4AF37;
 }
 
@@ -359,14 +359,14 @@
    ══════════════════════════════════════════════════════════════════════════════ */
 .admin-create-user-form {
   padding: 20px;
-  background: rgba(0,0,0,.015);
+  background: rgba(255,255,255,.03);
   border-radius: 10px;
   margin-bottom: 24px;
 }
 .admin-form-title {
   font-size: 13px;
   font-weight: 700;
-  color: #111;
+  color: var(--text-primary, #e0e0e0);
   margin-bottom: 14px;
   letter-spacing: .01em;
 }
@@ -390,33 +390,34 @@
 
 .admin-users-header {
   display: grid;
-  grid-template-columns: 2fr 1.5fr 1fr 1fr 1fr 1.2fr;
+  grid-template-columns: 2fr 1.2fr 0.8fr 0.8fr 0.8fr 0.8fr 1.2fr;
   gap: 8px;
   padding: 10px 16px;
   font-size: 11px;
   font-weight: 700;
-  color: #999;
+  color: var(--text-muted, #666);
   text-transform: uppercase;
   letter-spacing: .05em;
-  border-bottom: 1px solid rgba(0,0,0,.06);
+  border-bottom: 1px solid rgba(255,255,255,.06);
 }
 .admin-user-row {
   display: grid;
-  grid-template-columns: 2fr 1.5fr 1fr 1fr 1fr 1.2fr;
+  grid-template-columns: 2fr 1.2fr 0.8fr 0.8fr 0.8fr 0.8fr 1.2fr;
   gap: 8px;
   padding: 12px 16px;
   align-items: center;
   font-size: 13px;
-  border-bottom: 1px solid rgba(0,0,0,.03);
+  border-bottom: 1px solid rgba(255,255,255,.03);
   transition: background .1s ease;
 }
-.admin-user-row:hover { background: rgba(0,0,0,.015); }
+.admin-user-row:hover { background: rgba(255,255,255,.03); }
 .admin-user-row.editing { background: rgba(212,175,55,.03); }
 
-.admin-ur-email { color: #111; font-weight: 500; word-break: break-all; }
-.admin-ur-name { color: #555; }
+.admin-ur-email { color: var(--text-primary, #e0e0e0); font-weight: 500; word-break: break-all; }
+.admin-ur-name { color: var(--text-secondary, #999); }
 .admin-ur-role { font-size: 12px; }
 .admin-ur-tier { font-size: 12px; font-weight: 600; text-transform: capitalize; }
+.admin-ur-meter { font-size: 12px; font-weight: 600; text-transform: capitalize; }
 .admin-ur-status { font-size: 11px; }
 .admin-ur-actions { display: flex; gap: 6px; justify-content: flex-end; }
 
@@ -445,7 +446,7 @@
   padding: 2px 8px;
   background: rgba(0,0,0,.04);
   color: #888;
-  border: 1px solid rgba(0,0,0,.06);
+  border-bottom: 1px solid rgba(255,255,255,.06);
   border-radius: 4px;
   font-size: 11px;
   font-weight: 600;
@@ -458,11 +459,11 @@
   border-radius: 5px;
   border: 1px solid rgba(0,0,0,.08);
   background: #fff;
-  color: #555;
+  color: var(--text-secondary, #999);
   cursor: pointer;
   transition: all .12s;
 }
-.admin-btn-sm:hover { background: #f5f5f5; color: #111; }
+.admin-btn-sm:hover { background: #f5f5f5; color: var(--text-primary, #e0e0e0); }
 .admin-btn-sm.admin-btn-save {
   background: #D4AF37;
   color: #fff;
@@ -485,7 +486,7 @@
   border: 1px solid rgba(0,0,0,.1);
   border-radius: 5px;
   background: #fff;
-  color: #111;
+  color: var(--text-primary, #e0e0e0);
   width: 100%;
 }
 

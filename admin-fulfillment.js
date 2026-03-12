@@ -472,7 +472,8 @@ function _adminUsersHTML() {
   h += '<span class="admin-uh-email">Email</span>';
   h += '<span class="admin-uh-name">Name</span>';
   h += '<span class="admin-uh-role">Role</span>';
-  h += '<span class="admin-uh-tier">Tier</span>';
+  h += '<span class="admin-uh-tier">Plan</span>';
+  h += '<span class="admin-uh-meter">Meter</span>';
   h += '<span class="admin-uh-status">Status</span>';
   h += '<span class="admin-uh-actions">Actions</span>';
   h += '</div>';
@@ -504,9 +505,19 @@ function _adminUsersHTML() {
       h += '<option value="enterprise"' + (u.plan_tier === 'enterprise' ? ' selected' : '') + '>Enterprise (∞)</option>';
       h += '</select>';
       h += '</span>';
+      h += '<span class="admin-ur-meter">';
+      h += '<select class="admin-inp-sm" id="editMeter_' + u.id + '">';
+      h += '<option value="mini"' + ((u.meter_tier||'mini') === 'mini' ? ' selected' : '') + '>Mini ($0.05)</option>';
+      h += '<option value="pro"' + ((u.meter_tier||'') === 'pro' ? ' selected' : '') + '>Pro ($0.25)</option>';
+      h += '<option value="max"' + ((u.meter_tier||'') === 'max' ? ' selected' : '') + '>Max ($0.75)</option>';
+      h += '<option value="maxpro"' + ((u.meter_tier||'') === 'maxpro' ? ' selected' : '') + '>MaxPro ($1)</option>';
+      h += '</select>';
+      h += '</span>';
     } else {
       h += '<span class="admin-ur-role"><span class="' + roleBadge + '">' + _esc(u.role || 'user') + '</span></span>';
       h += '<span class="admin-ur-tier" style="color:' + tierColor + '">' + _esc(u.plan_tier || 'free') + '</span>';
+      var meterColors = { mini: '#6B7280', pro: '#10B981', max: '#F59E0B', maxpro: '#D4AF37' };
+      h += '<span class="admin-ur-meter" style="color:' + (meterColors[u.meter_tier] || '#888') + '">' + _esc(u.meter_tier || 'mini') + '</span>';
     }
 
     h += '<span class="admin-ur-status">';
@@ -573,9 +584,21 @@ function adminCancelEdit() {
 async function adminSaveUser(userId) {
   var roleEl = document.getElementById('editRole_' + userId);
   var tierEl = document.getElementById('editTier_' + userId);
+  var meterEl = document.getElementById('editMeter_' + userId);
   var updates = {};
   if (roleEl) updates.role = roleEl.value;
   if (tierEl) updates.plan_tier = tierEl.value;
+
+  // Also update meter tier via separate endpoint
+  if (meterEl) {
+    try {
+      await fetch(API + '/api/admin/users/meter-tier', {
+        method: 'POST',
+        headers: _adminHeaders(),
+        body: JSON.stringify({ user_id: userId, meter_tier: meterEl.value }),
+      });
+    } catch(e) { console.warn('Meter tier update failed:', e); }
+  }
 
   try {
     var resp = await fetch(API + '/api/admin/users/' + userId, {

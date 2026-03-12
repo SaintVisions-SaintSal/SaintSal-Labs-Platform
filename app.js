@@ -49,6 +49,10 @@ function navigate(view) {
 }
 
 function setView(view) {
+  // SAFETY: Ensure sidebar is ALWAYS interactive
+  var sb = document.getElementById('sidebar');
+  if (sb) { sb.style.pointerEvents = 'auto'; sb.style.zIndex = '100'; }
+
   // If leaving Builder with unsaved work and not logged in, prompt to save
   if (currentView === 'studio' && view !== 'studio' && !sessionToken) {
     var bMsgs = (typeof builderChatState !== 'undefined' && builderChatState.messages.length > 0) ? builderChatState.messages : (typeof studioState !== 'undefined' && studioState.messages ? studioState.messages : []);
@@ -2527,7 +2531,7 @@ function renderSocialComposer() {
 function toggleSocialPlatform(el, platformId, isConnected) {
   if (!isConnected) {
     // Simulate connect for demo
-    simulateConnect(platformId);
+    connectPlatform(platformId);
     return;
   }
   el.classList.toggle('selected');
@@ -2536,16 +2540,7 @@ function toggleSocialPlatform(el, platformId, isConnected) {
   else socialState.selectedPlatforms.push(platformId);
 }
 
-async function simulateConnect(platformId) {
-  try {
-    await fetch(API + '/api/social/simulate-connect/' + platformId, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ account_name: '@saintsallabs_demo' }),
-    });
-    loadSocialPlatforms(function() { renderSocialComposer(); renderConnectorsView(); });
-  } catch(e) {}
-}
+// simulateConnect removed — using real OAuth via connectPlatform()
 
 async function submitSocialPost() {
   var text = document.getElementById('socialPostText');
@@ -2652,17 +2647,7 @@ function _renderConnectorsGrid(grid, platforms) {
       grid.innerHTML = html;
 }
 
-async function connectPlatform(platformId) {
-  // For demo, simulate connection
-  await simulateConnect(platformId);
-}
-
-async function disconnectPlatform(platformId) {
-  try {
-    await fetch(API + '/api/social/disconnect/' + platformId, { method: 'POST' });
-    renderConnectorsView();
-  } catch(e) {}
-}
+// Old connectPlatform/disconnectPlatform removed — real versions below in Social Studio section
 
 function getSocialIcon(platform, color) {
   var icons = {
@@ -3596,20 +3581,15 @@ function initDashboard() {
     greetingEl.textContent = greeting + ', ' + name;
   }
 
-  // Session search count from chatHistory
-  var searches = chatHistory.filter(function(m) { return m.role === 'user'; }).length;
-  var el;
-  el = document.getElementById('dashTotalSearches'); if (el) el.textContent = searches;
-  el = document.getElementById('dashSavedItems'); if (el) el.textContent = '0';
-  el = document.getElementById('dashActiveAlerts'); if (el) el.textContent = '0';
-  el = document.getElementById('dashComputeUsed'); if (el) el.textContent = '0 min';
-
   // Update avatar
   var avatarEl = document.getElementById('dashAvatar');
   if (avatarEl) {
     var userAv = document.getElementById('topbarUserAvatar');
     if (userAv) avatarEl.textContent = userAv.textContent || 'S';
   }
+
+  // Fetch REAL dashboard stats from API
+  fetchDashboardStats();
 
   // Fetch live trending data
   fetchDashboardTrending();
@@ -3619,6 +3599,49 @@ function initDashboard() {
 
   // Load usage data
   fetchUsageStats();
+}
+
+function fetchDashboardStats() {
+  fetch(API + '/api/dashboard/stats', { headers: authHeaders() })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      var el;
+      el = document.getElementById('dashTotalSearches');
+      if (el) el.textContent = data.total_searches || 0;
+      el = document.getElementById('dashSavedItems');
+      if (el) el.textContent = data.saved_items || 0;
+      el = document.getElementById('dashActiveAlerts');
+      if (el) el.textContent = data.active_alerts || 0;
+      el = document.getElementById('dashComputeUsed');
+      if (el) {
+        var mins = data.compute_minutes || 0;
+        el.textContent = mins < 60 ? mins + ' min' : (mins / 60).toFixed(1) + ' hr';
+      }
+      // Update recent activity
+      if (data.recent_activity && data.recent_activity.length > 0) {
+        var activityEl = document.getElementById('dashRecentActivity');
+        if (activityEl) {
+          activityEl.innerHTML = data.recent_activity.map(function(a) {
+            var dotColor = a.type === 'search' ? 'var(--accent-blue)' :
+                           a.type === 'builder' ? 'var(--accent-gold)' :
+                           a.type === 'voice' ? 'var(--accent-purple)' : 'var(--accent-green)';
+            return '<div class="dash-activity-item">' +
+              '<div class="dash-activity-dot" style="background:' + dotColor + '"></div>' +
+              '<div class="dash-activity-content">' +
+                '<div class="dash-activity-text">' + escapeHtml(a.title) + '</div>' +
+                '<div class="dash-activity-time">' + escapeHtml(a.time_ago || '') + '</div>' +
+              '</div></div>';
+          }).join('');
+        }
+      }
+    })
+    .catch(function(err) {
+      console.warn('Dashboard stats failed:', err);
+      // Fallback to session count
+      var searches = chatHistory.filter(function(m) { return m.role === 'user'; }).length;
+      var el = document.getElementById('dashTotalSearches');
+      if (el) el.textContent = searches;
+    });
 }
 
 function fetchDashboardTrending() {

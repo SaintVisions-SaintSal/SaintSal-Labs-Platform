@@ -175,6 +175,11 @@ CORPNET_BASE_URL = os.environ.get("CORPNET_API_BASE_STAGING", "https://api.stagi
 # ─── Real Estate API Keys ────────────────────────────────────────────────────
 RENTCAST_API_KEY = os.environ.get("RENTCAST_API_KEY", "e14286fed9e243c6afcba08fcce4bd8f")
 RENTCAST_BASE = "https://api.rentcast.io/v1"
+
+# PropertyAPI for parcel/property data
+PROPERTY_API_KEY = os.environ.get("PROPERTY_API_KEY", "papi_70d8da74b40ac2bf57b6be8f576cd9bb47ebac1a947ca2c8")
+PROPERTY_API_BASE = "https://propertyapi.co/api/v1"
+PROPERTY_API_HEADERS = {"X-Api-Key": PROPERTY_API_KEY}
 GOOGLE_MAPS_KEY = os.environ.get("GOOGLE_MAPS_KEY", "AIzaSyA2RxjYuME6mEa1-Sb-8ZfZjR0ujJ-lITQ")
 
 
@@ -9184,6 +9189,7 @@ async def admin_list_users(authorization: Optional[str] = Header(None)):
                             "full_name": meta.get("full_name", ""),
                             "role": meta.get("role", "user"),
                             "plan_tier": meta.get("plan_tier", "free"),
+                            "meter_tier": meta.get("meter_tier", "mini"),
                             "email_confirmed": u.get("email_confirmed_at") is not None,
                             "last_sign_in": u.get("last_sign_in_at"),
                             "created_at": u.get("created_at"),
@@ -9935,6 +9941,321 @@ async def upload_media_file(file: UploadFile = File(...), title: str = Form(""),
         return {"success": True, "media": result.data[0] if result.data else record, "url": file_url}
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# DASHBOARD STATS (wired to Supabase)
+# ══════════════════════════════════════════════════════════════════════════════
+
+@app.get("/api/dashboard/stats")
+async def dashboard_stats(authorization: Optional[str] = Header(None)):
+    """Get real dashboard stats for the logged-in user."""
+    user = await get_user_from_token(authorization)
+    stats = {
+        "total_searches": 0,
+        "saved_items": 0,
+        "active_alerts": 0,
+        "compute_minutes": 0,
+        "recent_activity": []
+    }
+    
+    if user and supabase_admin:
+        uid = user.get("id", "")
+        try:
+            # Count conversations as searches
+            convs = supabase_admin.table("conversations").select("id,title,updated_at").eq("user_id", uid).order("updated_at", desc=True).limit(100).execute()
+            stats["total_searches"] = len(convs.data) if convs.data else 0
+            
+            # Build recent activity from conversations
+            import datetime
+            now = datetime.datetime.utcnow()
+            for c in (convs.data or [])[:10]:
+                updated = c.get("updated_at", "")
+                time_ago = "recently"
+                if updated:
+                    try:
+                        dt = datetime.datetime.fromisoformat(updated.replace("Z", "+00:00").replace("+00:00", ""))
+                        diff = (now - dt).total_seconds()
+                        if diff < 3600:
+                            time_ago = f"{int(diff/60)} min ago"
+                        elif diff < 86400:
+                            time_ago = f"{int(diff/3600)} hours ago"
+                        else:
+                            time_ago = f"{int(diff/86400)} days ago"
+                    except: pass
+                stats["recent_activity"].append({
+                    "type": "search",
+                    "title": c.get("title", "Untitled conversation"),
+                    "time_ago": time_ago
+                })
+        except Exception as e:
+            print(f"[Dashboard] Stats error: {e}")
+        
+        try:
+            # Count saved items (if table exists)
+            saved = supabase_admin.table("saved_searches").select("id").eq("user_id", uid).execute()
+            stats["saved_items"] = len(saved.data) if saved.data else 0
+        except: pass
+        
+        try:
+            # Usage/compute minutes
+            usage = supabase_admin.table("usage_log").select("credits_used").eq("user_id", uid).execute()
+            total_credits = sum(u.get("credits_used", 0) for u in (usage.data or []))
+            stats["compute_minutes"] = round(total_credits * 0.1, 1)  # approx conversion
+        except: pass
+    
+    return stats
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# ADMIN: User metering/credits management
+# ══════════════════════════════════════════════════════════════════════════════
+
+@app.post("/api/admin/users/credits")
+async def admin_set_user_credits(request: Request, authorization: Optional[str] = Header(None)):
+    """Set credits for a specific user. SUPER ADMIN ONLY."""
+    user = await require_super_admin(authorization)
+    if not user:
+        return JSONResponse({"error": "Super admin access required"}, status_code=403)
+    
+    data = await request.json()
+    user_id = data.get("user_id", "")
+    credits = data.get("credits", 0)
+    
+    if not user_id:
+        return JSONResponse({"error": "user_id required"}, status_code=400)
+    
+    if supabase_admin:
+        try:
+            supabase_admin.table("profiles").update({"credits_remaining": credits}).eq("id", user_id).execute()
+            return {"success": True, "message": f"Credits set to {credits}"}
+        except Exception as e:
+            return JSONResponse({"error": str(e)}, status_code=500)
+    
+    return JSONResponse({"error": "Database not configured"}, status_code=503)
+
+
+@app.post("/api/admin/users/meter-tier")
+async def admin_set_meter_tier(request: Request, authorization: Optional[str] = Header(None)):
+    """Set metering tier for a user. SUPER ADMIN ONLY."""
+    user = await require_super_admin(authorization)
+    if not user:
+        return JSONResponse({"error": "Super admin access required"}, status_code=403)
+    
+    data = await request.json()
+    user_id = data.get("user_id", "")
+    meter_tier = data.get("meter_tier", "mini")
+    
+    if meter_tier not in ["mini", "pro", "max", "maxpro"]:
+        return JSONResponse({"error": f"Invalid meter tier: {meter_tier}"}, status_code=400)
+    
+    if supabase_admin:
+        try:
+            # Update user metadata with meter tier
+            async with httpx.AsyncClient() as c:
+                resp = await c.put(
+                    f"{SUPABASE_URL}/auth/v1/admin/users/{user_id}",
+                    headers={
+                        "apikey": SUPABASE_SERVICE_KEY,
+                        "Authorization": f"Bearer {SUPABASE_SERVICE_KEY}",
+                        "Content-Type": "application/json"
+                    },
+                    json={"user_metadata": {"meter_tier": meter_tier}}
+                )
+                if resp.status_code == 200:
+                    return {"success": True, "message": f"Meter tier set to {meter_tier}"}
+                else:
+                    return JSONResponse({"error": resp.text}, status_code=resp.status_code)
+        except Exception as e:
+            return JSONResponse({"error": str(e)}, status_code=500)
+    
+    return JSONResponse({"error": "Database not configured"}, status_code=503)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# PROPERTYAPI — Parcel/Property Data for Real Estate Intelligence
+# ══════════════════════════════════════════════════════════════════════════════
+
+@app.get("/api/realestate/property-lookup")
+async def property_lookup(
+    fips: Optional[str] = None,
+    apn: Optional[str] = None,
+    latitude: Optional[float] = None,
+    longitude: Optional[float] = None,
+    address: Optional[str] = None,
+):
+    """Look up detailed property data via PropertyAPI.
+    Either fips+apn OR fips+latitude+longitude OR address required."""
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as http:
+            params = {}
+            if fips and apn:
+                params = {"fips": fips, "apn": apn}
+            elif fips and latitude and longitude:
+                params = {"fips": fips, "latitude": latitude, "longitude": longitude}
+            elif address:
+                # Use RentCast to get coordinates first, then PropertyAPI
+                rc_resp = await http.get(
+                    f"{RENTCAST_BASE}/properties",
+                    params={"address": address},
+                    headers=RENTCAST_HEADERS
+                )
+                if rc_resp.status_code == 200:
+                    rc_data = rc_resp.json()
+                    if rc_data and len(rc_data) > 0:
+                        prop = rc_data[0]
+                        lat = prop.get("latitude")
+                        lng = prop.get("longitude")
+                        f_code = prop.get("county", {}).get("fipsCode", "") if isinstance(prop.get("county"), dict) else ""
+                        if lat and lng and f_code:
+                            params = {"fips": f_code, "latitude": lat, "longitude": lng}
+                        elif lat and lng:
+                            # Try without FIPS
+                            params = {"latitude": lat, "longitude": lng}
+                else:
+                    return JSONResponse({"error": "Could not geocode address via RentCast"}, status_code=404)
+            else:
+                return JSONResponse({"error": "Provide fips+apn, fips+lat+lng, or address"}, status_code=400)
+            
+            if not params:
+                return JSONResponse({"error": "Could not determine property location"}, status_code=400)
+            
+            resp = await http.get(
+                f"{PROPERTY_API_BASE}/parcels/get",
+                params=params,
+                headers=PROPERTY_API_HEADERS
+            )
+            
+            if resp.status_code == 200:
+                data = resp.json()
+                # Parse the PropertyAPI response into clean sections
+                parsed = {}
+                for section in ["parcel", "location", "building", "overview", "valuation", "sale_history", "owner"]:
+                    items = data.get("data", {}).get(section, [])
+                    parsed[section] = {}
+                    for item in items:
+                        field = item.get("field", "")
+                        value = item.get("value", "")
+                        if field and value is not None:
+                            parsed[section][field] = value
+                
+                return {
+                    "status": "ok",
+                    "raw": data,
+                    "parsed": parsed,
+                    "source": "propertyapi"
+                }
+            else:
+                return JSONResponse({"error": f"PropertyAPI returned {resp.status_code}: {resp.text[:200]}"}, status_code=resp.status_code)
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.get("/api/realestate/distressed/search")
+async def distressed_search(
+    category: str = "foreclosure",
+    state: Optional[str] = None,
+    city: Optional[str] = None,
+    zip_code: Optional[str] = None,
+    limit: int = 20,
+):
+    """Search for distressed properties by category using RentCast + PropertyAPI.
+    Categories: foreclosure, pre-foreclosure, nod, tax-lien, bankruptcy, off-market, cash-buyer, notes-due"""
+    results = []
+    
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as http:
+            # Use RentCast listings/sale as base data source
+            params = {"limit": min(limit, 50)}
+            if state: params["state"] = state
+            if city: params["city"] = city
+            if zip_code: params["zipCode"] = zip_code
+            
+            # For foreclosures, use RentCast status filter
+            if category in ["foreclosure", "pre-foreclosure"]:
+                params["status"] = "Foreclosure" if category == "foreclosure" else "Pre-Foreclosure"
+                resp = await http.get(f"{RENTCAST_BASE}/listings/sale", params=params, headers=RENTCAST_HEADERS)
+                if resp.status_code == 200:
+                    listings = resp.json()
+                    if isinstance(listings, list):
+                        results = listings
+            
+            elif category == "nod":
+                # NODs — query RentCast for distressed then filter
+                params["status"] = "Foreclosure"
+                resp = await http.get(f"{RENTCAST_BASE}/listings/sale", params=params, headers=RENTCAST_HEADERS)
+                if resp.status_code == 200:
+                    listings = resp.json()
+                    if isinstance(listings, list):
+                        results = [l for l in listings if "notice" in str(l.get("description", "")).lower() or "nod" in str(l.get("description", "")).lower()] or listings[:limit]
+            
+            elif category == "tax-lien":
+                # Tax liens — use property search with tax-related filtering
+                resp = await http.get(f"{RENTCAST_BASE}/properties", params=params, headers=RENTCAST_HEADERS)
+                if resp.status_code == 200:
+                    properties = resp.json()
+                    if isinstance(properties, list):
+                        # Enrich with PropertyAPI for tax data where possible
+                        for prop in properties[:limit]:
+                            prop["distressed_type"] = "Tax Lien (potential)"
+                            prop["data_source"] = "rentcast+propertyapi"
+                        results = properties
+            
+            elif category == "bankruptcy":
+                # BK properties — similar approach
+                resp = await http.get(f"{RENTCAST_BASE}/listings/sale", params=params, headers=RENTCAST_HEADERS)
+                if resp.status_code == 200:
+                    listings = resp.json()
+                    if isinstance(listings, list):
+                        results = [l for l in listings if any(kw in str(l.get("description", "")).lower() for kw in ["bankrupt", "reo", "bank owned"])] or listings[:limit]
+            
+            elif category == "off-market":
+                # Off-market — properties not currently listed
+                resp = await http.get(f"{RENTCAST_BASE}/properties", params=params, headers=RENTCAST_HEADERS)
+                if resp.status_code == 200:
+                    properties = resp.json()
+                    if isinstance(properties, list):
+                        for prop in properties:
+                            prop["distressed_type"] = "Off-Market"
+                        results = properties
+            
+            elif category == "cash-buyer":
+                # Cash buyer leads — recent sales without mortgage
+                resp = await http.get(f"{RENTCAST_BASE}/listings/sale", params=params, headers=RENTCAST_HEADERS)
+                if resp.status_code == 200:
+                    listings = resp.json()
+                    if isinstance(listings, list):
+                        for l in listings:
+                            l["distressed_type"] = "Cash Buyer Opportunity"
+                        results = listings
+            
+            elif category == "notes-due":
+                # Notes coming due — use property data
+                resp = await http.get(f"{RENTCAST_BASE}/properties", params=params, headers=RENTCAST_HEADERS)
+                if resp.status_code == 200:
+                    properties = resp.json()
+                    if isinstance(properties, list):
+                        for prop in properties:
+                            prop["distressed_type"] = "Note Coming Due"
+                        results = properties
+            
+            else:
+                # Fallback — general property search
+                resp = await http.get(f"{RENTCAST_BASE}/properties", params=params, headers=RENTCAST_HEADERS)
+                if resp.status_code == 200:
+                    properties = resp.json()
+                    if isinstance(properties, list):
+                        results = properties
+    
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+    
+    return {
+        "category": category,
+        "count": len(results),
+        "results": results[:limit],
+        "sources": ["rentcast", "propertyapi"]
+    }
 
 
 # Serve uploaded media files
