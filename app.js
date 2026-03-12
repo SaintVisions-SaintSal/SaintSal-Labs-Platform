@@ -52,6 +52,15 @@ function setView(view) {
   // SAFETY: Ensure sidebar is ALWAYS interactive
   var sb = document.getElementById('sidebar');
   if (sb) { sb.style.pointerEvents = 'auto'; sb.style.zIndex = '100'; }
+  // Close mobile more menu on any navigation
+  if (typeof closeMobileMore === 'function') closeMobileMore();
+  // Sync mobile tab bar active state
+  var mobileTabMap = { chat: 0, studio: 1, social: 2, launchpad: 3 };
+  var mobileTabs = document.querySelectorAll('.mobile-tab');
+  if (mobileTabs.length > 0) {
+    mobileTabs.forEach(function(t) { t.classList.remove('active'); });
+    if (typeof mobileTabMap[view] === 'number') { mobileTabs[mobileTabMap[view]].classList.add('active'); }
+  }
 
   // If leaving Builder with unsaved work and not logged in, prompt to save
   if (currentView === 'studio' && view !== 'studio' && !sessionToken) {

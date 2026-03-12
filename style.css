@@ -3464,7 +3464,18 @@ ul, ol { list-style: none; }
   .mobile-bottom-nav { display: block; }
   
   .sidebar {
-    display: none !important;
+    /* Use transform instead of display:none so hamburger can reveal it */
+    position: fixed !important;
+    left: 0;
+    top: 0;
+    transform: translateX(-100%);
+    z-index: 100 !important;
+    width: 260px;
+    height: 100vh;
+  }
+  .sidebar.open {
+    transform: translateX(0) !important;
+    display: flex !important;
   }
   
   .main-area, .main-content, [class*="main"] {

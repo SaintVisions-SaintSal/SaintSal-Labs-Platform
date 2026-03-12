@@ -1099,17 +1099,17 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
 <!-- Mobile Tab Bar -->
 <div class="mobile-tabs" id="mobileTabs">
   <div class="mobile-tabs-inner">
-    <button class="mobile-tab active" onclick="switchVertical('search'); setMobileTab(this)">
+    <button class="mobile-tab active" onclick="navigate('chat');switchVertical('search');setMobileTab(this)">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>Search
     </button>
-    <button class="mobile-tab" onclick="switchVertical('sports'); setMobileTab(this)">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M10 22V2h4v20"/></svg>Sports
+    <button class="mobile-tab" onclick="navigate('studio');setMobileTab(this)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>Builder
     </button>
-    <button class="mobile-tab" onclick="switchVertical('finance'); setMobileTab(this)">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>Finance
+    <button class="mobile-tab" onclick="navigate('social');setMobileTab(this)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4l11.733 16h4.267l-11.733-16zM4 20l6.768-6.768M15.232 11.232L20 4"/></svg>Social
     </button>
-    <button class="mobile-tab" onclick="switchVertical('realestate'); setMobileTab(this)">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>RE
+    <button class="mobile-tab" onclick="navigate('launchpad');setMobileTab(this)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><path d="M8 21h8"/><path d="M12 17v4"/></svg>Business
     </button>
     <button class="mobile-tab" onclick="toggleMobileMore()">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>More
@@ -1120,7 +1120,11 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
 <div class="mobile-more-menu" id="mobileMoreMenu">
   <div class="mobile-more-grid">
     <div class="mobile-more-item" onclick="navigate('studio');closeMobileMore()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>Builder</div>
-    <div class="mobile-more-item" onclick="navigate('bizplan');closeMobileMore()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/></svg>Biz Plan</div>
+    <div class="mobile-more-item" onclick="navigate('social');closeMobileMore()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4l11.733 16h4.267l-11.733-16zM4 20l6.768-6.768M15.232 11.232L20 4"/></svg>Social</div>
+    <div class="mobile-more-item" onclick="navigate('launchpad');closeMobileMore()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><path d="M8 21h8"/><path d="M12 17v4"/></svg>Business</div>
+    <div class="mobile-more-item" onclick="navigate('career');closeMobileMore()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>Career</div>
+    <div class="mobile-more-item" onclick="navigate('dashboard');closeMobileMore()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>Dashboard</div>
+    <div class="mobile-more-item" onclick="navigate('voice');closeMobileMore()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>Voice</div>
     <div class="mobile-more-item" onclick="navigate('connectors');closeMobileMore()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="2"/></svg>Integrations</div>
     <div class="mobile-more-item" onclick="navigate('pricing');closeMobileMore()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/></svg>Pricing</div>
     <div class="mobile-more-item" onclick="navigate('account');closeMobileMore()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>Account</div>
