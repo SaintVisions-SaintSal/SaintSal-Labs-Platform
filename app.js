@@ -6485,3 +6485,137 @@ function escHTML(str) {
   if (typeof str !== 'string') return '';
   return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// REAL BUILDER v2 — True prompt-to-app loop with Render auto-deploy
+// ═══════════════════════════════════════════════════════════════════════════════
+
+async function builderV2Send() {
+  var promptEl = document.querySelector('.builder-chat-input') ||
+                 document.querySelector('#builderInput') ||
+                 document.querySelector('.studio-prompt-area') ||
+                 document.querySelector('textarea[placeholder*="escribe"]') ||
+                 document.querySelector('textarea[placeholder*="rompt"]');
+  if (!promptEl || !promptEl.value.trim()) return;
+  var promptText = promptEl.value.trim();
+  promptEl.value = '';
+
+  if (typeof builderAddLog === 'function') builderAddLog('info', 'Generating your app with SAL...');
+  if (typeof showToast === 'function') showToast('Building your app...', 'info');
+
+  try {
+    var resp = await fetch((window.API || '') + '/api/projects', {
+      method: 'POST',
+      headers: Object.assign({'Content-Type': 'application/json'}, typeof authHeaders === 'function' ? authHeaders() : {}),
+      body: JSON.stringify({
+        prompt: promptText,
+        framework: (window.builderState && window.builderState.framework) || 'html',
+        name: (window.builderState && window.builderState.project && window.builderState.project.name) || promptText.slice(0, 40)
+      })
+    });
+    var data = await resp.json();
+
+    if (data.error) {
+      if (typeof builderAddLog === 'function') builderAddLog('error', 'Error: ' + data.error);
+      if (typeof showToast === 'function') showToast('Build error: ' + data.error, 'error');
+      return;
+    }
+
+    // Store project state
+    if (!window.builderState) window.builderState = {};
+    window.builderState.projectId = data.projectId;
+    window.builderState.demoUrl = data.demoUrl;
+    if (data.files) window.builderState.files = data.files;
+
+    // Update file tree
+    if (data.files && data.files.length > 0) {
+      if (typeof renderBuilderFileTree === 'function') renderBuilderFileTree();
+      if (typeof showBuilderGenResult === 'function') showBuilderGenResult(data.files);
+    }
+
+    // Update preview
+    var previewFrame = document.getElementById('builderPreview') ||
+                       document.querySelector('.builder-preview iframe') ||
+                       document.querySelector('#studioPreviewContent iframe');
+    if (previewFrame) {
+      if (data.demoUrl) {
+        previewFrame.src = data.demoUrl;
+        previewFrame.removeAttribute('srcdoc');
+      } else if (data.files && data.files.length > 0) {
+        var main = data.files.find(function(f) { return f.path === 'index.html'; }) || data.files[0];
+        if (main) { previewFrame.setAttribute('srcdoc', main.content || ''); previewFrame.removeAttribute('src'); }
+      }
+    }
+
+    // Update URL bar
+    var urlBar = document.querySelector('.studio-url-text') || document.querySelector('.builder-preview-url');
+    if (urlBar) urlBar.textContent = data.demoUrl || 'preview.saintsallabs.com';
+
+    if (data.demoUrl) {
+      if (typeof builderAddLog === 'function') builderAddLog('success', 'Deployed! ' + data.demoUrl);
+      if (typeof showToast === 'function') showToast('App live at ' + data.demoUrl, 'success');
+    } else {
+      if (typeof builderAddLog === 'function') builderAddLog('info', 'App generated! Deploying to Render...' + (data.deployError ? ' (' + data.deployError + ')' : ''));
+    }
+    if (data.githubUrl) {
+      if (typeof builderAddLog === 'function') builderAddLog('info', 'GitHub: ' + data.githubUrl);
+    }
+
+  } catch (e) {
+    if (typeof builderAddLog === 'function') builderAddLog('error', 'Builder v2 error: ' + e.message);
+    if (typeof showToast === 'function') showToast('Builder error: ' + e.message, 'error');
+    console.error('[builderV2Send]', e);
+  }
+}
+
+async function builderV2Edit(message) {
+  if (!window.builderState || !window.builderState.projectId) return builderV2Send();
+  if (!message || !message.trim()) return;
+
+  if (typeof builderAddLog === 'function') builderAddLog('info', 'Applying edit...');
+
+  try {
+    var changedFiles = (window.builderState.files || []).filter(function(f) { return f.ai_generated === false; });
+    var resp = await fetch((window.API || '') + '/api/projects/' + window.builderState.projectId + '/edits', {
+      method: 'POST',
+      headers: Object.assign({'Content-Type': 'application/json'}, typeof authHeaders === 'function' ? authHeaders() : {}),
+      body: JSON.stringify({ message: message, changedFiles: changedFiles })
+    });
+    var data = await resp.json();
+
+    if (data.error) {
+      if (typeof builderAddLog === 'function') builderAddLog('error', 'Edit error: ' + data.error);
+      return;
+    }
+
+    if (data.files) {
+      window.builderState.files = data.files;
+      if (typeof renderBuilderFileTree === 'function') renderBuilderFileTree();
+    }
+
+    var previewFrame = document.getElementById('builderPreview') ||
+                       document.querySelector('.builder-preview iframe');
+    if (previewFrame) {
+      if (data.demoUrl) {
+        previewFrame.src = data.demoUrl;
+        previewFrame.removeAttribute('srcdoc');
+        window.builderState.demoUrl = data.demoUrl;
+        if (typeof builderAddLog === 'function') builderAddLog('success', 'Redeployed! ' + data.demoUrl);
+        if (typeof showToast === 'function') showToast('Edit deployed! ' + data.demoUrl, 'success');
+      } else if (data.files) {
+        var main = data.files.find(function(f) { return f.path === 'index.html'; }) || data.files[0];
+        if (main) { previewFrame.setAttribute('srcdoc', main.content || ''); previewFrame.removeAttribute('src'); }
+      }
+    }
+  } catch (e) {
+    if (typeof builderAddLog === 'function') builderAddLog('error', 'Edit error: ' + e.message);
+    console.error('[builderV2Edit]', e);
+  }
+}
+
+window.builderV2Send = builderV2Send;
+window.builderV2Edit = builderV2Edit;
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// END REAL BUILDER v2
+// ═══════════════════════════════════════════════════════════════════════════════
