@@ -5131,6 +5131,8 @@ function builderNewChat() {
       msgs.innerHTML = welcomeHtml;
     }
   }
+  // v8.7.0 IDE: Reset all panels
+  builderResetIDEPanels();
   if (typeof showToast === 'function') showToast('New builder chat started', 'info');
 }
 
@@ -5249,9 +5251,30 @@ async function builderSend() {
         badge.textContent = intentLabels[data.intent] || data.intent;
         asstMsg.insertBefore(badge, phaseEl);
       }
+      // v8.7.0 IDE: Initialize steps for build intents
+      if (data.intent === 'code') {
+        builderUpdateIDESteps([
+          { label: 'Analyzing request', status: 'active' },
+          { label: 'Generating code', status: 'pending' },
+          { label: 'Building preview', status: 'pending' },
+          { label: 'Ready to deploy', status: 'pending' }
+        ]);
+      }
+      builderAddLog('Intent: ' + (intentLabels[data.intent] || data.intent), 'info');
     } else if (data.type === 'phase') {
       phaseEl.querySelector('span').textContent = data.message || data.phase || 'Processing...';
       phaseEl.style.display = 'flex';
+      // v8.7.0 IDE: Update steps based on phase messages
+      var phaseMsg = data.message || data.phase || '';
+      builderAddLog(phaseMsg, 'info');
+      if (phaseMsg.toLowerCase().indexOf('generat') > -1 || phaseMsg.toLowerCase().indexOf('writing') > -1 || phaseMsg.toLowerCase().indexOf('building') > -1) {
+        builderUpdateIDESteps([
+          { label: 'Analyzing request', status: 'complete' },
+          { label: 'Generating code', status: 'active' },
+          { label: 'Building preview', status: 'pending' },
+          { label: 'Ready to deploy', status: 'pending' }
+        ]);
+      }
     } else if (data.type === 'image') {
       phaseEl.style.display = 'none'; _stopBuilderTrivia(); if(triviaContainer) triviaContainer.style.display='none';
       var imgHtml = '<img class="builder-inline-image" src="' + (data.data || data.url) + '" alt="Generated image" onclick="window.open(this.src,\'_blank\')">';
@@ -5407,6 +5430,19 @@ async function builderSend() {
       codeHtml += '</div></div>';
       if (data.model) codeHtml += '<div style="font-size:10px;color:var(--text-muted);margin-top:4px;">Built with ' + escapeHtml(data.model) + '</div>';
       contentEl.innerHTML += codeHtml;
+
+      // v8.7.0 IDE: Populate all 3 panels
+      builderUpdateIDEFileTree(allFiles);
+      builderUpdateIDEPreview(allFiles);
+      builderUpdateIDESteps([
+        { label: 'Analyzing request', status: 'complete' },
+        { label: 'Generating code', status: 'complete' },
+        { label: 'Building preview', status: 'complete' },
+        { label: 'Ready to deploy', status: 'active' }
+      ]);
+      builderAddLog(allFiles.length + ' file(s) generated', 'success');
+      // Auto-switch to preview on mobile
+      if (window.innerWidth <= 768) { toggleBuilderPanel('preview'); }
     } else if (data.type === 'deploy_ready') {
       phaseEl.style.display = 'none'; _stopBuilderTrivia(); if(triviaContainer) triviaContainer.style.display='none';
       var deployHtml = '<div class="builder-deploy-grid">';
@@ -5454,6 +5490,16 @@ async function builderSend() {
         intentBadge.style.color = '#22c55e';
         intentBadge.style.border = '1px solid rgba(34,197,94,0.3)';
       }
+      // v8.7.0 IDE: Mark all steps complete
+      if (builderChatState.files.length > 0) {
+        builderUpdateIDESteps([
+          { label: 'Analyzing request', status: 'complete' },
+          { label: 'Generating code', status: 'complete' },
+          { label: 'Building preview', status: 'complete' },
+          { label: 'Ready to deploy', status: 'complete' }
+        ]);
+      }
+      builderAddLog('Build complete', 'success');
     }
     msgs.scrollTop = msgs.scrollHeight;
   }
@@ -6478,6 +6524,278 @@ function renderCalendarView() {
       '<div style="font-size:14px;color:var(--text-secondary);max-width:400px;margin:0 auto;">Content scheduling calendar with Google Calendar and Outlook integration. Wire your publishing schedule directly into your workflow.</div>' +
     '</div>' +
   '</div>';
+}
+
+/* ═══════════════════════════════════════════════
+   v8.7.0 BUILDER IDE — 3-Panel Functions
+   ═══════════════════════════════════════════════ */
+
+// ─── IDE State ───
+var builderIDEState = {
+  activePanel: 'chat',    // chat | build | preview (for mobile)
+  activePreviewTab: 'preview',  // preview | code | log
+  activeDevice: 'desktop',      // desktop | tablet | mobile
+  activeFileIndex: -1,    // which file is selected in tree
+  previewBlobUrl: null,   // current blob URL for preview
+  logs: [],               // log entries
+  steps: []               // build step tracker
+};
+
+// ─── Mobile Panel Toggle ───
+function toggleBuilderPanel(panel) {
+  builderIDEState.activePanel = panel;
+  var ide = document.getElementById('builderIDE');
+  if (!ide) return;
+  ide.classList.remove('show-preview', 'show-build');
+  if (panel === 'preview') ide.classList.add('show-preview');
+  else if (panel === 'build') ide.classList.add('show-build');
+  // Update toggle buttons
+  var btns = document.querySelectorAll('.builder-mobile-toggle-btn');
+  btns.forEach(function(b) { b.classList.remove('active'); });
+  var idx = panel === 'chat' ? 0 : panel === 'build' ? 1 : 2;
+  if (btns[idx]) btns[idx].classList.add('active');
+}
+
+// ─── Device Toggle (desktop/tablet/mobile) ───
+function builderSetDevice(device, btn) {
+  builderIDEState.activeDevice = device;
+  var frame = document.getElementById('builderPreviewFrame');
+  var iframe = document.getElementById('builderPreviewIframe');
+  if (!frame || !iframe) return;
+  frame.classList.remove('mobile-view', 'tablet-view');
+  if (device === 'mobile') {
+    iframe.style.width = '375px'; iframe.style.maxWidth = '375px';
+    iframe.style.margin = '0 auto';
+    iframe.style.borderRadius = '8px';
+    iframe.style.boxShadow = '0 0 30px rgba(0,0,0,0.5)';
+    frame.classList.add('mobile-view');
+  } else if (device === 'tablet') {
+    iframe.style.width = '768px'; iframe.style.maxWidth = '768px';
+    iframe.style.margin = '0 auto';
+    iframe.style.borderRadius = '8px';
+    iframe.style.boxShadow = '0 0 30px rgba(0,0,0,0.3)';
+  } else {
+    iframe.style.width = '100%'; iframe.style.maxWidth = '100%';
+    iframe.style.margin = '0';
+    iframe.style.borderRadius = '0';
+    iframe.style.boxShadow = 'none';
+  }
+  // Highlight active button
+  var allBtns = document.querySelectorAll('.builder-device-btn');
+  allBtns.forEach(function(b) { b.classList.remove('active'); });
+  if (btn) btn.classList.add('active');
+}
+
+// ─── Preview Tab Switcher (Preview / Code / Log) ───
+function builderSetPreviewTab(tab, btn) {
+  builderIDEState.activePreviewTab = tab;
+  var iframe = document.getElementById('builderPreviewIframe');
+  var codeV = document.getElementById('builderCodeViewer');
+  var logV = document.getElementById('builderLogViewer');
+  var status = document.getElementById('builderPreviewStatus');
+  if (iframe) iframe.style.display = 'none';
+  if (codeV) codeV.style.display = 'none';
+  if (logV) logV.style.display = 'none';
+  if (status) status.style.display = 'none';
+  if (tab === 'preview') {
+    if (builderIDEState.previewBlobUrl && iframe) { iframe.style.display = 'block'; }
+    else if (status) { status.style.display = 'flex'; }
+  } else if (tab === 'code') {
+    if (codeV) codeV.style.display = 'block';
+  } else if (tab === 'log') {
+    if (logV) logV.style.display = 'block';
+  }
+  // Highlight active tab
+  var allTabs = document.querySelectorAll('.builder-preview-tab');
+  allTabs.forEach(function(t) { t.classList.remove('active'); });
+  if (btn) btn.classList.add('active');
+}
+
+// ─── Refresh Preview ───
+function builderRefreshPreview() {
+  if (builderChatState.files.length > 0) {
+    builderUpdateIDEPreview(builderChatState.files);
+    builderAddLog('Preview refreshed', 'info');
+  }
+}
+
+// ─── Open Preview in New Tab ───
+function builderOpenPreviewExternal() {
+  var iframe = document.getElementById('builderPreviewIframe');
+  if (iframe && iframe.src && iframe.src !== 'about:blank') {
+    window.open(iframe.src, '_blank');
+  }
+}
+
+// ─── Add Log Entry ───
+function builderAddLog(msg, type) {
+  type = type || 'info';
+  var ts = new Date().toLocaleTimeString();
+  builderIDEState.logs.push({ msg: msg, type: type, ts: ts });
+  var logV = document.getElementById('builderLogViewer');
+  if (logV) {
+    logV.innerHTML += '<div class="builder-log-entry ' + type + '">[' + ts + '] ' + escapeHtml(msg) + '</div>';
+    logV.scrollTop = logV.scrollHeight;
+  }
+}
+
+// ─── Update File Tree in Center Panel ───
+function builderUpdateIDEFileTree(files) {
+  var tree = document.getElementById('builderIDEFileTree');
+  if (!tree) return;
+  if (!files || files.length === 0) {
+    tree.innerHTML = '<div class="builder-ide-empty" style="padding:12px 0;font-size:12px;">No files yet</div>';
+    return;
+  }
+  var html = '';
+  files.forEach(function(f, i) {
+    var ext = (f.name || '').split('.').pop().toLowerCase();
+    var dotColor = ext === 'html' ? '#ef4444' : ext === 'css' ? '#3b82f6' : (ext === 'js' || ext === 'ts') ? '#f59e0b' : ext === 'py' ? '#22c55e' : ext === 'json' ? '#a855f7' : '#6B7280';
+    var size = f.content ? (f.content.length > 1000 ? Math.round(f.content.length / 1024) + 'kb' : f.content.length + 'b') : '0b';
+    var activeClass = (builderIDEState.activeFileIndex === i) ? ' active' : '';
+    html += '<div class="builder-ide-file' + activeClass + '" onclick="builderViewFileInPanel(' + i + ')">';
+    html += '<div class="builder-ide-file-icon"><div class="builder-ide-file-dot" style="background:' + dotColor + '"></div></div>';
+    html += '<span>' + escapeHtml(f.name) + '</span>';
+    html += '<span style="margin-left:auto;font-size:10px;color:var(--text-faint);">' + size + '</span>';
+    html += '</div>';
+  });
+  tree.innerHTML = html;
+}
+
+// ─── Update Steps in Center Panel ───
+function builderUpdateIDESteps(steps) {
+  builderIDEState.steps = steps || [];
+  var list = document.getElementById('builderIDEStepsList');
+  if (!list) return;
+  if (!steps || steps.length === 0) {
+    list.innerHTML = '<div class="builder-ide-empty" style="padding:12px 0;font-size:12px;">Waiting for build...</div>';
+    return;
+  }
+  var html = '';
+  steps.forEach(function(s) {
+    var cls = s.status === 'complete' ? 'complete' : s.status === 'active' ? 'active' : 'pending';
+    var icon = s.status === 'complete' ? '&#10003;' : s.status === 'active' ? '' : '';
+    html += '<div class="builder-ide-step ' + cls + '">';
+    html += '<div class="builder-step-dot">' + icon + '</div>';
+    html += '<span>' + escapeHtml(s.label || '') + '</span>';
+    html += '</div>';
+  });
+  list.innerHTML = html;
+}
+
+// ─── View File in Preview Panel (Code Tab) ───
+function builderViewFileInPanel(index) {
+  var files = builderChatState.files;
+  if (!files || !files[index]) return;
+  builderIDEState.activeFileIndex = index;
+  var f = files[index];
+  // Update file tree highlight
+  builderUpdateIDEFileTree(files);
+  // Show code in code viewer
+  var codeContent = document.getElementById('builderCodeContent');
+  if (codeContent) {
+    codeContent.textContent = f.content || '';
+  }
+  // Switch to code tab
+  var codeTab = document.querySelector('.builder-preview-tab:nth-child(2)');
+  builderSetPreviewTab('code', codeTab);
+  // Update URL bar
+  var urlEl = document.getElementById('builderPreviewURL');
+  if (urlEl) urlEl.textContent = f.name;
+}
+
+// ─── Master: Update Preview iframe ───
+function builderUpdateIDEPreview(allFiles) {
+  var htmlFile = allFiles.find(function(f) { return f.name === 'index.html' || (/\.html$/i.test(f.name) && !f.name.includes('/')); });
+  var cssFiles = allFiles.filter(function(f) { return /\.css$/i.test(f.name); });
+  var jsFiles = allFiles.filter(function(f) { return /\.js$/i.test(f.name); });
+
+  if (!htmlFile) return;
+
+  var previewContent = htmlFile.content || '';
+  // Inject CSS
+  cssFiles.forEach(function(cf) {
+    var cssContent = cf.content || '';
+    var linkPattern = new RegExp('<link[^>]*href=["\']' + cf.name.replace('.', '\\\\.') + '["\'][^>]*>', 'gi');
+    if (linkPattern.test(previewContent)) {
+      previewContent = previewContent.replace(linkPattern, '<style>' + cssContent + '</style>');
+    } else if (previewContent.indexOf('</head>') > -1) {
+      previewContent = previewContent.replace('</head>', '<style>' + cssContent + '</style></head>');
+    } else {
+      previewContent = '<style>' + cssContent + '</style>' + previewContent;
+    }
+  });
+  // Inject JS
+  jsFiles.forEach(function(jf) {
+    var jsContent = jf.content || '';
+    var scriptPattern = new RegExp('<script[^>]*src=["\']' + jf.name.replace('.', '\\\\.') + '["\'][^>]*>\\s*</script>', 'gi');
+    if (scriptPattern.test(previewContent)) {
+      previewContent = previewContent.replace(scriptPattern, '<script>' + jsContent + '<\/script>');
+    } else if (previewContent.indexOf('</body>') > -1) {
+      previewContent = previewContent.replace('</body>', '<script>' + jsContent + '<\/script></body>');
+    } else {
+      previewContent += '<script>' + jsContent + '<\/script>';
+    }
+  });
+
+  // Revoke old blob
+  if (builderIDEState.previewBlobUrl) {
+    try { URL.revokeObjectURL(builderIDEState.previewBlobUrl); } catch(e) {}
+  }
+  var blob = new Blob([previewContent], { type: 'text/html' });
+  builderIDEState.previewBlobUrl = URL.createObjectURL(blob);
+
+  // Set iframe
+  var iframe = document.getElementById('builderPreviewIframe');
+  var status = document.getElementById('builderPreviewStatus');
+  if (iframe) {
+    iframe.src = builderIDEState.previewBlobUrl;
+    iframe.style.display = 'block';
+  }
+  if (status) status.style.display = 'none';
+
+  // Update URL bar
+  var urlEl = document.getElementById('builderPreviewURL');
+  if (urlEl) urlEl.textContent = htmlFile.name;
+
+  // Also update code viewer with the HTML
+  var codeContent = document.getElementById('builderCodeContent');
+  if (codeContent) codeContent.textContent = htmlFile.content || '';
+
+  // Make sure preview tab is active
+  if (builderIDEState.activePreviewTab === 'preview') {
+    // Already correct
+  }
+}
+
+// ─── Reset IDE Panels (called by builderNewChat) ───
+function builderResetIDEPanels() {
+  builderIDEState.previewBlobUrl = null;
+  builderIDEState.activeFileIndex = -1;
+  builderIDEState.logs = [];
+  builderIDEState.steps = [];
+  builderIDEState.activePreviewTab = 'preview';
+  // Reset file tree
+  var tree = document.getElementById('builderIDEFileTree');
+  if (tree) tree.innerHTML = '<div class="builder-ide-empty" style="padding:12px 0;font-size:12px;">No files yet</div>';
+  // Reset steps
+  var steps = document.getElementById('builderIDEStepsList');
+  if (steps) steps.innerHTML = '<div class="builder-ide-empty" style="padding:12px 0;font-size:12px;">Waiting for build...</div>';
+  // Reset preview
+  var iframe = document.getElementById('builderPreviewIframe');
+  if (iframe) { iframe.src = 'about:blank'; iframe.style.display = 'none'; }
+  var status = document.getElementById('builderPreviewStatus');
+  if (status) status.style.display = 'flex';
+  var codeV = document.getElementById('builderCodeViewer');
+  if (codeV) codeV.style.display = 'none';
+  var logV = document.getElementById('builderLogViewer');
+  if (logV) { logV.style.display = 'none'; logV.innerHTML = ''; }
+  // Reset URL
+  var urlEl = document.getElementById('builderPreviewURL');
+  if (urlEl) urlEl.textContent = 'preview://localhost';
+  // Reset tabs
+  var tabs = document.querySelectorAll('.builder-preview-tab');
+  tabs.forEach(function(t,i) { t.classList.toggle('active', i === 0); });
 }
 
 /* ---- HELPER ---- */

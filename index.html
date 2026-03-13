@@ -77,6 +77,7 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
 <link rel="stylesheet" href="style.css">
 <link rel="stylesheet" href="connectors-domains.css">
 <link rel="stylesheet" href="admin-fulfillment.css">
+<link rel="stylesheet" href="builder-ide.css">
 <link rel="stylesheet" href="social-studio.css">
 <link rel="stylesheet" href="realestate.css">
     <link rel="stylesheet" href="medical.css">
@@ -606,153 +607,174 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
       <div class="app-footer">SaintSal™ <span class="footer-labs-green">LABS</span> · Responsible Intelligence · Patent #10,290,222 · <a href="/privacy.html" target="_blank">Privacy</a> · <a href="/terms.html" target="_blank">Terms</a> · <a href="https://www.perplexity.ai/computer" target="_blank" rel="noopener noreferrer">Created with Perplexity Computer</a></div>
     </div>
 
-    <!-- Builder View — v7.27.0 Unified AI Orchestration Chat -->
+    <!-- Builder View — v8.7.0 IDE 3-Panel Layout -->
     <div class="view studio-view" id="studioView">
-      <div class="builder-chat-layout">
 
-        <!-- BUILDER HEADER -->
-        <div class="builder-header">
-          <div class="builder-header-left">
-            <svg viewBox="0 0 24 24" fill="none" stroke="var(--accent-gold)" stroke-width="2" width="20" height="20"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
-            <span class="builder-title">SAL Builder</span>
-            <span class="builder-badge">ALL APIs</span>
-          </div>
-          <div class="builder-header-right">
-            <div class="builder-capabilities">
-              <span class="builder-cap-pill" title="Generate images"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg> Images</span>
-              <span class="builder-cap-pill" title="Create videos"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><polygon points="5 3 19 12 5 21 5 3"/></svg> Video</span>
-              <span class="builder-cap-pill" title="Generate audio"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg> Audio</span>
-              <span class="builder-cap-pill" title="Build full-stack code"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg> Code</span>
-              <span class="builder-cap-pill" title="Social media posts"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M4 4l11.733 16h4.267l-11.733-16zM4 20l6.768-6.768M15.232 11.232L20 4"/></svg> Social</span>
-              <span class="builder-cap-pill" title="Deploy to Vercel/Render/GitHub"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M22 2L11 13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg> Deploy</span>
+      <!-- Mobile panel toggle bar (hidden on desktop) -->
+      <div class="builder-mobile-toggle" id="builderMobileToggle">
+        <button class="builder-mobile-toggle-btn active" onclick="toggleBuilderPanel('chat')">Chat</button>
+        <button class="builder-mobile-toggle-btn" onclick="toggleBuilderPanel('build')">Files</button>
+        <button class="builder-mobile-toggle-btn" onclick="toggleBuilderPanel('preview')">Preview</button>
+      </div>
+
+      <div class="builder-ide" id="builderIDE">
+
+        <!-- ═══ LEFT PANEL: Chat ═══ -->
+        <div class="builder-ide-chat">
+          <div class="builder-ide-chat-header">
+            <div class="builder-ide-chat-header-left">
+              <svg viewBox="0 0 24 24" fill="none" stroke="var(--accent-gold)" stroke-width="2" width="20" height="20"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+              <span class="builder-title">SAL Builder</span>
+              <span class="builder-badge">ALL APIs</span>
             </div>
             <button class="builder-new-chat-btn" onclick="builderNewChat()" title="New chat"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
           </div>
-        </div>
 
-        <!-- BUILDER MESSAGES -->
-        <div class="builder-messages" id="builderMessages">
-          <div class="builder-welcome" id="builderWelcome">
-            <div class="builder-welcome-icon">
-              <svg viewBox="0 0 24 24" fill="none" stroke="var(--accent-gold)" stroke-width="1.5" width="48" height="48"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
-            </div>
-            <div class="builder-welcome-title">What do you want to build?</div>
-            <div class="builder-welcome-sub">Images, videos, audio, full-stack apps, social content, documents — just describe it. SAL executes with all APIs.</div>
-
-            <!-- 3 Showcase Build Examples -->
-            <div class="builder-showcase-grid">
-              <div class="builder-showcase-card" onclick="builderQuickPrompt('Build me a modern SaaS landing page for an AI analytics startup called NovaMind. Dark theme, hero section with animated gradient, features grid, pricing table with 3 tiers, testimonials, and footer. Fully responsive.')">
-                <div class="builder-showcase-preview showcase-preview-saas">
-                  <div class="showcase-mock-nav"><span class="showcase-dot" style="background:#ef4444"></span><span class="showcase-dot" style="background:#f59e0b"></span><span class="showcase-dot" style="background:#22c55e"></span><span class="showcase-url">novamind.ai</span></div>
-                  <div class="showcase-mock-hero"><div class="showcase-hero-badge">AI Analytics</div><div class="showcase-hero-text">NovaMind</div><div class="showcase-hero-sub">Enterprise Intelligence</div></div>
-                  <div class="showcase-mock-cards"><div class="showcase-mini-card"></div><div class="showcase-mini-card"></div><div class="showcase-mini-card"></div></div>
+          <!-- Chat messages -->
+          <div class="builder-ide-messages" id="builderMessages">
+            <div class="builder-welcome" id="builderWelcome">
+              <div class="builder-welcome-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="var(--accent-gold)" stroke-width="1.5" width="48" height="48"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+              </div>
+              <div class="builder-welcome-title">What do you want to build?</div>
+              <div class="builder-welcome-sub">Images, videos, audio, full-stack apps, social content — just describe it.</div>
+              <div class="builder-showcase-grid">
+                <div class="builder-showcase-card" onclick="builderQuickPrompt('Build me a modern SaaS landing page for an AI analytics startup called NovaMind. Dark theme, hero section with animated gradient, features grid, pricing table with 3 tiers, testimonials, and footer. Fully responsive.')">
+                  <div class="builder-showcase-preview showcase-preview-saas"><div class="showcase-mock-nav"><span class="showcase-dot" style="background:#ef4444"></span><span class="showcase-dot" style="background:#f59e0b"></span><span class="showcase-dot" style="background:#22c55e"></span><span class="showcase-url">novamind.ai</span></div><div class="showcase-mock-hero"><div class="showcase-hero-badge">AI Analytics</div><div class="showcase-hero-text">NovaMind</div><div class="showcase-hero-sub">Enterprise Intelligence</div></div><div class="showcase-mock-cards"><div class="showcase-mini-card"></div><div class="showcase-mini-card"></div><div class="showcase-mini-card"></div></div></div>
+                  <div class="builder-showcase-info"><div class="builder-showcase-title">SaaS Landing Page</div><div class="builder-showcase-desc">Dark theme, 3-tier pricing, hero</div><div class="builder-showcase-tags"><span class="showcase-tag tag-code">Code</span><span class="showcase-tag tag-deploy">Vercel</span></div></div>
                 </div>
-                <div class="builder-showcase-info">
-                  <div class="builder-showcase-title">SaaS Landing Page</div>
-                  <div class="builder-showcase-desc">Full-stack, dark theme, 3-tier pricing, animated hero</div>
-                  <div class="builder-showcase-tags"><span class="showcase-tag tag-code">Code</span><span class="showcase-tag tag-deploy">Vercel</span></div>
+                <div class="builder-showcase-card" onclick="builderQuickPrompt('Build me a personal portfolio website for a creative developer. Minimal dark design, hero with name, project gallery with hover effects, skills grid, and contact form.')">
+                  <div class="builder-showcase-preview showcase-preview-portfolio"><div class="showcase-mock-nav"><span class="showcase-dot" style="background:#ef4444"></span><span class="showcase-dot" style="background:#f59e0b"></span><span class="showcase-dot" style="background:#22c55e"></span><span class="showcase-url">alexchen.dev</span></div><div class="showcase-mock-portfolio"><div class="showcase-port-name">Alex Chen</div><div class="showcase-port-role">Creative Developer</div><div class="showcase-port-grid"><div class="showcase-port-item"></div><div class="showcase-port-item"></div><div class="showcase-port-item"></div><div class="showcase-port-item"></div></div></div></div>
+                  <div class="builder-showcase-info"><div class="builder-showcase-title">Developer Portfolio</div><div class="builder-showcase-desc">Gallery, animations, contact</div><div class="builder-showcase-tags"><span class="showcase-tag tag-code">Code</span><span class="showcase-tag tag-deploy">GitHub</span></div></div>
+                </div>
+                <div class="builder-showcase-card" onclick="builderQuickPrompt('Build me a restaurant website for Sakura Kitchen. Dark elegant theme, scrolling menu with prices, reservation form, mobile-first.')">
+                  <div class="builder-showcase-preview showcase-preview-restaurant"><div class="showcase-mock-nav"><span class="showcase-dot" style="background:#ef4444"></span><span class="showcase-dot" style="background:#f59e0b"></span><span class="showcase-dot" style="background:#22c55e"></span><span class="showcase-url">sakurakitchen.com</span></div><div class="showcase-mock-restaurant"><div class="showcase-rest-brand">Sakura Kitchen</div><div class="showcase-rest-tagline">Japanese Fusion</div><div class="showcase-rest-menu"><div class="showcase-menu-item"><span>Omakase</span><span>$85</span></div><div class="showcase-menu-item"><span>Wagyu Roll</span><span>$28</span></div><div class="showcase-menu-item"><span>Matcha Crème</span><span>$14</span></div></div></div></div>
+                  <div class="builder-showcase-info"><div class="builder-showcase-title">Restaurant Website</div><div class="builder-showcase-desc">Menu, reservations, mobile-first</div><div class="builder-showcase-tags"><span class="showcase-tag tag-code">Code</span><span class="showcase-tag tag-deploy">Vercel</span></div></div>
                 </div>
               </div>
-
-              <div class="builder-showcase-card" onclick="builderQuickPrompt('Build me a personal portfolio website for a creative developer. Minimal dark design, hero with name and title, project gallery with hover effects, about section with timeline, skills grid, and contact form. Smooth scroll animations.')">
-                <div class="builder-showcase-preview showcase-preview-portfolio">
-                  <div class="showcase-mock-nav"><span class="showcase-dot" style="background:#ef4444"></span><span class="showcase-dot" style="background:#f59e0b"></span><span class="showcase-dot" style="background:#22c55e"></span><span class="showcase-url">alexchen.dev</span></div>
-                  <div class="showcase-mock-portfolio"><div class="showcase-port-name">Alex Chen</div><div class="showcase-port-role">Creative Developer</div><div class="showcase-port-grid"><div class="showcase-port-item"></div><div class="showcase-port-item"></div><div class="showcase-port-item"></div><div class="showcase-port-item"></div></div></div>
-                </div>
-                <div class="builder-showcase-info">
-                  <div class="builder-showcase-title">Developer Portfolio</div>
-                  <div class="builder-showcase-desc">Project gallery, scroll animations, contact form</div>
-                  <div class="builder-showcase-tags"><span class="showcase-tag tag-code">Code</span><span class="showcase-tag tag-deploy">GitHub</span></div>
-                </div>
-              </div>
-
-              <div class="builder-showcase-card" onclick="builderQuickPrompt('Build me a restaurant website for a modern Japanese fusion restaurant called Sakura Kitchen. Dark elegant theme, hero with large food image area, scrolling menu with categories and prices, reservation form, about section, location map placeholder, and Instagram feed section. Responsive for mobile.')">
-                <div class="builder-showcase-preview showcase-preview-restaurant">
-                  <div class="showcase-mock-nav"><span class="showcase-dot" style="background:#ef4444"></span><span class="showcase-dot" style="background:#f59e0b"></span><span class="showcase-dot" style="background:#22c55e"></span><span class="showcase-url">sakurakitchen.com</span></div>
-                  <div class="showcase-mock-restaurant"><div class="showcase-rest-brand">Sakura Kitchen</div><div class="showcase-rest-tagline">Japanese Fusion</div><div class="showcase-rest-menu"><div class="showcase-menu-item"><span>Omakase</span><span>$85</span></div><div class="showcase-menu-item"><span>Wagyu Roll</span><span>$28</span></div><div class="showcase-menu-item"><span>Matcha Crème</span><span>$14</span></div></div></div>
-                </div>
-                <div class="builder-showcase-info">
-                  <div class="builder-showcase-title">Restaurant Website</div>
-                  <div class="builder-showcase-desc">Menu, reservations, gallery, mobile-first design</div>
-                  <div class="builder-showcase-tags"><span class="showcase-tag tag-code">Code</span><span class="showcase-tag tag-deploy">Vercel</span></div>
-                </div>
+              <div class="builder-quick-actions" style="margin-top:12px;">
+                <button class="builder-quick-btn" onclick="builderQuickPrompt('Make me a logo for a modern AI startup called NovaMind')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg><span>Logo</span></button>
+                <button class="builder-quick-btn" onclick="builderQuickPrompt('Generate a professional voiceover: Welcome to SaintSal Labs.')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg><span>Audio</span></button>
+                <button class="builder-quick-btn" onclick="builderQuickPrompt('Create a LinkedIn post about AI transforming small businesses in 2026.')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M4 4l11.733 16h4.267l-11.733-16zM4 20l6.768-6.768M15.232 11.232L20 4"/></svg><span>Social</span></button>
+                <button class="builder-quick-btn" onclick="builderQuickPrompt('Create a 30-second product demo video storyboard for a mobile banking app')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><polygon points="5 3 19 12 5 21 5 3"/></svg><span>Video</span></button>
               </div>
             </div>
+          </div>
 
-            <!-- 2 Social Post Examples -->
-            <div class="builder-showcase-section-label">Social Content</div>
-            <div class="builder-social-showcase-row">
-              <div class="builder-social-showcase" onclick="builderQuickPrompt('Create a LinkedIn post about how AI is transforming small businesses in 2026. Include a professional image, compelling hook, value-driven content, and relevant hashtags.')">
-                <div class="social-showcase-header"><svg viewBox="0 0 24 24" fill="#0A66C2" width="16" height="16"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/></svg><span>LinkedIn Post</span></div>
-                <div class="social-showcase-preview">"AI isn't replacing small businesses — it's giving them superpowers..."</div>
-                <div class="social-showcase-meta">Image + Caption + Hashtags</div>
-              </div>
-
-              <div class="builder-social-showcase" onclick="builderQuickPrompt('Create an Instagram post announcing a new product launch for a tech company. Eye-catching design with bold typography, vibrant gradients, product showcase style. Include caption with emojis and trending hashtags.')">
-                <div class="social-showcase-header"><svg viewBox="0 0 24 24" fill="url(#igGrad)" width="16" height="16"><defs><linearGradient id="igGrad" x1="0" y1="1" x2="1" y2="0"><stop offset="0%" stop-color="#FD5"/><stop offset="50%" stop-color="#E4405F"/><stop offset="100%" stop-color="#833AB4"/></linearGradient></defs><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z"/></svg><span>Instagram Post</span></div>
-                <div class="social-showcase-preview">"Introducing the future of work — bold, vibrant, designed to stop the scroll..."</div>
-                <div class="social-showcase-meta">Image + Caption + Hashtags</div>
-              </div>
+          <!-- Chat input -->
+          <div class="builder-ide-input">
+            <div id="builderUploadPreview" class="builder-upload-preview" style="display:none"></div>
+            <div class="builder-prompt-bar">
+              <button class="builder-attach-btn" onclick="document.getElementById('builderFileInput').click()" title="Attach files">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>
+              </button>
+              <input type="file" id="builderFileInput" multiple accept="image/*,.pdf,.doc,.docx,.txt,.md,.py,.js,.ts,.jsx,.tsx,.html,.css,.json,.xml,.yaml,.yml,.csv,.zip" style="display:none" onchange="handleBuilderFileUpload(this.files)">
+              <textarea id="builderPrompt" class="builder-prompt-input" rows="1" placeholder="Build anything..." onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();builderSend()}" oninput="this.style.height='auto';this.style.height=Math.min(this.scrollHeight,120)+'px'"></textarea>
+              <button class="builder-mic-btn" id="builderMicBtn" onclick="toggleBuilderMic()" title="Voice input">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+              </button>
+              <button class="builder-send-btn" id="builderSendBtn" onclick="builderSend()" title="Send">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+              </button>
             </div>
-
-            <!-- Quick Actions -->
-            <div class="builder-showcase-section-label">Quick Start</div>
-            <div class="builder-quick-actions">
-              <button class="builder-quick-btn" onclick="builderQuickPrompt('Make me a logo for a modern AI startup called NovaMind')">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
-                <span>Generate a logo</span>
-              </button>
-              <button class="builder-quick-btn" onclick="builderQuickPrompt('Generate a professional voiceover: Welcome to SaintSal Labs, where innovation meets intelligence.')">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
-                <span>Generate audio</span>
-              </button>
-              <button class="builder-quick-btn" onclick="builderQuickPrompt('Research the top 5 AI coding assistants in 2026 and compare features, pricing, and user ratings')">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-                <span>Deep research</span>
-              </button>
-              <button class="builder-quick-btn" onclick="builderQuickPrompt('Create a 30-second product demo video storyboard for a mobile banking app')">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-                <span>Video storyboard</span>
-              </button>
+            <div class="builder-input-meta">
+              <div class="builder-tier-selector" id="builderTierSelector">
+                <button class="builder-tier-pill" data-tier="mini" onclick="setBuilderTier('mini')"><span class="builder-tier-dot" style="background:#6B7280"></span>Mini <span class="builder-tier-rate">$0.05</span></button>
+                <button class="builder-tier-pill active" data-tier="pro" onclick="setBuilderTier('pro')"><span class="builder-tier-dot" style="background:#10B981"></span>Pro <span class="builder-tier-rate">$0.25</span></button>
+                <button class="builder-tier-pill" data-tier="max" onclick="setBuilderTier('max')"><span class="builder-tier-dot" style="background:#8B5CF6"></span>Max <span class="builder-tier-rate">$0.75</span></button>
+                <button class="builder-tier-pill" data-tier="max_pro" onclick="setBuilderTier('max_pro')"><span class="builder-tier-dot" style="background:#F59E0B"></span>Max Pro <span class="builder-tier-rate">$1.00</span></button>
+              </div>
+              <span class="builder-deploy-targets">Vercel · GitHub · Download</span>
             </div>
           </div>
         </div>
 
-        <!-- BUILDER INPUT -->
-        <div class="builder-input-area">
-          <div id="builderUploadPreview" class="builder-upload-preview" style="display:none"></div>
-          <div class="builder-prompt-bar">
-            <button class="builder-attach-btn" onclick="document.getElementById('builderFileInput').click()" title="Attach files">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>
-            </button>
-            <input type="file" id="builderFileInput" multiple accept="image/*,.pdf,.doc,.docx,.txt,.md,.py,.js,.ts,.jsx,.tsx,.html,.css,.json,.xml,.yaml,.yml,.csv,.zip" style="display:none" onchange="handleBuilderFileUpload(this.files)">
-            <textarea id="builderPrompt" class="builder-prompt-input" rows="1" placeholder="Build anything — images, code, video, social posts, audio, documents..." onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();builderSend()}" oninput="this.style.height='auto';this.style.height=Math.min(this.scrollHeight,120)+'px'"></textarea>
-            <button class="builder-mic-btn" id="builderMicBtn" onclick="toggleBuilderMic()" title="Voice input">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
-            </button>
-            <button class="builder-send-btn" id="builderSendBtn" onclick="builderSend()" title="Send">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
-            </button>
+        <!-- ═══ CENTER PANEL: File Tree + Steps ═══ -->
+        <div class="builder-ide-build">
+          <div class="builder-ide-build-header">
+            <span>BUILD</span>
+            <button class="builder-ide-build-toggle" onclick="document.querySelector('.builder-ide-build').classList.toggle('collapsed')" title="Toggle panel">&#9664;</button>
           </div>
-          <div class="builder-input-meta">
-            <div class="builder-tier-selector" id="builderTierSelector">
-              <button class="builder-tier-pill" data-tier="mini" onclick="setBuilderTier('mini')">
-                <span class="builder-tier-dot" style="background:#6B7280"></span>Mini <span class="builder-tier-rate">$0.05</span>
-              </button>
-              <button class="builder-tier-pill active" data-tier="pro" onclick="setBuilderTier('pro')">
-                <span class="builder-tier-dot" style="background:#10B981"></span>Pro <span class="builder-tier-rate">$0.25</span>
-              </button>
-              <button class="builder-tier-pill" data-tier="max" onclick="setBuilderTier('max')">
-                <span class="builder-tier-dot" style="background:#8B5CF6"></span>Max <span class="builder-tier-rate">$0.75</span>
-              </button>
-              <button class="builder-tier-pill" data-tier="max_pro" onclick="setBuilderTier('max_pro')">
-                <span class="builder-tier-dot" style="background:#F59E0B"></span>Max Pro <span class="builder-tier-rate">$1.00</span>
-              </button>
+          <!-- Steps section -->
+          <div class="builder-ide-section" id="builderIDESteps">
+            <div class="builder-ide-section-title">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
+              STEPS
             </div>
-            <span class="builder-deploy-targets">Vercel · GitHub · Download</span>
+            <div id="builderIDEStepsList" class="builder-ide-steps-list">
+              <div class="builder-ide-empty" style="padding:12px 0;font-size:12px;">Waiting for build...</div>
+            </div>
+          </div>
+          <!-- File tree section -->
+          <div class="builder-ide-section" id="builderIDEFiles">
+            <div class="builder-ide-section-title">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>
+              FILES
+            </div>
+            <div id="builderIDEFileTree" class="builder-ide-file-tree">
+              <div class="builder-ide-empty" style="padding:12px 0;font-size:12px;">No files yet</div>
+            </div>
+          </div>
+          <!-- Deploy actions -->
+          <div class="builder-ide-section" id="builderIDEDeploy" style="margin-top:auto;border-top:1px solid var(--border-subtle,#1e1e1e);">
+            <div class="builder-ide-section-title">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M22 2L11 13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+              DEPLOY
+            </div>
+            <div style="display:flex;flex-direction:column;gap:4px;">
+              <button class="builder-preview-btn secondary" style="width:100%;justify-content:center;" onclick="builderPublish('vercel')"><svg viewBox="0 0 24 24" fill="currentColor" width="10" height="10"><path d="M12 1L1 22h22L12 1z"/></svg> Vercel</button>
+              <button class="builder-preview-btn secondary" style="width:100%;justify-content:center;" onclick="builderPublish('github')">GitHub</button>
+              <button class="builder-preview-btn secondary" style="width:100%;justify-content:center;" onclick="builderPublish('download')">Download ZIP</button>
+            </div>
           </div>
         </div>
-      </div>
+
+        <!-- ═══ RIGHT PANEL: Live Preview ═══ -->
+        <div class="builder-ide-preview">
+          <div class="builder-ide-preview-header">
+            <div class="builder-ide-preview-title">
+              <span class="preview-dot"></span>
+              Live Preview
+            </div>
+            <div class="builder-ide-preview-actions">
+              <button class="builder-preview-btn secondary" onclick="builderRefreshPreview()">Refresh</button>
+              <button class="builder-preview-btn secondary" onclick="builderOpenPreviewExternal()">Open</button>
+            </div>
+          </div>
+          <div class="builder-ide-preview-toolbar">
+            <div class="builder-device-toggle">
+              <button class="builder-device-btn active" onclick="builderSetDevice('desktop',this)">Desktop</button>
+              <button class="builder-device-btn" onclick="builderSetDevice('tablet',this)">Tablet</button>
+              <button class="builder-device-btn" onclick="builderSetDevice('mobile',this)">Mobile</button>
+            </div>
+            <div class="builder-preview-url">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/></svg>
+              <span class="url-text" id="builderPreviewURL">preview://localhost</span>
+            </div>
+            <div class="builder-preview-tabs">
+              <button class="builder-preview-tab active" onclick="builderSetPreviewTab('preview',this)">Preview</button>
+              <button class="builder-preview-tab" onclick="builderSetPreviewTab('code',this)">Code</button>
+              <button class="builder-preview-tab" onclick="builderSetPreviewTab('log',this)">Log</button>
+            </div>
+          </div>
+          <div class="builder-ide-preview-frame" id="builderPreviewFrame">
+            <!-- Default empty state -->
+            <div class="builder-ide-preview-status" id="builderPreviewStatus">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="40" height="40" opacity="0.2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+              <div class="status-text">Your build will preview here</div>
+              <div class="status-sub">Send a prompt to start building</div>
+            </div>
+            <!-- Preview iframe (hidden until content arrives) -->
+            <iframe id="builderPreviewIframe" style="display:none;width:100%;height:100%;border:none;background:#fff;"></iframe>
+            <!-- Code viewer (hidden until Code tab selected) -->
+            <div class="builder-code-viewer" id="builderCodeViewer" style="display:none;"><pre id="builderCodeContent"></pre></div>
+            <!-- Log viewer (hidden until Log tab selected) -->
+            <div class="builder-log-viewer" id="builderLogViewer" style="display:none;"></div>
+          </div>
+        </div>
+
+      </div><!-- end .builder-ide -->
+
       <div class="app-footer">SaintSal™ <span class="footer-labs-green">LABS</span> · Responsible Intelligence · Patent #10,290,222 · <a href="/privacy.html" target="_blank">Privacy</a> · <a href="/terms.html" target="_blank">Terms</a> · <a href="https://www.perplexity.ai/computer" target="_blank" rel="noopener noreferrer">Created with Perplexity Computer</a></div>
     </div>
 
