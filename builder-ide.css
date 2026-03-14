@@ -1,6 +1,9 @@
 /* ═══════════════════════════════════════════════
-   BUILDER IDE — v8.7.0 Split-Panel Layout
+   BUILDER IDE — v8.7.1 Split-Panel Layout
    ═══════════════════════════════════════════════ */
+
+/* Hide the app-footer when Builder IDE is active — full height IDE */
+.studio-view .app-footer { display: none; }
 
 .builder-ide {
   display: flex;
@@ -56,8 +59,17 @@
 .builder-ide-messages {
   flex: 1;
   overflow-y: auto;
+  overflow-x: hidden;
   padding: 16px;
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
 }
+
+/* Custom scrollbar for chat */
+.builder-ide-messages::-webkit-scrollbar { width: 6px; }
+.builder-ide-messages::-webkit-scrollbar-track { background: transparent; }
+.builder-ide-messages::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 3px; }
+.builder-ide-messages::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
 
 .builder-ide-input {
   flex-shrink: 0;
@@ -144,7 +156,13 @@
   border-right: 1px solid var(--border-subtle, #1e1e1e);
   background: var(--bg-secondary, #111);
   overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
 }
+
+.builder-ide-build::-webkit-scrollbar { width: 5px; }
+.builder-ide-build::-webkit-scrollbar-track { background: transparent; }
+.builder-ide-build::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 3px; }
 
 .builder-ide-build-header {
   display: flex;
@@ -615,4 +633,32 @@
 
 .builder-ide .builder-input-meta {
   padding-top: 6px;
+}
+
+/* Ensure showcase cards don't overflow */
+.builder-ide .builder-showcase-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.builder-ide .builder-showcase-card {
+  width: 100%;
+}
+
+/* Scrollbar for build panel file tree */
+.builder-ide-file-tree {
+  max-height: 40vh;
+  overflow-y: auto;
+}
+
+/* Ensure inline code preview in chat is contained */
+.builder-ide .builder-code-preview {
+  max-height: 300px;
+  overflow-y: auto;
+  border-radius: 8px;
+}
+
+.builder-ide .builder-code-preview iframe {
+  max-height: 280px;
 }
