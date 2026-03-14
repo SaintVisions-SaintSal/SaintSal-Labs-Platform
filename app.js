@@ -81,6 +81,9 @@ function setView(view) {
   if (view === 'studio') {
     setTimeout(function() { loadStudioModels(); renderStudioControls(); renderStudioGallery(); loadStudioGallery(); }, 50);
   }
+  // v8.8.1: Hide main bottom nav when in Builder (has its own mobile tab bar)
+  var mobileNav = document.getElementById('mobileBottomNav');
+  if (mobileNav) mobileNav.style.display = (view === 'studio') ? 'none' : '';
   if (view === 'voice') {
     // Initialize voice view
   }
@@ -1063,6 +1066,58 @@ function toggleSidebar() {
   sidebarOpen = !sidebarOpen;
   document.getElementById('sidebar').classList.toggle('open', sidebarOpen);
   document.getElementById('sidebarOverlay').classList.toggle('open', sidebarOpen);
+}
+
+// v8.8.1 — Desktop + PWA sidebar collapse/expand
+function collapseSidebar() {
+  var shell = document.querySelector('.app-shell');
+  if (!shell) return;
+  var isCollapsed = shell.classList.toggle('sidebar-collapsed');
+  localStorage.setItem('sal_sidebar_collapsed', isCollapsed ? '1' : '0');
+}
+// Restore sidebar collapse state on load
+(function() {
+  if (localStorage.getItem('sal_sidebar_collapsed') === '1') {
+    var shell = document.querySelector('.app-shell');
+    if (shell) shell.classList.add('sidebar-collapsed');
+  }
+})();
+
+// v8.8.1 — Mobile Builder Tab Switcher (Chat / Preview / Code)
+function builderMobileTab(tab, btn) {
+  // Update active tab
+  var tabs = document.querySelectorAll('.builder-mobile-tab');
+  tabs.forEach(function(t) { t.classList.remove('active'); });
+  if (btn) btn.classList.add('active');
+
+  var studioView = document.getElementById('studioView');
+  if (!studioView) return;
+
+  // Remove all states
+  studioView.classList.remove('show-right', 'show-chat');
+
+  if (tab === 'chat') {
+    studioView.classList.add('show-chat');
+  } else if (tab === 'preview') {
+    studioView.classList.add('show-right');
+    // Show preview panel
+    var panels = document.querySelectorAll('.builder-right-panel');
+    panels.forEach(function(p) { p.classList.remove('active'); });
+    var prev = document.getElementById('builderPanelPreview');
+    if (prev) prev.classList.add('active');
+  } else if (tab === 'code') {
+    studioView.classList.add('show-right');
+    // Show files panel (has code + steps + file tree + deploy)
+    var panels = document.querySelectorAll('.builder-right-panel');
+    panels.forEach(function(p) { p.classList.remove('active'); });
+    var files = document.getElementById('builderPanelFiles');
+    if (files) files.classList.add('active');
+    // Update file count
+    if (builderChatState && builderChatState.files) {
+      var fc = document.getElementById('builderFileCount');
+      if (fc) fc.textContent = builderChatState.files.length + ' files';
+    }
+  }
 }
 
 // Old mobile-tab functions removed in v8.5.0 — using mobileNav system
@@ -5441,8 +5496,11 @@ async function builderSend() {
         { label: 'Ready to deploy', status: 'active' }
       ]);
       builderAddLog(allFiles.length + ' file(s) generated', 'success');
-      // v8.8.0: Auto-switch to Preview tab + update file count
+      // v8.8.1: Auto-switch to Preview tab + update file count (desktop + mobile)
       builderSwitchTopTab('preview', document.querySelector('.builder-topbar-tab[data-tab="preview"]'));
+      if (window.innerWidth <= 768) {
+        builderMobileTab('preview', document.querySelector('.builder-mobile-tab[data-btab="preview"]'));
+      }
       var fc = document.getElementById('builderFileCount');
       if (fc) fc.textContent = allFiles.length + ' files';
     } else if (data.type === 'deploy_ready') {

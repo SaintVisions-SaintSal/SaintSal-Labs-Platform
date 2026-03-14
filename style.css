@@ -196,6 +196,18 @@ ul, ol { list-style: none; }
 .sidebar-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 99; }
 .sidebar-overlay.open { display: block; }
 
+/* v8.8.1 — Sidebar Collapse (Desktop + PWA) */
+.sidebar-header-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--space-1); }
+.sidebar-collapse-btn { background: none; border: none; color: var(--text-muted); padding: 4px; border-radius: var(--radius-sm); cursor: pointer; transition: color 0.2s, background 0.2s; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
+.sidebar-collapse-btn:hover { color: var(--text-primary); background: var(--bg-surface-hover); }
+.sidebar-expand-btn { display: none; position: absolute; top: 14px; left: 12px; z-index: 101; background: var(--bg-surface, #1a1a1a); border: 1px solid var(--border-subtle, #1e1e1e); color: var(--text-secondary); padding: 6px; border-radius: var(--radius-md); cursor: pointer; transition: color 0.2s, background 0.2s; }
+.sidebar-expand-btn:hover { color: var(--text-primary); background: var(--bg-surface-hover); }
+.app-shell.sidebar-collapsed .sidebar { width: 0; min-width: 0; overflow: hidden; opacity: 0; pointer-events: none; transition: width 0.3s var(--ease-out), min-width 0.3s var(--ease-out), opacity 0.2s var(--ease-out); }
+.app-shell.sidebar-collapsed .sidebar-expand-btn { display: flex; }
+.app-shell.sidebar-collapsed .topbar { padding-left: 52px; }
+.app-shell.sidebar-collapsed .builder-topbar { padding-left: 52px; }
+.sidebar { transition: width 0.3s var(--ease-out), min-width 0.3s var(--ease-out), opacity 0.2s var(--ease-out), transform var(--duration-normal) var(--ease-out); }
+
 /* ============================================
    MAIN CONTENT
    ============================================ */
@@ -3496,6 +3508,7 @@ ul, ol { list-style: none; }
   
   /* Add bottom padding so content isn't hidden behind bottom nav */
   body { padding-bottom: 70px; }
+
   
   .topbar {
     padding: 8px 12px;
