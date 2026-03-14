@@ -6519,35 +6519,26 @@ BUILDER_CHAT_SYSTEM = """You are SAL™, the AI Builder Engine for SaintSal™ L
 
 # v7.36.0 — Full-stack multi-page builder system prompt
 BUILDER_CODE_SYSTEM = """You are SAL™ Builder — the AI-powered full-stack web builder behind SaintSal™ Labs.
-You are an expert web developer, designer, and project planner.
+You are an expert web developer and designer. You BUILD things. You do NOT plan or discuss — you BUILD.
 
-## YOUR WORKFLOW:
+## CRITICAL RULE: ALWAYS OUTPUT CODE
+Your response MUST contain a JSON code block with files. NEVER respond with just text, questions, or descriptions.
+Even if the request is vague like "build me a website", make smart assumptions and BUILD IT.
 
-### Phase 1 — UNDERSTAND (if request is vague or first message)
-If the user gives a general request like "build me a restaurant website" or "I need a portfolio":
-- Ask 2-3 SHORT clarifying questions to nail down the vision:
-  - What pages do you need? (home, about, menu, contact, etc.)
-  - Any brand preferences? (colors, style, vibe)
-  - Any specific features? (booking form, gallery, testimonials)
-- Keep questions conversational, one short paragraph. Do NOT output code yet.
-- Respond in plain text only — no JSON.
-
-### Phase 2 — PLAN (once you have answers)
-- Briefly confirm the plan: "I'll build a 5-page site with: Home, About, Menu, Gallery, Contact. Dark elegant theme with gold accents. Here we go..."
-- Then IMMEDIATELY build it — output the code JSON.
-
-### Phase 3 — BUILD (output code)
-Output a JSON block with ALL project files:
+## OUTPUT FORMAT (MANDATORY):
+Your ENTIRE response must be a valid JSON block:
 
 ```json
-{"files": [{"name": "index.html", "content": "..."}, {"name": "about.html", "content": "..."}, {"name": "styles.css", "content": "..."}, {"name": "script.js", "content": "..."}], "description": "Brief summary of what was built"}
+{"files": [{"name": "index.html", "content": "<!DOCTYPE html>...FULL HTML..."}, {"name": "styles.css", "content": "...FULL CSS..."}, {"name": "script.js", "content": "...FULL JS..."}]}
 ```
 
-### Phase 4 — ITERATE (unlimited follow-ups)
-When the user says "add", "change", "update", "fix", "make it more", "now add":
+Do NOT include any text before or after the JSON block. Just the JSON.
+
+## WHEN ITERATING (follow-up messages):
+When the user says "add", "change", "update", "fix", etc.:
 - Output ONLY the files that changed with their COMPLETE updated content
 - Do NOT regenerate unchanged files
-- Keep iterating until the user is fully satisfied
+- Same JSON format
 
 ## MULTI-PAGE RULES (CRITICAL):
 - Every HTML page MUST include a consistent <nav> header linking to ALL other pages
@@ -6576,7 +6567,7 @@ When the user says "add", "change", "update", "fix", "make it more", "now add":
 If the user mentions "design", "stitch", or "UI design", you can suggest using Google Stitch for interactive prototyping before building.
 
 ## CODE RULES (NON-NEGOTIABLE):
-1. Output JSON code block when building. Plain text when conversing.
+1. ALWAYS output a JSON code block with files. NEVER output plain text.
 2. NEVER use placeholder comments like "// TODO" or "Lorem ipsum" for main content.
 3. Every file MUST have FULL working content — no truncation.
 4. Code MUST work when rendered in a browser iframe immediately.
@@ -7248,11 +7239,46 @@ async def builder_unified_chat(request: Request):
             if result['text']:
                 files_data, desc_text = _extract_code_files(result['text'])
 
-            # Step 2 (last resort): If we have raw text but no JSON, try to construct files from it
+            # Step 2: Auto-retry with FORCE CODE prompt if AI returned text instead of JSON
+            if not files_data and result.get('text') and len(result['text']) > 100:
+                print(f"[Builder Code] No JSON found in primary response. Auto-retrying with force-code prompt...")
+                yield f"data: {json.dumps({'type': 'phase', 'phase': 'generating', 'message': 'Generating code files...'})}\n\n"
+
+                # Build the retry prompt: include the AI's response as context + the force-code instruction
+                retry_msg = BUILDER_CODE_RETRY + message
+                _retry_holder = {"done": False, "result": {"text": "", "model_used": "none", "provider": "none"}}
+
+                async def _run_retry():
+                    try:
+                        # Try Claude first for retry — best at structured JSON output
+                        retry_model = "claude" if "claude" in available_model_ids else code_preferred
+                        _retry_holder["result"] = await _builder_ai_call(BUILDER_CODE_SYSTEM, retry_msg, retry_model, 64000, timeout_seconds=90)
+                    except Exception as _re:
+                        print(f"[Builder Code] Retry error: {_re}")
+                    finally:
+                        _retry_holder["done"] = True
+
+                _retry_task = _aio_code.create_task(_run_retry())
+                _retry_pings = 0
+                while not _retry_holder["done"]:
+                    await _aio_code.sleep(5)
+                    if _retry_holder["done"]: break
+                    _retry_pings += 1
+                    _rmsg = ["Generating HTML...", "Adding styles...", "Building interactivity...", "Assembling files...", "Almost there..."][min(_retry_pings - 1, 4)]
+                    yield f"data: {json.dumps({'type': 'phase', 'phase': 'generating', 'message': _rmsg})}\n\n"
+                await _retry_task
+
+                retry_result = _retry_holder["result"]
+                if retry_result['text']:
+                    files_data, desc_text = _extract_code_files(retry_result['text'])
+                    if files_data:
+                        result = retry_result  # Use retry result
+                        print(f"[Builder Code] Retry succeeded! Got {len(files_data.get('files', []))} files")
+
+            # Step 3 (last resort): If STILL no JSON, try to construct files from raw code blocks
             if not files_data and result.get('text') and len(result['text']) > 500:
-                print(f"[Builder Code] No JSON found. Attempting raw-text-to-files extraction...")
+                print(f"[Builder Code] No JSON after retry. Attempting raw-text-to-files extraction...")
                 raw = result['text']
-                # Look for code blocks and create files from them
                 import re as _re_code
                 html_blocks = _re_code.findall(r'```html\n([\s\S]*?)```', raw)
                 css_blocks = _re_code.findall(r'```css\n([\s\S]*?)```', raw)
