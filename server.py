@@ -8853,6 +8853,61 @@ async def billing_portal(request: Request):
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
+# v8.9.0 — Builder GitHub Connection Endpoints
+@app.get("/api/builder/github/status")
+async def builder_github_status():
+    """Check if GitHub PAT is configured on the server."""
+    pat = os.environ.get("GITHUB_PAT", "") or os.environ.get("GITHUB_PRIVATE_ACCESS_TOKEN", "")
+    vercel = os.environ.get("VERCEL_API_ACCESS_TOKEN", "")
+    return {
+        "configured": bool(pat),
+        "vercel_configured": bool(vercel),
+        "org": "SaintVisions-SaintSal" if pat else None,
+    }
+
+
+@app.post("/api/builder/github/connect")
+async def builder_github_connect(request: Request):
+    """Connect to a GitHub repo — creates it if it doesn't exist."""
+    GITHUB_PAT = os.environ.get("GITHUB_PAT", "") or os.environ.get("GITHUB_PRIVATE_ACCESS_TOKEN", "")
+    if not GITHUB_PAT:
+        return JSONResponse({"success": False, "error": "GitHub not configured on server"}, status_code=500)
+    body = await request.json()
+    repo_name = (body.get("repo", "") or "my-project").strip().lower().replace(" ", "-")
+    GITHUB_ORG = "SaintVisions-SaintSal"
+    headers = {
+        "Authorization": f"Bearer {GITHUB_PAT}",
+        "Accept": "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+    }
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            # Check if repo already exists
+            if "/" in repo_name:
+                # User typed owner/repo format
+                full_name = repo_name
+                repo_url = f"https://api.github.com/repos/{full_name}"
+            else:
+                full_name = f"{GITHUB_ORG}/{repo_name}"
+                repo_url = f"https://api.github.com/repos/{full_name}"
+            resp = await client.get(repo_url, headers=headers)
+            if resp.status_code == 200:
+                data = resp.json()
+                return {"success": True, "full_name": data.get("full_name", full_name), "repo_url": data.get("html_url", ""), "exists": True}
+            # Create repo
+            create_resp = await client.post(
+                "https://api.github.com/user/repos",
+                headers=headers,
+                json={"name": repo_name.split("/")[-1], "description": "SaintSal Labs Builder project", "private": False, "auto_init": True},
+            )
+            if create_resp.status_code in (200, 201):
+                data = create_resp.json()
+                return {"success": True, "full_name": data.get("full_name", full_name), "repo_url": data.get("html_url", ""), "created": True}
+            return {"success": False, "error": f"GitHub API error: {create_resp.status_code}"}
+    except Exception as e:
+        return JSONResponse({"success": False, "error": str(e)}, status_code=500)
+
+
 @app.post("/api/builder/domain/add")
 async def builder_add_domain(request: Request):
     """Add a custom domain to a Vercel project and return DNS records."""
@@ -9433,7 +9488,7 @@ async def admin_delete_user(user_id: str, authorization: Optional[str] = Header(
 
 @app.get("/api/social-studio/brand-dna")
 async def get_brand_dna(request: Request, authorization: str = Header(None)):
-    """Get user's brand DNA profile."""
+    """Get user's brand DNA profile. v8.9.0 — returns brand_dna key for frontend compatibility."""
     user = await get_current_user(authorization)
     if not user:
         raise HTTPException(status_code=401, detail="Sign in required")
@@ -9441,42 +9496,65 @@ async def get_brand_dna(request: Request, authorization: str = Header(None)):
         if supabase_admin:
             result = supabase_admin.table("brand_profiles").select("*").eq("user_id", user["id"]).eq("is_active", True).execute()
             if result.data:
-                return {"brand": result.data[0]}
-        return {"brand": None}
+                row = result.data[0]
+                # v8.9.0 — Map DB fields to frontend-expected shape
+                brand_dna = {
+                    "id": row.get("id"),
+                    "brand_name": row.get("brand_name", ""),
+                    "tagline": row.get("tagline", ""),
+                    "mission": row.get("unique_value_prop", ""),
+                    "industry": row.get("industry", ""),
+                    "voice": row.get("voice_tone", ""),
+                    "tone_keywords": row.get("keywords", []),
+                    "key_phrases": row.get("avoid_words", []),  # repurpose field for key phrases
+                    "target_audience": row.get("target_audience", ""),
+                    "content_pillars": row.get("content_pillars", []),
+                    "hashtag_strategy": row.get("audience_pain_points", []),  # repurpose
+                    "color_palette": {
+                        "primary": row.get("primary_color", "#d4a843"),
+                        "secondary": row.get("secondary_color", "#2ecc71")
+                    },
+                    "font_preferences": row.get("font_primary", ""),
+                }
+                return {"brand_dna": brand_dna}
+        return {"brand_dna": None}
     except Exception as e:
-        return {"brand": None, "error": str(e)}
+        return {"brand_dna": None, "error": str(e)}
 
 
 @app.post("/api/social-studio/brand-dna")
 async def save_brand_dna(request: Request, authorization: str = Header(None)):
-    """Create or update brand DNA profile."""
+    """Create or update brand DNA profile. v8.9.0 — accepts frontend field names, maps to DB schema."""
     user = await get_current_user(authorization)
     if not user:
         raise HTTPException(status_code=401, detail="Sign in required")
     body = await request.json()
+    # v8.9.0 — Accept both frontend field names and DB field names
+    color_palette = body.get("color_palette", {})
     brand_data = {
         "user_id": user["id"],
         "brand_name": body.get("brand_name", "My Brand"),
         "tagline": body.get("tagline"),
         "logo_url": body.get("logo_url"),
-        "primary_color": body.get("primary_color", "#00ff88"),
-        "secondary_color": body.get("secondary_color", "#1a1a2e"),
+        "primary_color": color_palette.get("primary") or body.get("primary_color", "#d4a843"),
+        "secondary_color": color_palette.get("secondary") or body.get("secondary_color", "#2ecc71"),
         "accent_color": body.get("accent_color", "#e94560"),
-        "font_primary": body.get("font_primary", "Inter"),
+        "font_primary": body.get("font_preferences") or body.get("font_primary", "Inter"),
         "font_secondary": body.get("font_secondary", "Orbitron"),
-        "voice_tone": body.get("voice_tone", "professional"),
+        "voice_tone": body.get("voice") or body.get("voice_tone", "professional"),
         "voice_personality": body.get("voice_personality", []),
         "writing_style": body.get("writing_style"),
-        "keywords": body.get("keywords", []),
-        "avoid_words": body.get("avoid_words", []),
+        "keywords": body.get("tone_keywords") or body.get("keywords", []),
+        "avoid_words": body.get("key_phrases") or body.get("avoid_words", []),
         "target_audience": body.get("target_audience"),
         "audience_demographics": body.get("audience_demographics", {}),
-        "audience_pain_points": body.get("audience_pain_points", []),
+        "audience_pain_points": body.get("hashtag_strategy") or body.get("audience_pain_points", []),
         "content_pillars": body.get("content_pillars", []),
         "competitor_urls": body.get("competitor_urls", []),
         "industry": body.get("industry"),
-        "unique_value_prop": body.get("unique_value_prop"),
+        "unique_value_prop": body.get("mission") or body.get("unique_value_prop"),
         "platform_configs": body.get("platform_configs", {}),
+        "is_active": True,
         "updated_at": datetime.now().isoformat(),
     }
     try:
@@ -9484,8 +9562,31 @@ async def save_brand_dna(request: Request, authorization: str = Header(None)):
         if brand_id:
             result = supabase_admin.table("brand_profiles").update(brand_data).eq("id", brand_id).eq("user_id", user["id"]).execute()
         else:
-            result = supabase_admin.table("brand_profiles").insert(brand_data).execute()
-        return {"success": True, "brand": result.data[0] if result.data else brand_data}
+            # Check if user already has a brand profile
+            existing = supabase_admin.table("brand_profiles").select("id").eq("user_id", user["id"]).eq("is_active", True).execute()
+            if existing.data:
+                brand_id = existing.data[0]["id"]
+                result = supabase_admin.table("brand_profiles").update(brand_data).eq("id", brand_id).execute()
+            else:
+                result = supabase_admin.table("brand_profiles").insert(brand_data).execute()
+        # Return in frontend-expected format
+        saved = result.data[0] if result.data else brand_data
+        brand_dna = {
+            "id": saved.get("id", brand_id),
+            "brand_name": saved.get("brand_name", ""),
+            "tagline": saved.get("tagline", ""),
+            "mission": saved.get("unique_value_prop", ""),
+            "industry": saved.get("industry", ""),
+            "voice": saved.get("voice_tone", ""),
+            "tone_keywords": saved.get("keywords", []),
+            "key_phrases": saved.get("avoid_words", []),
+            "target_audience": saved.get("target_audience", ""),
+            "content_pillars": saved.get("content_pillars", []),
+            "hashtag_strategy": saved.get("audience_pain_points", []),
+            "color_palette": { "primary": saved.get("primary_color", "#d4a843"), "secondary": saved.get("secondary_color", "#2ecc71") },
+            "font_preferences": saved.get("font_primary", ""),
+        }
+        return {"success": True, "brand_dna": brand_dna}
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
 
