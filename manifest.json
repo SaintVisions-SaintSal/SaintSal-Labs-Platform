@@ -4,9 +4,10 @@
   "description": "AI-Powered Builder Platform \u2014 Build full-stack apps, websites, social content with multi-model AI orchestration.",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#0a0a0f",
-  "theme_color": "#00ff88",
-  "orientation": "any",
+  "background_color": "#080808",
+  "theme_color": "#080808",
+  "orientation": "portrait-primary",
+  "scope": "/",
   "categories": ["productivity", "developer tools", "utilities"],
   "icons": [
     {

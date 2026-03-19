@@ -37,7 +37,9 @@ var views = {
   admin: document.getElementById('adminView'),
   career: document.getElementById('careerView'),
   social: document.getElementById('socialView'),
-  calendar: document.getElementById('calendarView')
+  calendar: document.getElementById('calendarView'),
+  'my-sal': document.getElementById('mySalView'),
+  'cookin-cards': document.getElementById('cookinCardsView')
 };
 
 /* ============================================
@@ -49,6 +51,12 @@ function navigate(view) {
 }
 
 function setView(view) {
+  // Save builder state before leaving
+  if (window.currentView === 'studio') {
+    var bc = document.getElementById('builder-content') || document.getElementById('builder-view') || document.getElementById('studioView');
+    if (bc) sessionStorage.setItem('sal_builder_state', bc.innerHTML);
+  }
+  window.currentView = view;
   // SAFETY: Ensure sidebar is ALWAYS interactive
   var sb = document.getElementById('sidebar');
   if (sb) { sb.style.pointerEvents = 'auto'; sb.style.zIndex = '100'; }
@@ -81,9 +89,9 @@ function setView(view) {
   if (view === 'studio') {
     setTimeout(function() { loadStudioModels(); renderStudioControls(); renderStudioGallery(); loadStudioGallery(); }, 50);
   }
-  // v8.8.1: Hide main bottom nav when in Builder (has its own mobile tab bar)
+  // v8.8.1: Hide legacy mobile nav (replaced by new bottom-nav)
   var mobileNav = document.getElementById('mobileBottomNav');
-  if (mobileNav) mobileNav.style.display = (view === 'studio') ? 'none' : '';
+  if (mobileNav) mobileNav.style.display = 'none';
   if (view === 'voice') {
     // Initialize voice view
   }
@@ -112,6 +120,14 @@ function setView(view) {
   }
   if (view === 'calendar') {
     setTimeout(renderCalendarView, 50);
+  }
+  if (view === 'my-sal') {
+    setTimeout(renderMySAL, 50);
+    setActiveTab('mysal');
+  }
+  if (view === 'cookin-cards') {
+    setTimeout(renderCookinCards, 50);
+    setActiveTab('more');
   }
 
   // Update sidebar active for non-vertical views
@@ -7080,3 +7096,172 @@ window.builderV2Edit = builderV2Edit;
 // ═══════════════════════════════════════════════════════════════════════════════
 // END REAL BUILDER v2
 // ═══════════════════════════════════════════════════════════════════════════════
+
+// ─── 5-TAB NAV v8.9.1 ───────────────────────────────────────────────────────
+function toggleMoreSheet(){
+  var s=document.getElementById('more-sheet'),b=document.getElementById('more-backdrop');
+  if(!s||!b)return;
+  var open=s.style.bottom==='0px';
+  s.style.bottom=open?'-100%':'0px';
+  b.style.display=open?'none':'block';
+}
+function setActiveTab(id){
+  document.querySelectorAll('.nav-tab').forEach(function(t){t.style.color='#555';});
+  var t=document.getElementById('tab-'+id);
+  if(t)t.style.color='#D4AF37';
+  if(id==='mysal'){
+    var icon=document.getElementById('sal-nav-icon');
+    if(icon)icon.style.borderColor='#D4AF37';
+  }
+}
+// ─── END 5-TAB NAV ──────────────────────────────────────────────────────────
+
+// ─── MY SAL + DNA ONBOARDING v8.9.1 ─────────────────────────────────────────
+function renderMySAL() {
+  var root = document.getElementById('mySalRoot');
+  if (!root) return;
+  var token = localStorage.getItem('sal_token') || sessionStorage.getItem('sal_token');
+  if (!token) {
+    root.innerHTML = '<div style="padding:40px 20px;text-align:center;max-width:480px;margin:0 auto;">' +
+      '<div style="font-size:48px;margin-bottom:16px">⚡</div>' +
+      '<h2 style="font-size:24px;font-weight:900;color:white;margin-bottom:8px">Build Your SAL™</h2>' +
+      '<p style="color:#666;margin-bottom:24px">Sign in to personalize SAL to your business DNA</p>' +
+      '<button onclick="setView(\'account\')" style="background:linear-gradient(135deg,#D4AF37,#8A7129);color:#080808;border:none;padding:14px 32px;border-radius:10px;font-size:16px;font-weight:900;cursor:pointer;">Sign In / Sign Up →</button>' +
+      '</div>';
+    return;
+  }
+  root.innerHTML = '<div style="padding:40px;text-align:center;color:#555;">Loading your SAL...</div>';
+  fetch('/api/social-studio/brand-dna', {headers:{'Authorization':'Bearer '+token}})
+    .then(function(r){return r.json();})
+    .then(function(d){
+      if (!d.brand_dna || !d.brand_dna.industry) {
+        root.innerHTML = getDNAOnboardingHTML();
+      } else {
+        root.innerHTML = getMySALDashboardHTML(d.brand_dna);
+      }
+    }).catch(function(){root.innerHTML = getDNAOnboardingHTML();});
+}
+
+function getDNAOnboardingHTML() {
+  var interests = [
+    {id:'real_estate',icon:'🏠',label:'Real Estate'},
+    {id:'finance',icon:'📈',label:'Finance'},
+    {id:'sports',icon:'🏀',label:'Sports'},
+    {id:'medical',icon:'🏥',label:'Medical'},
+    {id:'tech',icon:'💻',label:'Tech'},
+    {id:'news',icon:'📰',label:'News'},
+    {id:'cookin_cards',icon:'🃏',label:'CookinCards'},
+    {id:'business',icon:'🏢',label:'Business'}
+  ];
+  var tiles = interests.map(function(i){
+    return '<div class="dna-tile" data-id="'+i.id+'" onclick="toggleDNATile(this)" style="display:flex;flex-direction:column;align-items:center;gap:8px;background:rgba(255,255,255,0.04);border:2px solid rgba(255,255,255,0.08);border-radius:14px;padding:18px 10px;cursor:pointer;transition:all 0.15s;">'+
+      '<span style="font-size:28px">'+i.icon+'</span>'+
+      '<span style="font-size:11px;font-weight:600;color:#888;text-align:center">'+i.label+'</span>'+
+      '</div>';
+  }).join('');
+  return '<div style="padding:40px 20px;max-width:520px;margin:0 auto;">'+
+    '<h2 style="font-size:22px;font-weight:900;color:white;margin-bottom:6px;text-align:center">What\'s your Business DNA?</h2>'+
+    '<p style="color:#666;text-align:center;margin-bottom:28px;font-size:13px">Pick up to 3 — SAL personalizes everything for you</p>'+
+    '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:28px">'+tiles+'</div>'+
+    '<button onclick="saveDNA()" style="width:100%;background:linear-gradient(135deg,#D4AF37,#8A7129);color:#080808;border:none;padding:16px;border-radius:12px;font-size:16px;font-weight:900;cursor:pointer;opacity:0.5;" id="dna-save-btn">Continue →</button>'+
+    '</div>';
+}
+
+function toggleDNATile(el) {
+  var selected = document.querySelectorAll('.dna-tile.selected');
+  if (el.classList.contains('selected')) {
+    el.classList.remove('selected');
+    el.style.borderColor='rgba(255,255,255,0.08)';
+    el.style.background='rgba(255,255,255,0.04)';
+  } else if (selected.length < 3) {
+    el.classList.add('selected');
+    el.style.borderColor='#D4AF37';
+    el.style.background='rgba(212,175,55,0.12)';
+  }
+  var count = document.querySelectorAll('.dna-tile.selected').length;
+  var btn = document.getElementById('dna-save-btn');
+  if (btn) btn.style.opacity = count > 0 ? '1' : '0.5';
+}
+
+function saveDNA() {
+  var selected = Array.from(document.querySelectorAll('.dna-tile.selected')).map(function(el){return el.dataset.id;});
+  if (!selected.length) return;
+  var token = localStorage.getItem('sal_token') || sessionStorage.getItem('sal_token') || '';
+  fetch('/api/social-studio/brand-dna', {
+    method:'POST',
+    headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},
+    body:JSON.stringify({industry:selected[0],interests:selected,target_audience:selected.join(', ')})
+  }).then(function(){setView('my-sal');});
+}
+
+function getMySALDashboardHTML(dna) {
+  var interests = dna.interests || [dna.industry];
+  var pills = interests.map(function(i){return '<span style="background:rgba(212,175,55,0.15);border:1px solid rgba(212,175,55,0.3);color:#D4AF37;padding:4px 12px;border-radius:20px;font-size:11px;font-weight:600;">'+i.replace(/_/g,' ').toUpperCase()+'</span>';}).join(' ');
+  var h = new Date().getHours();
+  var greeting = h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
+  return '<div style="padding:32px 20px;max-width:600px;margin:0 auto;">'+
+    '<div style="margin-bottom:24px"><p style="font-size:12px;color:#555;letter-spacing:2px;text-transform:uppercase;margin-bottom:4px">SaintSal™ Labs</p>'+
+    '<h2 style="font-size:26px;font-weight:900;color:white;margin-bottom:12px">'+greeting+'</h2>'+
+    '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px">'+pills+'</div>'+
+    '<button onclick="switchVertical(\''+interests[0]+'\',null)" style="background:linear-gradient(135deg,#D4AF37,#8A7129);color:#080808;border:none;padding:14px 24px;border-radius:10px;font-size:14px;font-weight:900;cursor:pointer;width:100%">Ask SAL about '+interests[0].replace(/_/g,' ')+' →</button>'+
+    '</div>'+
+    '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px">'+
+    interests.map(function(i){return '<div onclick="switchVertical(\''+i+'\',null)" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:20px;cursor:pointer;text-align:center;"><div style="font-size:10px;letter-spacing:2px;text-transform:uppercase;color:#D4AF37;font-weight:700">'+i.replace(/_/g,' ')+'</div></div>';}).join('')+
+    '</div></div>';
+}
+// ─── END MY SAL ──────────────────────────────────────────────────────────────
+
+// ─── COOKIN CARDS v8.9.1 ─────────────────────────────────────────────────────
+function renderCookinCards() {
+  var root = document.getElementById('cookinCardsRoot');
+  if (!root) return;
+  root.innerHTML = '<div style="padding:24px 20px;max-width:600px;margin:0 auto;">'+
+    '<div style="margin-bottom:20px"><h2 style="font-size:22px;font-weight:900;color:white;margin-bottom:4px">CookinCards™</h2>'+
+    '<p style="color:#666;font-size:13px">AI-powered collectibles intelligence</p></div>'+
+    '<input id="card-search" placeholder="Search any card — Charizard Base Set, PSA 10 Pikachu..." style="width:100%;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);border-radius:12px;padding:14px 16px;color:white;font-size:14px;margin-bottom:14px;box-sizing:border-box;" onkeypress="if(event.key===\'Enter\')searchCard(\'price\')"/>'+
+    '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:20px">'+
+    '<button onclick="searchCard(\'price\')" style="background:rgba(212,175,55,0.12);border:1px solid rgba(212,175,55,0.3);color:#D4AF37;padding:10px;border-radius:10px;cursor:pointer;font-size:11px;font-weight:700;">💰 Price</button>'+
+    '<button onclick="searchCard(\'deal\')" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);color:#ccc;padding:10px;border-radius:10px;cursor:pointer;font-size:11px;font-weight:700;">🔥 Deals</button>'+
+    '<button onclick="searchCard(\'portfolio\')" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);color:#ccc;padding:10px;border-radius:10px;cursor:pointer;font-size:11px;font-weight:700;">📊 Portfolio</button>'+
+    '<button onclick="searchCard(\'rare\')" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);color:#ccc;padding:10px;border-radius:10px;cursor:pointer;font-size:11px;font-weight:700;">🍬 Rare</button>'+
+    '</div>'+
+    '<div id="card-results" style="min-height:200px;color:#555;text-align:center;padding-top:40px">Search for any trading card above</div>'+
+    '</div>';
+}
+
+function searchCard(action) {
+  var q = (document.getElementById('card-search') || {}).value || '';
+  q = q.trim();
+  if (!q && action !== 'rare') return;
+  var msg = action === 'price' ? 'What is the current market price for: '+q+'. Include PSA graded values, raw prices, recent eBay sales.' :
+            action === 'deal' ? 'Find undervalued deals for: '+q+'. What are good buy prices vs market value?' :
+            action === 'portfolio' ? 'Analyze investment potential for: '+q+'. Is it appreciating? What grade should I get?' :
+            'Show me the rarest and most valuable Pokemon cards right now. Top 10 with prices.';
+  var results = document.getElementById('card-results');
+  if (!results) return;
+  results.innerHTML = '<div style="color:#D4AF37;text-align:center;padding:40px;">🃏 Analyzing...</div>';
+  var token = localStorage.getItem('sal_token') || '';
+  var response_text = '';
+  var xhr = new XMLHttpRequest();
+  xhr.open('POST', '/api/chat');
+  xhr.setRequestHeader('Content-Type','application/json');
+  if (token) xhr.setRequestHeader('Authorization','Bearer '+token);
+  xhr.onreadystatechange = function() {
+    if (xhr.readyState >= 3) {
+      var chunk = xhr.responseText.slice(response_text.length);
+      response_text = xhr.responseText;
+      chunk.split('\n').forEach(function(line){
+        if (line.startsWith('data: ')) {
+          try {
+            var d = JSON.parse(line.slice(6));
+            if (d.content) {
+              results.innerHTML = '<div style="color:#e0e0e0;line-height:1.7;white-space:pre-wrap;padding:4px">'+d.content+'</div>';
+            }
+          } catch(e) {}
+        }
+      });
+    }
+  };
+  xhr.send(JSON.stringify({query:msg,vertical:'cookin_cards',system_context:'You are a trading card expert. Use JUSTTCG, PSA, and market data for pricing.'}));
+}
+// ─── END COOKIN CARDS ────────────────────────────────────────────────────────

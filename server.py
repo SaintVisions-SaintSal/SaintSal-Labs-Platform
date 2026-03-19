@@ -5,6 +5,15 @@ import base64
 import uuid
 from pathlib import Path
 import os
+# Load .env file if present
+_env_path = Path(__file__).parent / ".env"
+if _env_path.exists():
+    with open(_env_path) as _ef:
+        for _line in _ef:
+            _line = _line.strip()
+            if _line and not _line.startswith('#') and '=' in _line:
+                _k, _v = _line.split('=', 1)
+                os.environ.setdefault(_k.strip(), _v.strip())
 import asyncio
 import httpx
 import traceback
@@ -975,6 +984,90 @@ async def delete_conversation(conv_id: str, authorization: str = Header(None)):
     return {"deleted": True, "id": conv_id}
 
 
+# ─── MCP GATEWAY v1.0 ─────────────────────────────────────────────────
+@app.get("/api/mcp")
+async def mcp_index():
+    return JSONResponse({"gateway":"SAL MCP Gateway","version":"1.0.0","patent":"US #10,290,222","routes":["/api/mcp/chat","/api/mcp/search","/api/mcp/crm"],"status":"operational"})
+
+@app.post("/api/mcp/chat")
+async def mcp_gateway(request: Request):
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error":"Invalid JSON"},status_code=400)
+    sal_key = request.headers.get("x-sal-key","")
+    VALID = os.environ.get("SAL_GATEWAY_SECRET","saintvision_gateway_2025")
+    auth = request.headers.get("authorization","").replace("Bearer ","")
+    if sal_key != VALID and auth != VALID and len(auth) < 100:
+        return JSONResponse({"error":"Unauthorized"},status_code=401)
+    message = body.get("message",body.get("query",""))
+    tier = body.get("model","pro")
+    vertical = body.get("vertical","general")
+    history = body.get("history",[])
+    if not message:
+        return JSONResponse({"error":"No message"},status_code=400)
+    system = f"You are SAL — SaintSal™ AI by Saint Vision Technologies LLC. Patent #10,290,222. HACP Protocol. Vertical: {vertical}. Be direct, precise, immediately actionable."
+    msgs = [{"role":h["role"],"content":h["content"]} for h in history[-10:] if h.get("role") in ["user","assistant"]]
+    msgs.append({"role":"user","content":message})
+    model_map = {"mini":"claude-haiku-4-5-20251001","pro":"claude-sonnet-4-6","max":"claude-opus-4-6","fast":"claude-haiku-4-5-20251001"}
+    if client:
+        try:
+            r = client.messages.create(model=model_map.get(tier,"claude-sonnet-4-6"),max_tokens=2048,system=system,messages=msgs)
+            return JSONResponse({"ok":True,"response":r.content[0].text,"model":"claude"})
+        except Exception as e:
+            print(f"[MCP] Claude failed: {e}")
+    if xai_client:
+        try:
+            r = xai_client.chat.completions.create(model="grok-3",messages=[{"role":"system","content":system}]+msgs,max_tokens=2048)
+            return JSONResponse({"ok":True,"response":r.choices[0].message.content,"model":"grok-3","fallback":True})
+        except Exception as e:
+            print(f"[MCP] XAI failed: {e}")
+    gemini = os.environ.get("GEMINI_API_KEY","")
+    if gemini:
+        try:
+            async with httpx.AsyncClient() as hc:
+                r = await hc.post(f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={gemini}",json={"contents":[{"parts":[{"text":system+"\n\n"+message}]}]},timeout=30)
+                text = r.json()["candidates"][0]["content"]["parts"][0]["text"]
+                return JSONResponse({"ok":True,"response":text,"model":"gemini","fallback":True})
+        except Exception as e:
+            print(f"[MCP] Gemini failed: {e}")
+    return JSONResponse({"error":"All providers failed","model":tier},status_code=503)
+
+@app.post("/api/mcp/search")
+async def mcp_search(request: Request):
+    try:
+        body = await request.json()
+        query = body.get("query",body.get("message",""))
+        if not query:
+            return JSONResponse({"error":"No query"},status_code=400)
+        results, answer = await multi_search(query,"general",max_results=8)
+        return JSONResponse({"ok":True,"query":query,"results":results,"answer":answer})
+    except Exception as e:
+        return JSONResponse({"error":str(e)},status_code=500)
+
+@app.post("/api/mcp/crm")
+async def mcp_crm(request: Request):
+    try:
+        body = await request.json()
+        action = body.get("action","list_contacts")
+        GHL_TOKEN = os.environ.get("GHL_PRIVATE_TOKEN","pit-24654b55-6e44-49f5-8912-5632ab08c615")
+        GHL_LOC = os.environ.get("GHL_LOCATION_ID","oRA8vL3OSiCPjpwmEC0V")
+        hdrs = {"Authorization":f"Bearer {GHL_TOKEN}","Content-Type":"application/json"}
+        async with httpx.AsyncClient() as hc:
+            if action == "list_contacts":
+                r = await hc.get(f"https://rest.gohighlevel.com/v1/contacts/?locationId={GHL_LOC}&limit=20",headers=hdrs,timeout=15)
+                return JSONResponse({"ok":True,"contacts":r.json().get("contacts",[])})
+            elif action == "add_contact":
+                data = {"locationId":GHL_LOC,"firstName":body.get("firstName",""),"lastName":body.get("lastName",""),"email":body.get("email",""),"phone":body.get("phone",""),"tags":body.get("tags",[])}
+                r = await hc.post("https://rest.gohighlevel.com/v1/contacts/",headers=hdrs,json=data,timeout=15)
+                return JSONResponse({"ok":True,"contact":r.json()})
+            elif action == "get_pipeline":
+                r = await hc.get(f"https://rest.gohighlevel.com/v1/pipelines/?locationId={GHL_LOC}",headers=hdrs,timeout=15)
+                return JSONResponse({"ok":True,"pipelines":r.json().get("pipelines",[])})
+            return JSONResponse({"error":f"Unknown action: {action}"},status_code=400)
+    except Exception as e:
+        return JSONResponse({"error":str(e)},status_code=500)
+# ─── END MCP GATEWAY ──────────────────────────────────────────────────
 
 @app.websocket("/ws/chat")
 async def websocket_chat(websocket: WebSocket):
