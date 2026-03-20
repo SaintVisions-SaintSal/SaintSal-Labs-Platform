@@ -123,7 +123,7 @@ function setView(view) {
     setTimeout(renderCalendarView, 50);
   }
   if (view === 'my-sal') {
-    setTimeout(renderMySAL, 50);
+    setTimeout(function(){ renderMySAL(); setTimeout(loadMySALMarkets, 500); }, 50);
     setActiveTab('mysal');
   }
   if (view === 'cookin-cards') {
@@ -236,6 +236,15 @@ function switchVertical(vertical, el) {
   // Reset chat history for new vertical
   chatHistory = [];
   document.getElementById('chatMessages').innerHTML = '';
+
+  // Sports: pre-populate with favorite teams query if set
+  if (vertical === 'sports') {
+    var favTeams = localStorage.getItem('sal_fav_teams');
+    var input = document.getElementById('searchInput');
+    if (favTeams && input && !input.value) {
+      input.placeholder = 'Ask about ' + favTeams.split(',')[0].trim() + ', scores, stats...';
+    }
+  }
 
   if (window.innerWidth < 768 && sidebarOpen) toggleSidebar();
 }
@@ -811,15 +820,23 @@ function sendMessage(query) {
   } else {
     // SSE fallback (works everywhere including proxied deployments)
     var buffer = '';
+    var _dna = localStorage.getItem('sal_dna');
+    var _favTeams = localStorage.getItem('sal_fav_teams');
+    var _systemCtx = '';
+    if (_dna) _systemCtx += 'User business DNA: ' + _dna + '. Prioritize these domains. ';
+    if (currentVertical === 'sports' && _favTeams) _systemCtx += 'Favorite teams: ' + _favTeams + '. ';
+    var _chatPayload = {
+      message: query,
+      vertical: currentVertical,
+      history: chatHistory.slice(-10),
+      search: true
+    };
+    if (_systemCtx) _chatPayload.system_context = _systemCtx;
+    if (currentVertical === 'sports') _chatPayload.model = 'grok';
     fetch(API + '/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        message: query,
-        vertical: currentVertical,
-        history: chatHistory.slice(-10),
-        search: true
-      })
+      body: JSON.stringify(_chatPayload)
     })
     .then(function(response) {
       if (!response.ok) throw new Error('API error: ' + response.status);
@@ -7187,6 +7204,10 @@ function toggleDNATile(el) {
 function saveDNA() {
   var selected = Array.from(document.querySelectorAll('.dna-tile.selected')).map(function(el){return el.dataset.id;});
   if (!selected.length) return;
+  // Persist DNA to both storages immediately
+  localStorage.setItem('sal_dna', JSON.stringify(selected));
+  localStorage.setItem('sal_dna_primary', selected[0]);
+  sessionStorage.setItem('sal_dna', JSON.stringify(selected));
   var token = localStorage.getItem('sal_token') || sessionStorage.getItem('sal_token') || '';
   fetch('/api/social-studio/brand-dna', {
     method:'POST',
@@ -7200,15 +7221,86 @@ function getMySALDashboardHTML(dna) {
   var pills = interests.map(function(i){return '<span style="background:rgba(212,175,55,0.15);border:1px solid rgba(212,175,55,0.3);color:#D4AF37;padding:4px 12px;border-radius:20px;font-size:11px;font-weight:600;">'+i.replace(/_/g,' ').toUpperCase()+'</span>';}).join(' ');
   var h = new Date().getHours();
   var greeting = h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
-  return '<div style="padding:32px 20px;max-width:600px;margin:0 auto;">'+
+  var hasFinance = interests.indexOf('finance') !== -1;
+  var hasSports = interests.indexOf('sports') !== -1;
+  var financeWidget = hasFinance ? '<div id="mysal-markets" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:16px;margin-bottom:12px;"><div style="font-size:10px;letter-spacing:2px;color:#D4AF37;font-weight:700;margin-bottom:10px">LIVE MARKETS</div><div id="mysal-tickers" style="color:#555;font-size:12px;">Loading...</div></div>' : '';
+  var sportsWidget = hasSports ? '<div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:16px;margin-bottom:12px;"><div style="font-size:10px;letter-spacing:2px;color:#D4AF37;font-weight:700;margin-bottom:10px">YOUR TEAMS</div><div id="mysal-teams" style="color:#ccc;font-size:13px;">' + (localStorage.getItem('sal_fav_teams') || '<span style="color:#555">No teams set — <a href="#" onclick="renderSportsTeamPicker();return false;" style="color:#D4AF37">pick favorites</a></span>') + '</div></div>' : '';
+  var html = '<div style="padding:32px 20px;max-width:600px;margin:0 auto;">'+
     '<div style="margin-bottom:24px"><p style="font-size:12px;color:#555;letter-spacing:2px;text-transform:uppercase;margin-bottom:4px">SaintSal™ Labs</p>'+
     '<h2 style="font-size:26px;font-weight:900;color:white;margin-bottom:12px">'+greeting+'</h2>'+
     '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px">'+pills+'</div>'+
-    '<button onclick="switchVertical(\''+interests[0]+'\',null)" style="background:linear-gradient(135deg,#D4AF37,#8A7129);color:#080808;border:none;padding:14px 24px;border-radius:10px;font-size:14px;font-weight:900;cursor:pointer;width:100%">Ask SAL about '+interests[0].replace(/_/g,' ')+' →</button>'+
+    '<button onclick="switchVertical(\'search\',null)" style="background:linear-gradient(135deg,#D4AF37,#8A7129);color:#080808;border:none;padding:14px 24px;border-radius:10px;font-size:14px;font-weight:900;cursor:pointer;width:100%;margin-bottom:16px">Ask SAL anything →</button>'+
     '</div>'+
-    '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px">'+
-    interests.map(function(i){return '<div onclick="switchVertical(\''+i+'\',null)" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:20px;cursor:pointer;text-align:center;"><div style="font-size:10px;letter-spacing:2px;text-transform:uppercase;color:#D4AF37;font-weight:700">'+i.replace(/_/g,' ')+'</div></div>';}).join('')+
-    '</div></div>';
+    financeWidget + sportsWidget +
+    '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px">'+
+    interests.map(function(i){
+      var icons = {finance:'📈',sports:'🏀',real_estate:'🏠',medical:'🏥',tech:'💻',news:'📰',cookin_cards:'🃏',business:'🏢'};
+      return '<div onclick="switchVertical(\''+i+'\',null)" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:16px;cursor:pointer;text-align:center;">'+
+        '<div style="font-size:24px;margin-bottom:6px">'+(icons[i]||'⚡')+'</div>'+
+        '<div style="font-size:10px;letter-spacing:1px;text-transform:uppercase;color:#D4AF37;font-weight:700">'+i.replace(/_/g,' ')+'</div></div>';
+    }).join('')+
+    '</div>'+
+    '<div style="margin-top:16px;text-align:center"><button onclick="localStorage.removeItem(\'sal_dna\');setView(\'my-sal\')" style="background:none;border:none;color:#333;font-size:11px;cursor:pointer;">Reset DNA</button></div>'+
+    '</div>';
+  return html;
+}
+
+function renderSportsTeamPicker() {
+  var root = document.getElementById('mySalRoot');
+  if (!root) return;
+  var leagues = [
+    {id:'nfl',label:'NFL',teams:['Cowboys','Chiefs','Eagles','Niners','Ravens','Bills','Packers','Patriots']},
+    {id:'nba',label:'NBA',teams:['Lakers','Warriors','Celtics','Bulls','Heat','Nets','Bucks','Nuggets']},
+    {id:'mlb',label:'MLB',teams:['Yankees','Dodgers','Red Sox','Cubs','Braves','Astros','Mets','Cardinals']},
+    {id:'nhl',label:'NHL',teams:['Penguins','Blackhawks','Rangers','Bruins','Red Wings','Maple Leafs','Kings','Avalanche']}
+  ];
+  var html = '<div style="padding:24px 20px;max-width:520px;margin:0 auto;">'+
+    '<h2 style="font-size:20px;font-weight:900;color:white;margin-bottom:6px">Pick Your Teams</h2>'+
+    '<p style="color:#666;font-size:13px;margin-bottom:20px">SAL will lead with your teams on every sports query</p>';
+  leagues.forEach(function(lg){
+    html += '<div style="margin-bottom:16px"><div style="font-size:10px;letter-spacing:2px;color:#D4AF37;font-weight:700;margin-bottom:8px">'+lg.label+'</div>'+
+      '<div style="display:flex;flex-wrap:wrap;gap:6px">';
+    lg.teams.forEach(function(t){
+      html += '<button class="team-pick" data-team="'+t+'" onclick="toggleTeamPick(this)" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);color:#888;padding:6px 12px;border-radius:20px;cursor:pointer;font-size:11px;font-weight:600;">'+t+'</button>';
+    });
+    html += '</div></div>';
+  });
+  html += '<button onclick="saveTeams()" style="width:100%;background:linear-gradient(135deg,#D4AF37,#8A7129);color:#080808;border:none;padding:14px;border-radius:10px;font-size:15px;font-weight:900;cursor:pointer;margin-top:8px">Save My Teams →</button></div>';
+  root.innerHTML = html;
+}
+
+function toggleTeamPick(el) {
+  var on = el.classList.toggle('selected');
+  el.style.borderColor = on ? '#D4AF37' : 'rgba(255,255,255,0.1)';
+  el.style.color = on ? '#D4AF37' : '#888';
+  el.style.background = on ? 'rgba(212,175,55,0.12)' : 'rgba(255,255,255,0.04)';
+}
+
+function saveTeams() {
+  var teams = Array.from(document.querySelectorAll('.team-pick.selected')).map(function(el){return el.dataset.team;});
+  localStorage.setItem('sal_fav_teams', teams.join(', '));
+  setView('my-sal');
+}
+
+function loadMySALMarkets() {
+  var el = document.getElementById('mysal-tickers');
+  if (!el) return;
+  fetch('/api/finance/markets')
+    .then(function(r){return r.json();})
+    .then(function(d){
+      var tickers = ['AAPL','MSFT','GOOGL','AMZN'];
+      var quotes = d.quotes || d.data || {};
+      var html = tickers.map(function(t){
+        var q = quotes[t] || {};
+        var chg = q.change_pct || q.changePercent || 0;
+        var color = chg >= 0 ? '#22c55e' : '#ef4444';
+        var price = q.price || q.last || '—';
+        return '<span style="margin-right:16px;color:#ccc">'+t+' <strong style="color:'+color+'">$'+price+'</strong></span>';
+      }).join('');
+      el.innerHTML = html || '<span style="color:#555">Markets data loading...</span>';
+    }).catch(function(){
+      if (el) el.innerHTML = '<span style="color:#555">Markets unavailable</span>';
+    });
 }
 // ─── END MY SAL ──────────────────────────────────────────────────────────────
 

@@ -6260,8 +6260,8 @@ async def studio_publish_download(request: Request):
 @app.get("/api/godaddy/available/{domain}")
 async def godaddy_domain_available(domain: str):
     """Check real-time domain availability via GoDaddy API."""
-    GODADDY_KEY = os.environ.get("GODADDY_API_KEY", "")
-    GODADDY_SECRET = os.environ.get("GODADDY_API_SECRET", "")
+    GODADDY_KEY = GODADDY_API_KEY or os.environ.get("GODADDY_API_KEY", "")
+    GODADDY_SECRET = GODADDY_API_SECRET or os.environ.get("GODADDY_API_SECRET", "")
     try:
         if not GODADDY_KEY or not GODADDY_SECRET:
             return JSONResponse({"error": "GoDaddy API credentials not configured"}, status_code=500)
@@ -6292,8 +6292,8 @@ async def godaddy_domain_available(domain: str):
 @app.post("/api/godaddy/purchase")
 async def godaddy_purchase_domain(request: Request):
     """Purchase a domain via GoDaddy API."""
-    GODADDY_KEY = os.environ.get("GODADDY_API_KEY", "")
-    GODADDY_SECRET = os.environ.get("GODADDY_API_SECRET", "")
+    GODADDY_KEY = GODADDY_API_KEY or os.environ.get("GODADDY_API_KEY", "")
+    GODADDY_SECRET = GODADDY_API_SECRET or os.environ.get("GODADDY_API_SECRET", "")
     try:
         body = await request.json()
         domain = body.get("domain", "")
