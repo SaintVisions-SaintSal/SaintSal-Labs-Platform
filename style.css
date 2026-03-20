@@ -6989,7 +6989,7 @@ ul, ol { list-style: none; }
 }
 
 /* ─── PERMANENT NAV LOCK ─── */
-#sidebar,.sidebar,[class*="sidebar"]{position:fixed!important;left:0;top:0;height:100vh;z-index:100;pointer-events:auto!important;}
+#sidebar,.sidebar-nav,.sidebar-wrapper,.sidebar-container{position:fixed!important;left:0;top:0;height:100vh;z-index:100;pointer-events:auto!important;}
 #sidebar a,#sidebar button,.sidebar a,.sidebar button{pointer-events:auto!important;cursor:pointer!important;}
 .bottom-nav,#bottom-nav,[id*="bottom-nav"],[class*="bottom-nav"]{position:fixed!important;bottom:0;left:0;right:0;z-index:100;pointer-events:auto!important;}
 
