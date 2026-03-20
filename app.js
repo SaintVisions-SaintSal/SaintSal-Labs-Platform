@@ -5772,6 +5772,200 @@ async function builderSend() {
   if (typeof clearBuilderUploads === 'function') clearBuilderUploads();
 }
 
+// ─── GROK AGENTIC BUILDER v2.0 ───────────────────────────────────────────────
+async function agentBuild() {
+  if (builderChatState.generating) return;
+  var promptEl = document.getElementById('builderPrompt');
+  if (!promptEl || !promptEl.value.trim()) return;
+  var prompt = promptEl.value.trim();
+  promptEl.value = '';
+  promptEl.style.height = 'auto';
+
+  builderChatState.generating = true;
+  var sendBtn = document.getElementById('builderAgentBtn');
+  if (sendBtn) { sendBtn.disabled = true; sendBtn.textContent = '⏳'; }
+
+  var welcome = document.getElementById('builderWelcome');
+  if (welcome) welcome.style.display = 'none';
+
+  var msgs = document.getElementById('builderMessages');
+  // User message
+  var userMsg = document.createElement('div');
+  userMsg.className = 'builder-msg builder-msg-user';
+  userMsg.innerHTML = '<div class="builder-msg-content">' + escapeHtml(prompt) + '</div>';
+  msgs.appendChild(userMsg);
+
+  // ── 3 Agent Cards container ──
+  var agentContainer = document.createElement('div');
+  agentContainer.style.cssText = 'display:flex;flex-direction:column;gap:10px;padding:12px 0;';
+  agentContainer.innerHTML =
+    // Grok card
+    '<div id="agent-card-grok" class="agent-card agent-active">' +
+      '<div class="agent-card-header">' +
+        '<div class="agent-card-icon">🧠</div>' +
+        '<div class="agent-card-info">' +
+          '<div class="agent-card-name">GROK ARCHITECT</div>' +
+          '<div class="agent-card-status" id="agent-grok-status">● PLANNING</div>' +
+        '</div>' +
+        '<div class="agent-spinner" id="agent-grok-spinner"></div>' +
+      '</div>' +
+      '<div class="agent-card-msg" id="agent-grok-msg">Analyzing your request...</div>' +
+    '</div>' +
+    // Stitch card
+    '<div id="agent-card-stitch" class="agent-card agent-standby">' +
+      '<div class="agent-card-header">' +
+        '<div class="agent-card-icon">🎨</div>' +
+        '<div class="agent-card-info">' +
+          '<div class="agent-card-name">STITCH AGENT</div>' +
+          '<div class="agent-card-status" id="agent-stitch-status">○ STANDBY</div>' +
+        '</div>' +
+        '<div class="agent-spinner" id="agent-stitch-spinner" style="opacity:0;"></div>' +
+      '</div>' +
+      '<div class="agent-card-msg" id="agent-stitch-msg">Waiting for plan...</div>' +
+    '</div>' +
+    // SAL Executor card
+    '<div id="agent-card-claude" class="agent-card agent-standby">' +
+      '<div class="agent-card-header">' +
+        '<div class="agent-card-icon">⚡</div>' +
+        '<div class="agent-card-info">' +
+          '<div class="agent-card-name">SAL EXECUTOR</div>' +
+          '<div class="agent-card-status" id="agent-claude-status">○ STANDBY</div>' +
+        '</div>' +
+        '<div class="agent-spinner" id="agent-claude-spinner" style="opacity:0;"></div>' +
+      '</div>' +
+      '<div class="agent-card-msg" id="agent-claude-msg">Ready to build...</div>' +
+    '</div>' +
+    // Agent branding bar
+    '<div style="display:flex;align-items:center;gap:10px;padding:6px 10px;background:rgba(255,255,255,0.02);border-radius:8px;border:1px solid rgba(255,255,255,0.05);">' +
+      '<span style="font-size:9px;color:#333;letter-spacing:1px;">POWERED BY</span>' +
+      '<span style="font-size:10px;font-weight:700;color:#F59E0B;">🧠 Grok-3</span>' +
+      '<span style="font-size:9px;color:#222;">·</span>' +
+      '<span style="font-size:10px;font-weight:700;color:#22c55e;">⚡ Claude</span>' +
+      '<span style="font-size:9px;color:#222;">·</span>' +
+      '<span style="font-size:10px;font-weight:700;color:#818cf8;">🎨 Stitch</span>' +
+    '</div>';
+  msgs.appendChild(agentContainer);
+
+  // Plan preview panel (hidden until plan arrives)
+  var planPanel = document.createElement('div');
+  planPanel.id = 'agent-plan-panel';
+  planPanel.style.display = 'none';
+  planPanel.style.cssText = 'display:none;background:rgba(19,19,19,0.9);border:1px solid rgba(245,158,11,0.3);border-radius:12px;padding:14px;margin:8px 0;';
+  msgs.appendChild(planPanel);
+
+  msgs.scrollTop = msgs.scrollHeight;
+
+  function setCardState(agent, state, msg) {
+    var card = document.getElementById('agent-card-' + agent);
+    var statusEl = document.getElementById('agent-' + agent + '-status');
+    var msgEl = document.getElementById('agent-' + agent + '-msg');
+    var spinnerEl = document.getElementById('agent-' + agent + '-spinner');
+    if (!card) return;
+    card.className = 'agent-card agent-' + state;
+    var stateLabels = { active: '● ACTIVE', complete: '✓ COMPLETE', standby: '○ STANDBY', error: '✗ ERROR' };
+    if (statusEl) statusEl.textContent = stateLabels[state] || state;
+    if (msgEl && msg) msgEl.textContent = msg;
+    if (spinnerEl) spinnerEl.style.opacity = state === 'active' ? '1' : '0';
+  }
+
+  function showPlan(plan) {
+    planPanel.style.display = 'block';
+    var comps = (plan.components || []).slice(0, 6).join(' · ');
+    var steps = (plan.steps || []).map(function(s, i) { return (i+1) + '. ' + s; }).join('<br>');
+    planPanel.innerHTML =
+      '<div style="font-size:9px;color:#F59E0B;letter-spacing:2px;font-weight:700;margin-bottom:10px;">📋 ARCHITECT PLAN</div>' +
+      '<div style="font-size:11px;font-weight:900;color:#E5E5E5;margin-bottom:8px;">' + escapeHtml(plan.title || '') + '</div>' +
+      (comps ? '<div style="font-size:10px;color:#555;margin-bottom:6px;">COMPONENTS: <span style="color:#888;">' + escapeHtml(comps) + '</span></div>' : '') +
+      (plan.complexity ? '<div style="font-size:10px;color:#555;margin-bottom:6px;">COMPLEXITY: <span style="color:#F59E0B;font-weight:700;">' + plan.complexity.toUpperCase() + '</span> · EST: <span style="color:#22c55e;">' + escapeHtml(plan.estimated_time || '—') + '</span></div>' : '') +
+      (steps ? '<div style="font-size:10px;color:#555;margin-bottom:4px;">STEPS:</div><div style="font-size:11px;color:#666;line-height:1.8;">' + steps + '</div>' : '');
+  }
+
+  // SSE stream
+  var abortCtl = new AbortController();
+  var timeoutId = setTimeout(function() { abortCtl.abort(); }, 180000);
+
+  try {
+    var resp = await fetch(API + '/api/builder/agent', {
+      method: 'POST',
+      headers: Object.assign({'Content-Type': 'application/json'}, authHeaders()),
+      signal: abortCtl.signal,
+      body: JSON.stringify({prompt: prompt})
+    });
+
+    var reader = resp.body.getReader();
+    var decoder = new TextDecoder();
+    var buffer = '';
+
+    while (true) {
+      var result = await reader.read();
+      if (result.done) break;
+      buffer += decoder.decode(result.value, {stream: true});
+      var lines = buffer.split('\n');
+      buffer = lines.pop();
+      for (var i = 0; i < lines.length; i++) {
+        var line = lines[i];
+        if (!line.startsWith('data: ')) continue;
+        try {
+          var data = JSON.parse(line.slice(6));
+          var phase = data.phase;
+
+          if (phase === 'planning') {
+            setCardState('grok', 'active', data.message || 'Analyzing request...');
+          } else if (phase === 'plan_ready') {
+            setCardState('grok', 'complete', 'Plan complete — ' + ((data.plan && data.plan.complexity) || 'medium') + ' complexity');
+            if (data.plan) showPlan(data.plan);
+            setCardState('stitch', 'active', 'Generating UI components...');
+          } else if (phase === 'building') {
+            setCardState('stitch', 'active', data.message || 'Generating UI...');
+          } else if (phase === 'stitch_ready') {
+            setCardState('stitch', 'complete', 'UI design ready');
+            setCardState('claude', 'active', 'Wiring intelligence...');
+          } else if (phase === 'wiring') {
+            setCardState('claude', 'active', data.message || 'Building from plan...');
+          } else if (phase === 'files_ready') {
+            if (data.files && data.files.length) {
+              // Load files into existing builder state and preview
+              builderChatState.files = data.files;
+              if (typeof builderRenderFiles === 'function') builderRenderFiles();
+              if (typeof builderRenderPreview === 'function') builderRenderPreview();
+              if (typeof builderUpdateIDEFileTree === 'function') builderUpdateIDEFileTree();
+              var fc = document.getElementById('builderFileCount');
+              if (fc) fc.textContent = data.files.length + ' files';
+              // Switch to preview
+              builderSwitchTopTab('preview', document.querySelector('.builder-topbar-tab[data-tab="preview"]'));
+              setCardState('claude', 'complete', 'Built ' + data.files.length + ' files via ' + (data.model || 'AI'));
+            } else {
+              // Raw text fallback
+              setCardState('claude', 'complete', 'Build complete');
+              var rawDiv = document.createElement('div');
+              rawDiv.style.cssText = 'background:rgba(0,0,0,0.4);border:1px solid rgba(34,197,94,0.2);border-radius:10px;padding:12px;font-family:monospace;font-size:11px;color:#22c55e;white-space:pre-wrap;max-height:300px;overflow-y:auto;margin-top:8px;';
+              rawDiv.textContent = data.raw_text || '';
+              msgs.appendChild(rawDiv);
+            }
+          } else if (phase === 'complete') {
+            setCardState('grok', 'complete', 'Grok planning: done');
+            setCardState('stitch', 'complete', 'Stitch UI: done');
+            setCardState('claude', 'complete', data.message || 'Build complete!');
+            // Gold flash on all cards
+            [document.getElementById('agent-card-grok'), document.getElementById('agent-card-stitch'), document.getElementById('agent-card-claude')].forEach(function(c) {
+              if (c) { c.style.boxShadow = '0 0 20px rgba(245,158,11,0.4)'; setTimeout(function() { c.style.boxShadow = ''; }, 2000); }
+            });
+          }
+          msgs.scrollTop = msgs.scrollHeight;
+        } catch(e) {}
+      }
+    }
+  } catch(e) {
+    setCardState('grok', 'error', 'Connection error');
+    console.error('[AgentBuild]', e);
+  }
+
+  clearTimeout(timeoutId);
+  builderChatState.generating = false;
+  if (sendBtn) { sendBtn.disabled = false; sendBtn.textContent = '⚡ AGENT BUILD'; }
+}
+// ─── END GROK AGENTIC BUILDER ──────────────────────────────────────────────
+
 function builderViewFile(index) {
   var files = builderChatState.files;
   if (!files || !files[index]) return;

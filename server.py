@@ -7762,6 +7762,117 @@ async def _builder_ai_call(system: str, user_msg: str, preferred_model: str = "c
     return {"text": "", "model_used": "none", "provider": "none"}
 
 
+# ── GROK AGENTIC BUILDER — 3-Agent Pipeline ─────────────────────────────────
+
+@app.post("/api/builder/agent")
+async def agent_build(request: Request):
+    """3-Agent Pipeline: Grok plans → Stitch/Gemini UI → Claude executes. SAL BuilderAI v2."""
+    body = await request.json()
+    prompt = body.get("prompt", "").strip()
+    if not prompt:
+        return JSONResponse({"error": "prompt required"}, status_code=400)
+
+    async def stream():
+        # ── PHASE 1: GROK PLANS ──
+        yield "data: " + json.dumps({"phase": "planning", "agent": "grok", "message": "Analyzing your request..."}) + "\n\n"
+
+        grok_plan_parsed = None
+        if XAI_API_KEY:
+            try:
+                async with httpx.AsyncClient(timeout=30) as hc:
+                    plan_resp = await hc.post(
+                        "https://api.x.ai/v1/chat/completions",
+                        headers={"Authorization": "Bearer " + XAI_API_KEY, "Content-Type": "application/json"},
+                        json={
+                            "model": "grok-3-latest",
+                            "messages": [
+                                {"role": "system", "content": "You are SAL's Lead Architect Agent. Given a build request, output ONLY valid JSON with these keys: {\"title\": \"\", \"components\": [], \"apis\": [], \"steps\": [], \"complexity\": \"low|medium|high\", \"estimated_time\": \"\"}. No markdown, no explanation."},
+                                {"role": "user", "content": prompt}
+                            ],
+                            "max_tokens": 1024,
+                            "temperature": 0.3
+                        }
+                    )
+                    if plan_resp.status_code == 200:
+                        plan_text = plan_resp.json().get("choices", [{}])[0].get("message", {}).get("content", "")
+                        try:
+                            grok_plan_parsed = json.loads(plan_text)
+                        except Exception:
+                            grok_plan_parsed = None
+                    else:
+                        print(f"[Agent Builder] Grok plan HTTP {plan_resp.status_code}: {plan_resp.text[:200]}")
+            except Exception as _ge:
+                print(f"[Agent Builder] Grok plan error: {_ge}")
+
+        if not grok_plan_parsed:
+            grok_plan_parsed = {
+                "title": prompt[:60],
+                "components": ["Header", "Hero Section", "Features", "CTA", "Footer"],
+                "apis": [],
+                "steps": ["Design layout", "Build HTML structure", "Add CSS styling", "Wire JavaScript", "Test & optimize"],
+                "complexity": "medium",
+                "estimated_time": "45s"
+            }
+
+        yield "data: " + json.dumps({"phase": "plan_ready", "agent": "grok", "plan": grok_plan_parsed}) + "\n\n"
+
+        # ── PHASE 2: STITCH — Gemini UI Design Layer ──
+        yield "data: " + json.dumps({"phase": "building", "agent": "stitch", "message": "Generating UI components..."}) + "\n\n"
+
+        stitch_design = ""
+        gemini_key = os.environ.get("GEMINI_API_KEY", "") or os.environ.get("GOOGLE_AI_KEY", "")
+        if gemini_key:
+            try:
+                async with httpx.AsyncClient(timeout=30) as hc:
+                    stitch_prompt = ("You are a UI design AI (Stitch). Given this plan, describe key visual design decisions in 3 sentences max. "
+                                     "Focus on: color palette, layout approach, component hierarchy. "
+                                     "Plan: " + json.dumps(grok_plan_parsed) + "\nBuild request: " + prompt)
+                    stitch_resp = await hc.post(
+                        "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=" + gemini_key,
+                        headers={"Content-Type": "application/json"},
+                        json={"contents": [{"parts": [{"text": stitch_prompt}]}], "generationConfig": {"maxOutputTokens": 256}}
+                    )
+                    if stitch_resp.status_code == 200:
+                        stitch_design = stitch_resp.json().get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "")
+            except Exception as _se:
+                print(f"[Agent Builder] Stitch/Gemini error: {_se}")
+
+        yield "data: " + json.dumps({"phase": "stitch_ready", "agent": "stitch", "design": stitch_design or "UI design layer ready"}) + "\n\n"
+
+        # ── PHASE 3: CLAUDE EXECUTES ──
+        yield "data: " + json.dumps({"phase": "wiring", "agent": "claude", "message": "Wiring intelligence layer..."}) + "\n\n"
+
+        plan_ctx = "\n\n[ARCHITECT PLAN — FOLLOW EXACTLY]\n" + json.dumps(grok_plan_parsed, indent=2)
+        if stitch_design:
+            plan_ctx += "\n\n[UI DESIGN NOTES]\n" + stitch_design
+        plan_ctx += "\n[END PLAN]\nBuild exactly what the plan specifies. Output complete working files as JSON."
+
+        build_result = await _builder_ai_call(BUILDER_CODE_SYSTEM, prompt + plan_ctx, "claude", 32000, timeout_seconds=90)
+
+        files_data = None
+        if build_result.get("text"):
+            import re as _are
+            text = build_result["text"]
+            try:
+                stripped = text.strip()
+                if stripped.startswith("```"):
+                    stripped = _are.sub(r"^```(?:json)?\s*", "", stripped)
+                    stripped = _are.sub(r"\s*```\s*$", "", stripped)
+                parsed = json.loads(stripped)
+                if isinstance(parsed.get("files"), list) and parsed["files"]:
+                    files_data = parsed
+            except Exception:
+                pass
+
+            if files_data and files_data.get("files"):
+                yield "data: " + json.dumps({"phase": "files_ready", "agent": "claude", "files": files_data["files"], "model": build_result.get("model_used", "claude")}) + "\n\n"
+            else:
+                yield "data: " + json.dumps({"phase": "files_ready", "agent": "claude", "raw_text": text[:2000], "model": build_result.get("model_used", "claude")}) + "\n\n"
+
+        yield "data: " + json.dumps({"phase": "complete", "message": "Build complete!", "model": build_result.get("model_used", "AI")}) + "\n\n"
+
+    return StreamingResponse(stream(), media_type="text/event-stream")
+
 # ── Builder Design Mode (Replaces Stitch) ───────────────────────────────────
 
 @app.post("/api/builder/design")
