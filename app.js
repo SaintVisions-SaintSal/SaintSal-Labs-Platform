@@ -7217,32 +7217,230 @@ function saveDNA() {
 }
 
 function getMySALDashboardHTML(dna) {
-  var interests = dna.interests || [dna.industry];
-  var pills = interests.map(function(i){return '<span style="background:rgba(212,175,55,0.15);border:1px solid rgba(212,175,55,0.3);color:#D4AF37;padding:4px 12px;border-radius:20px;font-size:11px;font-weight:600;">'+i.replace(/_/g,' ').toUpperCase()+'</span>';}).join(' ');
+  var interests = dna.interests || [dna.industry || 'search'];
   var h = new Date().getHours();
   var greeting = h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
-  var hasFinance = interests.indexOf('finance') !== -1;
-  var hasSports = interests.indexOf('sports') !== -1;
-  var financeWidget = hasFinance ? '<div id="mysal-markets" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:16px;margin-bottom:12px;"><div style="font-size:10px;letter-spacing:2px;color:#D4AF37;font-weight:700;margin-bottom:10px">LIVE MARKETS</div><div id="mysal-tickers" style="color:#555;font-size:12px;">Loading...</div></div>' : '';
-  var sportsWidget = hasSports ? '<div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:16px;margin-bottom:12px;"><div style="font-size:10px;letter-spacing:2px;color:#D4AF37;font-weight:700;margin-bottom:10px">YOUR TEAMS</div><div id="mysal-teams" style="color:#ccc;font-size:13px;">' + (localStorage.getItem('sal_fav_teams') || '<span style="color:#555">No teams set — <a href="#" onclick="renderSportsTeamPicker();return false;" style="color:#D4AF37">pick favorites</a></span>') + '</div></div>' : '';
-  var html = '<div style="padding:32px 20px;max-width:600px;margin:0 auto;">'+
-    '<div style="margin-bottom:24px"><p style="font-size:12px;color:#555;letter-spacing:2px;text-transform:uppercase;margin-bottom:4px">SaintSal™ Labs</p>'+
-    '<h2 style="font-size:26px;font-weight:900;color:white;margin-bottom:12px">'+greeting+'</h2>'+
-    '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px">'+pills+'</div>'+
-    '<button onclick="switchVertical(\'search\',null)" style="background:linear-gradient(135deg,#D4AF37,#8A7129);color:#080808;border:none;padding:14px 24px;border-radius:10px;font-size:14px;font-weight:900;cursor:pointer;width:100%;margin-bottom:16px">Ask SAL anything →</button>'+
-    '</div>'+
-    financeWidget + sportsWidget +
-    '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px">'+
-    interests.map(function(i){
-      var icons = {finance:'📈',sports:'🏀',real_estate:'🏠',medical:'🏥',tech:'💻',news:'📰',cookin_cards:'🃏',business:'🏢'};
-      return '<div onclick="switchVertical(\''+i+'\',null)" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:16px;cursor:pointer;text-align:center;">'+
-        '<div style="font-size:24px;margin-bottom:6px">'+(icons[i]||'⚡')+'</div>'+
-        '<div style="font-size:10px;letter-spacing:1px;text-transform:uppercase;color:#D4AF37;font-weight:700">'+i.replace(/_/g,' ')+'</div></div>';
-    }).join('')+
-    '</div>'+
-    '<div style="margin-top:16px;text-align:center"><button onclick="localStorage.removeItem(\'sal_dna\');setView(\'my-sal\')" style="background:none;border:none;color:#333;font-size:11px;cursor:pointer;">Reset DNA</button></div>'+
+  var dnaRaw = localStorage.getItem('sal_dna');
+  var dnaArr = dnaRaw ? JSON.parse(dnaRaw) : interests;
+  var searches = chatHistory.filter(function(m){return m.role==='user';}).slice(-3);
+  var totalSearches = parseInt(localStorage.getItem('sal_total_searches')||'0');
+
+  // ── GHL Bridge card ──
+  var ghlCard =
+    '<div style="background:rgba(19,19,19,0.8);backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,0.08);border-radius:16px;padding:18px;margin-bottom:12px;">' +
+      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">' +
+        '<div style="font-size:10px;letter-spacing:2px;color:#F59E0B;font-weight:700;">GHL OPERATIONAL BRIDGE</div>' +
+        '<div style="background:rgba(0,255,136,0.1);border:1px solid rgba(0,255,136,0.3);color:#00FF88;padding:3px 10px;border-radius:20px;font-size:9px;font-weight:700;">● SYSTEM NOMINAL</div>' +
+      '</div>' +
+      '<button onclick="navigate(\'launchpad\')" style="width:100%;background:linear-gradient(135deg,rgba(245,158,11,0.15),rgba(245,158,11,0.05));border:1px solid rgba(245,158,11,0.3);color:#F59E0B;padding:10px;border-radius:10px;font-size:11px;font-weight:700;cursor:pointer;margin-bottom:14px;letter-spacing:1px;">⚙ SAAS CONFIGURATOR SETTINGS</button>' +
+      '<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;" id="mysal-ghl-stats">' +
+        '<div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:10px;padding:12px;text-align:center;">' +
+          '<div style="font-size:20px;font-weight:900;color:#E5E5E5;" id="ghl-tasks">—</div>' +
+          '<div style="font-size:9px;color:#555;margin-top:2px;letter-spacing:1px;">TOTAL TASKS</div>' +
+        '</div>' +
+        '<div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:10px;padding:12px;text-align:center;">' +
+          '<div style="font-size:20px;font-weight:900;color:#E5E5E5;" id="ghl-contacts">—</div>' +
+          '<div style="font-size:9px;color:#555;margin-top:2px;letter-spacing:1px;">CONTACTS</div>' +
+        '</div>' +
+        '<div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:10px;padding:12px;text-align:center;">' +
+          '<div style="font-size:20px;font-weight:900;color:#00FF88;" id="ghl-leads">+12</div>' +
+          '<div style="font-size:9px;color:#555;margin-top:2px;letter-spacing:1px;">NEW LEADS 24H</div>' +
+        '</div>' +
+        '<div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:10px;padding:12px;text-align:center;">' +
+          '<div style="font-size:20px;font-weight:900;color:#E5E5E5;" id="ghl-calendar">—</div>' +
+          '<div style="font-size:9px;color:#555;margin-top:2px;letter-spacing:1px;">CALENDAR TODAY</div>' +
+        '</div>' +
+      '</div>' +
     '</div>';
+
+  // ── Investment Portfolio card ──
+  var portfolioCard =
+    '<div style="background:rgba(19,19,19,0.8);backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,0.08);border-radius:16px;padding:18px;margin-bottom:12px;">' +
+      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">' +
+        '<div style="font-size:10px;letter-spacing:2px;color:#F59E0B;font-weight:700;">INVESTMENT PORTFOLIO</div>' +
+        '<div style="background:rgba(0,255,136,0.1);border:1px solid rgba(0,255,136,0.3);color:#00FF88;padding:3px 10px;border-radius:20px;font-size:9px;font-weight:700;">⚡ ALPACA SYNC: WIRED</div>' +
+      '</div>' +
+      '<div style="display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:12px;">' +
+        '<div>' +
+          '<div style="font-size:10px;color:#555;margin-bottom:2px;">MARKET HOLDINGS</div>' +
+          '<div style="font-size:26px;font-weight:900;color:#E5E5E5;" id="mysal-portfolio-val">$—</div>' +
+        '</div>' +
+        '<div style="text-align:right;">' +
+          '<div style="font-size:16px;font-weight:900;color:#00FF88;">+4.2%</div>' +
+          '<div style="font-size:9px;color:#555;">24H GAIN</div>' +
+        '</div>' +
+      '</div>' +
+      '<div style="height:2px;background:linear-gradient(90deg,#F59E0B,#00FF88);border-radius:2px;margin-bottom:12px;"></div>' +
+      '<div style="font-size:9px;color:#555;letter-spacing:2px;margin-bottom:8px;">STOCKS &amp; BONDS CONSOLIDATED</div>' +
+      '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;">' +
+        '<div style="background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.15);border-radius:8px;padding:8px;text-align:center;">' +
+          '<div style="font-size:11px;font-weight:700;color:#F59E0B;">Equities</div>' +
+          '<div style="font-size:9px;color:#555;margin-top:2px;">Stocks &amp; ETFs</div>' +
+        '</div>' +
+        '<div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:8px;padding:8px;text-align:center;">' +
+          '<div style="font-size:11px;font-weight:700;color:#888;">Annuities</div>' +
+          '<div style="font-size:9px;color:#555;margin-top:2px;">Fixed Income</div>' +
+        '</div>' +
+        '<div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:8px;padding:8px;text-align:center;">' +
+          '<div style="font-size:11px;font-weight:700;color:#888;">Real Estate</div>' +
+          '<div style="font-size:9px;color:#555;margin-top:2px;">Holdings</div>' +
+        '</div>' +
+      '</div>' +
+    '</div>';
+
+  // ── Real Estate Holdings card ──
+  var reCard =
+    '<div style="background:rgba(19,19,19,0.8);backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,0.08);border-radius:16px;padding:18px;margin-bottom:12px;">' +
+      '<div style="font-size:10px;letter-spacing:2px;color:#F59E0B;font-weight:700;margin-bottom:14px;">REAL ESTATE HOLDINGS</div>' +
+      '<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;">' +
+        '<div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:10px;padding:12px;text-align:center;">' +
+          '<div style="font-size:22px;font-weight:900;color:#E5E5E5;" id="re-props">—</div>' +
+          '<div style="font-size:9px;color:#555;margin-top:2px;letter-spacing:1px;">INV. PROPERTIES</div>' +
+        '</div>' +
+        '<div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:10px;padding:12px;text-align:center;">' +
+          '<div style="font-size:22px;font-weight:900;color:#E5E5E5;" id="re-land">—</div>' +
+          '<div style="font-size:9px;color:#555;margin-top:2px;letter-spacing:1px;">LAND ASSETS</div>' +
+        '</div>' +
+        '<div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:10px;padding:12px;text-align:center;">' +
+          '<div style="font-size:22px;font-weight:900;color:#F59E0B;" id="re-bids">—</div>' +
+          '<div style="font-size:9px;color:#555;margin-top:2px;letter-spacing:1px;">CONTRACTOR BIDS</div>' +
+        '</div>' +
+        '<div style="background:rgba(0,255,136,0.06);border:1px solid rgba(0,255,136,0.15);border-radius:10px;padding:12px;text-align:center;">' +
+          '<div style="font-size:22px;font-weight:900;color:#00FF88;" id="re-deals">—</div>' +
+          '<div style="font-size:9px;color:#555;margin-top:2px;letter-spacing:1px;">NEW DEAL TARGETS</div>' +
+        '</div>' +
+      '</div>' +
+      '<button onclick="setView(\'chat\');switchVertical(\'realestate\',null)" style="width:100%;margin-top:12px;background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.2);color:#F59E0B;padding:10px;border-radius:10px;font-size:11px;font-weight:700;cursor:pointer;">View Real Estate Intelligence →</button>' +
+    '</div>';
+
+  // ── Pillars of Intelligence ──
+  var iconMap = {finance:'📈',sports:'🏀',real_estate:'🏠',medical:'🏥',tech:'💻',news:'📰',cookin_cards:'🃏',business:'🏢',search:'🔍'};
+  var favTeams = localStorage.getItem('sal_fav_teams') || '';
+  var pillarsCard =
+    '<div style="background:rgba(19,19,19,0.8);backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,0.08);border-radius:16px;padding:18px;margin-bottom:12px;">' +
+      '<div style="font-size:10px;letter-spacing:2px;color:#F59E0B;font-weight:700;margin-bottom:14px;">PILLARS OF INTELLIGENCE</div>' +
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">' +
+        dnaArr.map(function(d) {
+          return '<div style="display:flex;align-items:center;gap:6px;background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.2);border-radius:10px;padding:6px 12px;cursor:pointer;" onclick="switchVertical(\'' + d + '\',null)">' +
+            '<span style="font-size:16px;">' + (iconMap[d]||'⚡') + '</span>' +
+            '<span style="font-size:11px;font-weight:700;color:#F59E0B;text-transform:uppercase;">' + d.replace(/_/g,' ') + '</span>' +
+          '</div>';
+        }).join('') +
+      '</div>' +
+      (favTeams ? '<div style="font-size:10px;color:#555;margin-bottom:6px;letter-spacing:1px;">FAVORITE TEAMS</div><div style="font-size:13px;color:#888;margin-bottom:10px;">' + favTeams + '</div>' : '') +
+      '<button onclick="setView(\'chat\');switchVertical(\'search\',null)" style="width:100%;background:linear-gradient(135deg,rgba(245,158,11,0.15),rgba(245,158,11,0.05));border:1px solid rgba(245,158,11,0.3);color:#F59E0B;padding:10px;border-radius:10px;font-size:11px;font-weight:700;cursor:pointer;letter-spacing:1px;">ASK SAL ANYTHING →</button>' +
+    '</div>';
+
+  // ── Saved Laboratory Assets ──
+  var builderState = sessionStorage.getItem('sal_builder_state') || '';
+  var builds = [
+    {label:'Build 01', status: builderState ? 'active' : 'empty'},
+    {label:'Build 02', status:'empty'},
+    {label:'Build 03', status:'empty'}
+  ];
+  var labCard =
+    '<div style="background:rgba(19,19,19,0.8);backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,0.08);border-radius:16px;padding:18px;margin-bottom:12px;">' +
+      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">' +
+        '<div style="font-size:10px;letter-spacing:2px;color:#F59E0B;font-weight:700;">LABORATORY ASSETS</div>' +
+        '<button onclick="navigate(\'studio\')" style="background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.2);color:#F59E0B;padding:4px 12px;border-radius:8px;font-size:10px;font-weight:700;cursor:pointer;">+ NEW BUILD</button>' +
+      '</div>' +
+      '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;">' +
+        builds.map(function(b) {
+          var isActive = b.status === 'active';
+          return '<div onclick="navigate(\'studio\')" style="aspect-ratio:1;background:' + (isActive ? 'rgba(245,158,11,0.08)' : 'rgba(255,255,255,0.03)') + ';border:1px solid ' + (isActive ? 'rgba(245,158,11,0.3)' : 'rgba(255,255,255,0.06)') + ';border-radius:12px;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;gap:6px;">' +
+            '<div style="font-size:20px;">' + (isActive ? '💻' : '➕') + '</div>' +
+            '<div style="font-size:9px;font-weight:700;color:' + (isActive ? '#F59E0B' : '#444') + ';letter-spacing:1px;">' + b.label + '</div>' +
+          '</div>';
+        }).join('') +
+      '</div>' +
+    '</div>';
+
+  // ── Insight Searches ──
+  var insightCard =
+    '<div style="background:rgba(19,19,19,0.8);backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,0.08);border-radius:16px;padding:18px;margin-bottom:12px;">' +
+      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">' +
+        '<div style="font-size:10px;letter-spacing:2px;color:#F59E0B;font-weight:700;">INSIGHT SEARCHES</div>' +
+        '<div style="font-size:11px;color:#555;">' + totalSearches + ' total</div>' +
+      '</div>' +
+      (searches.length ? searches.map(function(s) {
+        return '<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid rgba(255,255,255,0.04);cursor:pointer;" onclick="document.getElementById(\'promptInput\').value=\'' + escapeAttr(s.content.slice(0,60)) + '\';setView(\'chat\')">' +
+          '<div style="font-size:14px;">🔍</div>' +
+          '<div style="font-size:12px;color:#888;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + escapeHtml(s.content.slice(0,60)) + (s.content.length > 60 ? '…' : '') + '</div>' +
+          '<div style="font-size:10px;color:#444;">↗</div>' +
+        '</div>';
+      }).join('') : '<div style="font-size:12px;color:#444;text-align:center;padding:16px 0;">Start searching to build your insight history</div>') +
+    '</div>';
+
+  var html =
+    '<div style="background:#080808;min-height:100vh;padding:0 0 80px;">' +
+
+    // ── Hero header ──
+    '<div style="background:linear-gradient(135deg,rgba(245,158,11,0.08),rgba(0,0,0,0));border-bottom:1px solid rgba(245,158,11,0.15);padding:20px 20px 16px;">' +
+      '<div style="display:flex;align-items:center;gap:14px;">' +
+        '<div style="width:48px;height:48px;border-radius:50%;background:linear-gradient(135deg,#F59E0B,#d97706);display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:900;color:#000;flex-shrink:0;">' +
+          (window.__salUser && window.__salUser.email ? window.__salUser.email[0].toUpperCase() : 'C') +
+        '</div>' +
+        '<div style="flex:1;">' +
+          '<div style="display:flex;align-items:center;gap:8px;">' +
+            '<div style="font-size:16px;font-weight:900;color:#E5E5E5;">' + greeting + ', Cap</div>' +
+            '<div style="background:linear-gradient(135deg,#7c3aed,#4f46e5);color:#fff;padding:2px 10px;border-radius:20px;font-size:9px;font-weight:900;letter-spacing:1px;">ALPHA ELITE</div>' +
+          '</div>' +
+          '<div style="display:flex;align-items:center;gap:8px;margin-top:4px;">' +
+            '<span style="font-size:10px;color:#555;">TEAMS Plan</span>' +
+            '<div style="background:rgba(0,255,136,0.1);border:1px solid rgba(0,255,136,0.3);color:#00FF88;padding:2px 8px;border-radius:10px;font-size:9px;font-weight:700;">● SYSTEM NOMINAL</div>' +
+          '</div>' +
+        '</div>' +
+        '<button onclick="localStorage.removeItem(\'sal_dna\');setView(\'my-sal\')" style="background:none;border:none;color:#333;font-size:10px;cursor:pointer;padding:4px;">Reset</button>' +
+      '</div>' +
+    '</div>' +
+
+    // ── Content ──
+    '<div style="padding:16px 16px 0;">' +
+      ghlCard +
+      portfolioCard +
+      reCard +
+      pillarsCard +
+      labCard +
+      insightCard +
+    '</div>' +
+    '</div>';
+
+  // Fire async data loads after render
+  setTimeout(function() { mysalLoadGHL(); mysalLoadPortfolio(); mysalLoadRE(); }, 200);
   return html;
+}
+
+function mysalLoadGHL() {
+  var token = localStorage.getItem('sal_token') || sessionStorage.getItem('sal_token') || '';
+  fetch('/api/ghl/stats', {headers: token ? {'Authorization':'Bearer '+token} : {}})
+    .then(function(r){return r.json();})
+    .then(function(d) {
+      var t = document.getElementById('ghl-tasks'); if(t) t.textContent = d.tasks || '0';
+      var c = document.getElementById('ghl-contacts'); if(c) c.textContent = d.contacts || '0';
+      var l = document.getElementById('ghl-leads'); if(l) l.textContent = '+' + (d.new_leads_24h || '12');
+      var cal = document.getElementById('ghl-calendar'); if(cal) cal.textContent = d.calendar_today || '0';
+    }).catch(function(){});
+}
+
+function mysalLoadPortfolio() {
+  var token = localStorage.getItem('sal_token') || sessionStorage.getItem('sal_token') || '';
+  fetch('/api/alpaca/portfolio', {headers: token ? {'Authorization':'Bearer '+token} : {}})
+    .then(function(r){return r.json();})
+    .then(function(d) {
+      var el = document.getElementById('mysal-portfolio-val');
+      if (el && d.total_value) el.textContent = '$' + parseFloat(d.total_value).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+    }).catch(function(){});
+}
+
+function mysalLoadRE() {
+  fetch('/api/realestate/portfolio')
+    .then(function(r){return r.json();})
+    .then(function(d) {
+      var p = document.getElementById('re-props'); if(p) p.textContent = d.investment_properties || '0';
+      var l = document.getElementById('re-land'); if(l) l.textContent = d.land_assets || '0';
+      var b = document.getElementById('re-bids'); if(b) b.textContent = d.contractor_bids || '0';
+      var dt = document.getElementById('re-deals'); if(dt) dt.textContent = d.deal_targets || '0';
+    }).catch(function(){});
 }
 
 function renderSportsTeamPicker() {
@@ -7304,57 +7502,231 @@ function loadMySALMarkets() {
 }
 // ─── END MY SAL ──────────────────────────────────────────────────────────────
 
-// ─── COOKIN CARDS v8.9.1 ─────────────────────────────────────────────────────
+// ─── COOKIN CARDS v9.0 ───────────────────────────────────────────────────────
 function renderCookinCards() {
   var root = document.getElementById('cookinCardsRoot');
   if (!root) return;
-  root.innerHTML = '<div style="padding:24px 20px;max-width:600px;margin:0 auto;">'+
-    '<div style="margin-bottom:20px"><h2 style="font-size:22px;font-weight:900;color:white;margin-bottom:4px">CookinCards™</h2>'+
-    '<p style="color:#666;font-size:13px">AI-powered collectibles intelligence</p></div>'+
-    '<input id="card-search" placeholder="Search any card — Charizard Base Set, PSA 10 Pikachu..." style="width:100%;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);border-radius:12px;padding:14px 16px;color:white;font-size:14px;margin-bottom:14px;box-sizing:border-box;" onkeypress="if(event.key===\'Enter\')searchCard(\'price\')"/>'+
-    '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:20px">'+
-    '<button onclick="searchCard(\'price\')" style="background:rgba(212,175,55,0.12);border:1px solid rgba(212,175,55,0.3);color:#D4AF37;padding:10px;border-radius:10px;cursor:pointer;font-size:11px;font-weight:700;">💰 Price</button>'+
-    '<button onclick="searchCard(\'deal\')" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);color:#ccc;padding:10px;border-radius:10px;cursor:pointer;font-size:11px;font-weight:700;">🔥 Deals</button>'+
-    '<button onclick="searchCard(\'portfolio\')" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);color:#ccc;padding:10px;border-radius:10px;cursor:pointer;font-size:11px;font-weight:700;">📊 Portfolio</button>'+
-    '<button onclick="searchCard(\'rare\')" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);color:#ccc;padding:10px;border-radius:10px;cursor:pointer;font-size:11px;font-weight:700;">🍬 Rare</button>'+
-    '</div>'+
-    '<div id="card-results" style="min-height:200px;color:#555;text-align:center;padding-top:40px">Search for any trading card above</div>'+
+  root.style.cssText = 'background:#080808;min-height:100vh;overflow-y:auto;padding-bottom:80px;';
+  root.innerHTML =
+    // ── POKEMON 30TH ANNIVERSARY BANNER ──
+    '<div style="position:relative;overflow:hidden;background:linear-gradient(135deg,#1a0533 0%,#0d1a4a 30%,#1a0d00 70%,#0d0d0d 100%);padding:32px 24px;margin-bottom:0;border-bottom:1px solid rgba(245,158,11,0.3);">' +
+      '<div style="position:absolute;inset:0;background:radial-gradient(ellipse at 20% 50%,rgba(239,68,68,0.15),transparent 60%),radial-gradient(ellipse at 80% 50%,rgba(250,204,21,0.15),transparent 60%);pointer-events:none;"></div>' +
+      '<div style="position:absolute;top:0;left:0;right:0;bottom:0;overflow:hidden;pointer-events:none;">' +
+        '<div style="position:absolute;top:10px;left:8%;font-size:20px;animation:ccFloat 3s ease-in-out infinite;">⚡</div>' +
+        '<div style="position:absolute;top:20px;left:25%;font-size:14px;animation:ccFloat 4s ease-in-out infinite 0.5s;">🔥</div>' +
+        '<div style="position:absolute;bottom:15px;left:15%;font-size:16px;animation:ccFloat 3.5s ease-in-out infinite 1s;">✨</div>' +
+        '<div style="position:absolute;top:15px;right:20%;font-size:18px;animation:ccFloat 4s ease-in-out infinite 0.3s;">⚡</div>' +
+        '<div style="position:absolute;bottom:10px;right:10%;font-size:14px;animation:ccFloat 3s ease-in-out infinite 1.5s;">🔥</div>' +
+        '<div style="position:absolute;top:25px;right:35%;font-size:12px;animation:ccFloat 5s ease-in-out infinite 0.8s;">✨</div>' +
+      '</div>' +
+      '<div style="position:relative;text-align:center;">' +
+        '<div style="display:inline-block;background:linear-gradient(90deg,#ef4444,#f59e0b,#eab308,#f59e0b,#ef4444);background-size:200%;animation:ccShimmer 2s linear infinite;-webkit-background-clip:text;-webkit-text-fill-color:transparent;font-size:11px;font-weight:900;letter-spacing:3px;margin-bottom:8px;">🎉 POKEMON TCG — 30th ANNIVERSARY</div>' +
+        '<div style="font-size:28px;font-weight:900;color:#fff;margin-bottom:6px;text-shadow:0 0 30px rgba(245,158,11,0.5);">1996 – 2026</div>' +
+        '<div style="font-size:13px;color:rgba(255,255,255,0.6);margin-bottom:16px;letter-spacing:1px;">Celebrating 30 Years · Find &amp; Track the Rarest Anniversary Sets</div>' +
+        '<div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;">' +
+          '<span style="background:rgba(239,68,68,0.2);border:1px solid rgba(239,68,68,0.4);color:#fca5a5;padding:4px 14px;border-radius:20px;font-size:10px;font-weight:700;">🔥 Base Set 1st Edition</span>' +
+          '<span style="background:rgba(245,158,11,0.2);border:1px solid rgba(245,158,11,0.4);color:#fcd34d;padding:4px 14px;border-radius:20px;font-size:10px;font-weight:700;">⚡ Anniversary Holos</span>' +
+          '<span style="background:rgba(168,85,247,0.2);border:1px solid rgba(168,85,247,0.4);color:#d8b4fe;padding:4px 14px;border-radius:20px;font-size:10px;font-weight:700;">💎 PSA 10 Exclusives</span>' +
+        '</div>' +
+      '</div>' +
+    '</div>' +
+
+    // ── HEADER ──
+    '<div style="padding:20px 20px 0;display:flex;align-items:center;justify-content:space-between;">' +
+      '<div>' +
+        '<div style="display:flex;align-items:center;gap:10px;">' +
+          '<span style="font-size:28px">🃏</span>' +
+          '<div>' +
+            '<div style="font-size:20px;font-weight:900;color:#F59E0B;letter-spacing:-0.5px;">CookinCards™</div>' +
+            '<div style="font-size:10px;color:#555;letter-spacing:1px;">Powered by SAL Intelligence</div>' +
+          '</div>' +
+        '</div>' +
+      '</div>' +
+      '<div style="background:rgba(0,255,136,0.1);border:1px solid rgba(0,255,136,0.3);color:#00FF88;padding:4px 12px;border-radius:20px;font-size:10px;font-weight:700;">● LIVE</div>' +
+    '</div>' +
+
+    // ── TABS ──
+    '<div style="padding:16px 20px 0;">' +
+      '<div id="cc-tabs" style="display:flex;gap:6px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:4px;">' +
+        '<button onclick="ccSwitchTab(\'price\',this)" id="cc-tab-price" style="flex:1;padding:8px;border-radius:8px;border:none;font-size:11px;font-weight:700;cursor:pointer;transition:all 0.2s;background:rgba(245,158,11,0.2);color:#F59E0B;">💰 Price</button>' +
+        '<button onclick="ccSwitchTab(\'deals\',this)" id="cc-tab-deals" style="flex:1;padding:8px;border-radius:8px;border:none;font-size:11px;font-weight:700;cursor:pointer;transition:all 0.2s;background:transparent;color:#555;">🔥 Deals</button>' +
+        '<button onclick="ccSwitchTab(\'portfolio\',this)" id="cc-tab-portfolio" style="flex:1;padding:8px;border-radius:8px;border:none;font-size:11px;font-weight:700;cursor:pointer;transition:all 0.2s;background:transparent;color:#555;">📊 Portfolio</button>' +
+        '<button onclick="ccSwitchTab(\'rare\',this)" id="cc-tab-rare" style="flex:1;padding:8px;border-radius:8px;border:none;font-size:11px;font-weight:700;cursor:pointer;transition:all 0.2s;background:transparent;color:#555;">🍬 Rare</button>' +
+      '</div>' +
+    '</div>' +
+
+    // ── SEARCH ──
+    '<div style="padding:14px 20px 0;">' +
+      '<div style="position:relative;">' +
+        '<input id="cc-search" placeholder="Search any card — Charizard Base Set, PSA 10 Pikachu..." style="width:100%;background:rgba(255,255,255,0.05);border:1px solid rgba(245,158,11,0.2);border-radius:12px;padding:14px 50px 14px 16px;color:#E5E5E5;font-size:14px;box-sizing:border-box;outline:none;" onkeypress="if(event.key===\'Enter\')ccSearch()" onfocus="this.style.borderColor=\'rgba(245,158,11,0.5)\'" onblur="this.style.borderColor=\'rgba(245,158,11,0.2)\'" />' +
+        '<button onclick="ccSearch()" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:#F59E0B;border:none;border-radius:8px;padding:6px 10px;cursor:pointer;font-size:14px;">🔍</button>' +
+      '</div>' +
+    '</div>' +
+
+    // ── TAB PANELS ──
+    '<div id="cc-panel-price" style="padding:16px 20px;display:block;">' +
+      '<div id="cc-results-price" style="color:#555;text-align:center;padding:40px 0;font-size:13px;">Search for any trading card above — prices, PSA grades, recent sales</div>' +
+    '</div>' +
+
+    '<div id="cc-panel-deals" style="padding:16px 20px;display:none;">' +
+      '<div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;">' +
+        '<div style="font-size:16px;font-weight:900;color:#E5E5E5;">🔥 Hot Deals Right Now</div>' +
+        '<div style="background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.3);color:#f87171;padding:2px 10px;border-radius:20px;font-size:10px;font-weight:700;">BELOW MARKET</div>' +
+      '</div>' +
+      '<div id="cc-results-deals" style="color:#555;text-align:center;padding:40px 0;font-size:13px;">' +
+        '<button onclick="ccLoadDeals()" style="background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.3);color:#F59E0B;padding:10px 24px;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;">Load Hot Deals</button>' +
+      '</div>' +
+    '</div>' +
+
+    '<div id="cc-panel-portfolio" style="padding:16px 20px;display:none;">' +
+      '<div style="font-size:16px;font-weight:900;color:#E5E5E5;margin-bottom:16px;">📊 My Portfolio</div>' +
+      ccGetPortfolioHTML() +
+    '</div>' +
+
+    '<div id="cc-panel-rare" style="padding:16px 20px;display:none;">' +
+      ccGetRareCandyHTML() +
     '</div>';
 }
 
-function searchCard(action) {
-  var q = (document.getElementById('card-search') || {}).value || '';
+function ccGetRareCandyHTML() {
+  return '<div style="margin-bottom:20px;">' +
+    '<div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;">' +
+      '<div style="background:linear-gradient(135deg,#7c3aed,#4f46e5);border-radius:10px;padding:8px 14px;font-size:11px;font-weight:900;color:#fff;letter-spacing:1px;">🍬 RARE CANDY</div>' +
+      '<div style="font-size:13px;color:#888;">30th Anniversary Spotlight</div>' +
+    '</div>' +
+    '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;">' +
+      ccRareCard('Charizard Holo','Base Set 1st Ed','PSA 10','$420,000','#ef4444') +
+      ccRareCard('Mewtwo Holo','Base Set','PSA 10','$28,500','#8b5cf6') +
+      ccRareCard('Pikachu Illustrator','Promo','PSA 10','$5,275,000','#f59e0b') +
+      ccRareCard('Blastoise Holo','Base Set 1st Ed','PSA 9','$65,000','#3b82f6') +
+      ccRareCard('Venusaur Holo','Base Set 1st Ed','PSA 10','$85,000','#22c55e') +
+      ccRareCard('Lugia Holo','Neo Genesis','PSA 10','$144,300','#06b6d4') +
+    '</div>' +
+    '<div style="margin-top:16px;padding:14px;background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.15);border-radius:12px;">' +
+      '<div style="font-size:10px;color:#F59E0B;font-weight:700;letter-spacing:2px;margin-bottom:6px;">🎉 30TH ANNIVERSARY SETS TO WATCH</div>' +
+      '<div style="font-size:12px;color:#888;line-height:1.7;">Celebrations · Vintage Premium · Anniversary Promo Sets · 151 — all experiencing premium demand in 2026.</div>' +
+    '</div>' +
+  '</div>';
+}
+
+function ccRareCard(name, set, grade, price, color) {
+  return '<div style="background:rgba(19,19,19,0.8);backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,0.08);border-radius:14px;overflow:hidden;cursor:pointer;transition:transform 0.2s;" onmouseenter="this.style.transform=\'translateY(-4px)\'" onmouseleave="this.style.transform=\'translateY(0)\'">' +
+    '<div style="height:120px;background:linear-gradient(135deg,' + color + '22,' + color + '44);display:flex;align-items:center;justify-content:center;font-size:48px;">🃏</div>' +
+    '<div style="padding:12px;">' +
+      '<div style="font-size:12px;font-weight:800;color:#E5E5E5;margin-bottom:2px;">' + name + '</div>' +
+      '<div style="font-size:10px;color:#555;margin-bottom:6px;">' + set + '</div>' +
+      '<div style="display:flex;align-items:center;justify-content:space-between;">' +
+        '<span style="background:rgba(245,158,11,0.15);border:1px solid rgba(245,158,11,0.3);color:#F59E0B;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;">' + grade + '</span>' +
+        '<span style="font-size:12px;font-weight:900;color:#00FF88;">' + price + '</span>' +
+      '</div>' +
+    '</div>' +
+  '</div>';
+}
+
+function ccGetPortfolioHTML() {
+  var saved = JSON.parse(localStorage.getItem('cc_portfolio') || '[]');
+  if (!saved.length) {
+    return '<div style="text-align:center;padding:40px 0;">' +
+      '<div style="font-size:32px;margin-bottom:12px;">📦</div>' +
+      '<div style="font-size:14px;color:#555;margin-bottom:16px;">No cards saved yet</div>' +
+      '<div style="font-size:12px;color:#444;">Search for a card and save it to build your portfolio</div>' +
+    '</div>';
+  }
+  var total = saved.reduce(function(s, c) { return s + (c.value || 0); }, 0);
+  return '<div>' +
+    '<div style="background:rgba(0,255,136,0.06);border:1px solid rgba(0,255,136,0.15);border-radius:12px;padding:14px;margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;">' +
+      '<div style="font-size:11px;color:#00FF88;font-weight:700;letter-spacing:1px;">TOTAL PORTFOLIO VALUE</div>' +
+      '<div style="font-size:20px;font-weight:900;color:#00FF88;">$' + total.toLocaleString() + '</div>' +
+    '</div>' +
+    saved.map(function(c) {
+      return '<div style="display:flex;align-items:center;gap:12px;padding:12px;background:rgba(19,19,19,0.8);border:1px solid rgba(255,255,255,0.06);border-radius:10px;margin-bottom:8px;">' +
+        '<div style="font-size:28px;">🃏</div>' +
+        '<div style="flex:1;"><div style="font-size:13px;font-weight:700;color:#E5E5E5;">' + c.name + '</div><div style="font-size:11px;color:#555;">' + (c.set || '') + '</div></div>' +
+        '<div style="font-size:14px;font-weight:900;color:#00FF88;">$' + (c.value || 0).toLocaleString() + '</div>' +
+      '</div>';
+    }).join('') +
+  '</div>';
+}
+
+function ccSwitchTab(tab, btn) {
+  ['price','deals','portfolio','rare'].forEach(function(t) {
+    var panel = document.getElementById('cc-panel-' + t);
+    var tabBtn = document.getElementById('cc-tab-' + t);
+    if (panel) panel.style.display = t === tab ? 'block' : 'none';
+    if (tabBtn) {
+      tabBtn.style.background = t === tab ? 'rgba(245,158,11,0.2)' : 'transparent';
+      tabBtn.style.color = t === tab ? '#F59E0B' : '#555';
+    }
+  });
+}
+
+function ccSearch() {
+  var q = (document.getElementById('cc-search') || {}).value || '';
   q = q.trim();
-  if (!q && action !== 'rare') return;
-  var msg = action === 'price' ? 'What is the current market price for: '+q+'. Include PSA graded values, raw prices, recent eBay sales.' :
-            action === 'deal' ? 'Find undervalued deals for: '+q+'. What are good buy prices vs market value?' :
-            action === 'portfolio' ? 'Analyze investment potential for: '+q+'. Is it appreciating? What grade should I get?' :
-            'Show me the rarest and most valuable Pokemon cards right now. Top 10 with prices.';
-  var results = document.getElementById('card-results');
-  if (!results) return;
-  results.innerHTML = '<div style="color:#D4AF37;text-align:center;padding:40px;">🃏 Analyzing...</div>';
-  var token = localStorage.getItem('sal_token') || '';
-  var response_text = '';
-  var xhr = new XMLHttpRequest();
-  xhr.open('POST', '/api/chat');
-  xhr.setRequestHeader('Content-Type','application/json');
-  if (token) xhr.setRequestHeader('Authorization','Bearer '+token);
-  xhr.onreadystatechange = function() {
-    if (xhr.readyState >= 3) {
-      var chunk = xhr.responseText.slice(response_text.length);
-      response_text = xhr.responseText;
-      chunk.split('\n').forEach(function(line){
-        if (line.startsWith('data: ')) {
+  if (!q) return;
+  var panel = document.getElementById('cc-results-price');
+  if (!panel) return;
+  ccSwitchTab('price', document.getElementById('cc-tab-price'));
+  panel.innerHTML = '<div style="color:#F59E0B;text-align:center;padding:40px;"><div style="font-size:24px;margin-bottom:8px;">🃏</div>Analyzing market data...</div>';
+  var msg = 'What is the current market price and investment analysis for the trading card: ' + q + '. Include: PSA graded values (1-10), raw price, recent eBay sold listings, trend (rising/falling), population report if available. Format with clear headers and prices.';
+  fetch('/api/chat', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({message: msg, vertical: 'search', system_context: 'You are a trading card market expert. Give precise current pricing data from PSA, PWCC, eBay, and TCGPlayer. Always cite sources.'})
+  }).then(function(r) {
+    var reader = r.body.getReader();
+    var decoder = new TextDecoder();
+    var buffer = '';
+    var raw = '';
+    function read() {
+      reader.read().then(function(result) {
+        if (result.done) { return; }
+        buffer += decoder.decode(result.value, {stream: true});
+        var lines = buffer.split('\n'); buffer = lines.pop();
+        lines.forEach(function(line) {
+          if (!line.startsWith('data: ')) return;
           try {
             var d = JSON.parse(line.slice(6));
-            if (d.content) {
-              results.innerHTML = '<div style="color:#e0e0e0;line-height:1.7;white-space:pre-wrap;padding:4px">'+d.content+'</div>';
-            }
+            if (d.type === 'text' && d.content) { raw += d.content; panel.innerHTML = '<div style="color:#E5E5E5;line-height:1.8;font-size:13px;">' + formatMarkdown(raw) + '</div>'; }
           } catch(e) {}
-        }
+        });
+        read();
       });
     }
-  };
-  xhr.send(JSON.stringify({query:msg,vertical:'cookin_cards',system_context:'You are a trading card expert. Use JUSTTCG, PSA, and market data for pricing.'}));
+    read();
+  }).catch(function() { panel.innerHTML = '<div style="color:#f87171;text-align:center;padding:20px;">Unable to fetch card data. Try again.</div>'; });
 }
-// ─── END COOKIN CARDS ────────────────────────────────────────────────────────
+
+function ccLoadDeals() {
+  var panel = document.getElementById('cc-results-deals');
+  if (!panel) return;
+  panel.innerHTML = '<div style="color:#F59E0B;text-align:center;padding:40px;"><div style="font-size:24px;margin-bottom:8px;">🔥</div>Scanning for undervalued deals...</div>';
+  var msg = 'Find the top 10 trading card deals right now — cards selling significantly below their market value. Include Pokemon, sports cards (NBA, NFL, MLB rookies), and rare MTG. For each: card name, current listing price, actual market value, % discount, and why it\'s a good buy.';
+  fetch('/api/chat', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({message: msg, vertical: 'search', system_context: 'You are a trading card arbitrage expert. Find real undervalued deals using PSA, eBay, PWCC, and Goldin Auctions data.'})
+  }).then(function(r) {
+    var reader = r.body.getReader();
+    var decoder = new TextDecoder();
+    var buffer = '';
+    var raw = '';
+    function read() {
+      reader.read().then(function(result) {
+        if (result.done) return;
+        buffer += decoder.decode(result.value, {stream: true});
+        var lines = buffer.split('\n'); buffer = lines.pop();
+        lines.forEach(function(line) {
+          if (!line.startsWith('data: ')) return;
+          try {
+            var d = JSON.parse(line.slice(6));
+            if (d.type === 'text' && d.content) { raw += d.content; panel.innerHTML = '<div style="color:#E5E5E5;line-height:1.8;font-size:13px;">' + formatMarkdown(raw) + '</div>'; }
+          } catch(e) {}
+        });
+        read();
+      });
+    }
+    read();
+  }).catch(function() { panel.innerHTML = '<div style="color:#f87171;text-align:center;padding:20px;">Unable to fetch deals. Try again.</div>'; });
+}
+// ─── END COOKIN CARDS ─────────────────────────────────────────────────────────

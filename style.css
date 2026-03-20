@@ -6996,3 +6996,7 @@ ul, ol { list-style: none; }
 /* ─── PWA BODY PADDING ─── */
 body { padding-bottom: 64px !important; }
 .main-content, #main-content { padding-bottom: 64px; }
+
+/* ─── COOKIN CARDS ANIMATIONS ─── */
+@keyframes ccFloat { 0%,100%{transform:translateY(0) rotate(0deg);opacity:0.7} 50%{transform:translateY(-8px) rotate(10deg);opacity:1} }
+@keyframes ccShimmer { 0%{background-position:0%} 100%{background-position:200%} }

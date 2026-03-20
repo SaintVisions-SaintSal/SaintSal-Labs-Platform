@@ -642,6 +642,16 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
 
         <!-- ═══ LEFT: Chat Panel ═══ -->
         <div class="builder-ide-chat">
+          <div class="builder-ide-chat-header">
+            <div class="builder-ide-chat-header-icon">🤖</div>
+            <div>
+              <div class="builder-ide-chat-header-title">SAL ARCHITECT</div>
+              <div class="builder-ide-chat-header-sub">AI-POWERED BUILD ENGINE</div>
+            </div>
+            <div style="margin-left:auto;display:flex;align-items:center;gap:5px;background:rgba(0,255,136,0.08);border:1px solid rgba(0,255,136,0.2);border-radius:20px;padding:3px 10px;font-size:9px;font-weight:700;color:#00FF88;">
+              <div class="builder-live-dot"></div>LIVE
+            </div>
+          </div>
           <!-- Chat messages -->
           <div class="builder-ide-messages" id="builderMessages">
             <div class="builder-welcome" id="builderWelcome">
@@ -725,6 +735,10 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
                 <button class="builder-preview-tab" onclick="builderSetPreviewTab('code',this)">Code</button>
                 <button class="builder-preview-tab" onclick="builderSetPreviewTab('log',this)">Log</button>
               </div>
+              <div class="builder-live-pill"><div class="builder-live-dot"></div>LIVE SYSTEM</div>
+              <button class="builder-settings-gear" onclick="builderSwitchPanel('settings')" title="Settings">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><circle cx="12" cy="12" r="3"/><path d="M12 1v2m0 18v2M4.22 4.22l1.42 1.42m12.73 12.73 1.42 1.42M1 12h2m18 0h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+              </button>
             </div>
             <div class="builder-ide-preview-frame" id="builderPreviewFrame">
               <div class="builder-ide-preview-status" id="builderPreviewStatus">
