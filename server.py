@@ -11474,3 +11474,498 @@ async def cards_portfolio_add(request: Request):
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=400)
 
+
+
+# ════════════════════════════════════════════════════════════════════════════════
+# MARKETING AUTOMATION ENGINE — Build #79
+# Daily content, auto-post scheduler, lead capture, GHL nurture
+# ════════════════════════════════════════════════════════════════════════════════
+
+GHL_PRIVATE_TOKEN = os.environ.get("GHL_PRIVATE_TOKEN", "pit-24654b55-6e44-49f5-8912-5632ab08c615")
+GHL_LOCATION_ID   = os.environ.get("GHL_LOCATION_ID", "oRA8vL3OSiCPjpwmEC0V")
+
+CONTENT_ROTATION = {
+    0: {"day": "Monday",    "theme": "AI + Real Estate",          "target": "agents and real estate brokers"},
+    1: {"day": "Tuesday",   "theme": "AI + Finance",              "target": "financial advisors and traders"},
+    2: {"day": "Wednesday", "theme": "SaintSal Labs features",    "target": "entrepreneurs and operators"},
+    3: {"day": "Thursday",  "theme": "Patent #10,290,222 + HACP", "target": "enterprise buyers and tech leaders"},
+    4: {"day": "Friday",    "theme": "CookinCards + Pokemon 30th","target": "collectors and investors seeking viral reach"},
+    5: {"day": "Saturday",  "theme": "Success stories and wins",  "target": "aspiring entrepreneurs and community"},
+    6: {"day": "Sunday",    "theme": "Week ahead + motivation",   "target": "operators and community builders"},
+}
+
+SAL_MARKETING_CONTEXT = """You are SAL, the AI for SaintSal Labs.
+Founder Ryan Capatosto — Patent #10,290,222 holder.
+Background: JP Morgan + Oppenheimer.
+Building AI Life Infrastructure Software.
+88 APIs. GHL CRM. Voice AI. Builder.
+Free to Enterprise $497/mo plans.
+Write content that positions SAL as the most powerful AI platform for
+entrepreneurs, investors, and operators. Be bold, direct, and urgent.
+No fluff. SAL is the Gotta Guy™ — the one call that solves everything."""
+
+
+@app.post("/api/marketing/daily-content")
+async def generate_daily_content(request: Request):
+    """Generate today's multi-platform content batch. Saves to Supabase."""
+    import datetime
+    body = await request.json()
+    topic = body.get("topic", "auto")
+
+    today = datetime.date.today()
+    weekday = today.weekday()  # 0=Monday
+
+    if topic == "auto":
+        rotation = CONTENT_ROTATION[weekday]
+    else:
+        rotation = {"day": "Custom", "theme": topic, "target": "entrepreneurs and operators"}
+
+    theme = rotation["theme"]
+    target = rotation["target"]
+    date_str = today.isoformat()
+
+    system_prompt = SAL_MARKETING_CONTEXT
+    user_prompt = f"""Today is {rotation['day']}. Theme: {theme}. Target audience: {target}.
+
+Generate a complete daily content package. Return ONLY valid JSON, no markdown, no explanation:
+
+{{
+  "theme": "{theme}",
+  "date": "{date_str}",
+  "twitter_thread": [
+    "Tweet 1 (hook, max 280 chars)",
+    "Tweet 2 (expand, max 280 chars)",
+    "Tweet 3 (insight, max 280 chars)",
+    "Tweet 4 (proof/feature, max 280 chars)",
+    "Tweet 5 (CTA: saintsallabs.com, max 280 chars)"
+  ],
+  "linkedin": "Full LinkedIn thought leadership post (1000-1300 chars). Professional, story-driven, end with CTA.",
+  "instagram": "Instagram caption (150 chars) + 30 relevant hashtags on new lines",
+  "facebook": "Facebook post (300 chars). Conversational, community hook, question ending.",
+  "tiktok": "TikTok script (90 seconds spoken word). Hook in first 3 seconds. Conversational. Strong CTA."
+}}"""
+
+    try:
+        mcp_res = await _call_mcp_chat(system_prompt, user_prompt, model="pro")
+        raw = mcp_res.get("response", "{}").strip()
+        raw = raw.replace("```json", "").replace("```", "").strip()
+        content_data = json.loads(raw)
+    except Exception as e:
+        return JSONResponse({"error": f"Content generation failed: {str(e)}"}, status_code=500)
+
+    # Save to Supabase marketing_content table
+    saved = []
+    if supabase_admin:
+        platforms = {
+            "twitter":   json.dumps(content_data.get("twitter_thread", [])),
+            "linkedin":  content_data.get("linkedin", ""),
+            "instagram": content_data.get("instagram", ""),
+            "facebook":  content_data.get("facebook", ""),
+            "tiktok":    content_data.get("tiktok", ""),
+        }
+        try:
+            for platform, content in platforms.items():
+                row = {
+                    "date": date_str,
+                    "platform": platform,
+                    "content": content,
+                    "theme": theme,
+                    "status": "draft",
+                    "posted_at": None,
+                }
+                result = supabase_admin.table("marketing_content").insert(row).execute()
+                saved.append(platform)
+        except Exception as e:
+            pass  # Non-fatal — return content even if save fails
+
+    return JSONResponse({
+        "ok": True,
+        "date": date_str,
+        "theme": theme,
+        "day": rotation["day"],
+        "content": content_data,
+        "saved_platforms": saved,
+    })
+
+
+async def _call_mcp_chat(system: str, message: str, model: str = "pro") -> dict:
+    """Internal helper: calls the MCP chat logic directly."""
+    import anthropic as anthropic_sdk
+    ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
+    if ANTHROPIC_API_KEY:
+        client = anthropic_sdk.Anthropic(api_key=ANTHROPIC_API_KEY)
+        resp = client.messages.create(
+            model="claude-sonnet-4-5",
+            max_tokens=2000,
+            system=system,
+            messages=[{"role": "user", "content": message}],
+        )
+        return {"ok": True, "response": resp.content[0].text}
+    elif xai_client:
+        resp = xai_client.chat.completions.create(
+            model="grok-3",
+            messages=[{"role": "system", "content": system}, {"role": "user", "content": message}],
+            max_tokens=2000,
+        )
+        return {"ok": True, "response": resp.choices[0].message.content}
+    else:
+        return {"ok": False, "response": "{}"}
+
+
+@app.post("/api/marketing/schedule")
+async def marketing_schedule(request: Request):
+    """
+    Trigger the daily marketing run:
+    1. Generate content via /api/marketing/daily-content
+    2. Auto-post Twitter thread (tweet 1) and LinkedIn post
+    3. Log results
+    Call this from a cron job at 8AM PST.
+    """
+    import datetime
+    # Step 1: Generate content
+    fake_req_body = {"topic": "auto"}
+
+    today = datetime.date.today()
+    weekday = today.weekday()
+    rotation = CONTENT_ROTATION[weekday]
+    theme = rotation["theme"]
+    date_str = today.isoformat()
+
+    system_prompt = SAL_MARKETING_CONTEXT
+    user_prompt = f"""Today is {rotation['day']}. Theme: {theme}.
+Generate content for Twitter thread (5 tweets) and LinkedIn post.
+Return ONLY valid JSON:
+{{
+  "twitter_thread": ["tweet1","tweet2","tweet3","tweet4","tweet5"],
+  "linkedin": "LinkedIn post content here"
+}}"""
+
+    results = {"date": date_str, "theme": theme, "posted": [], "queued": [], "errors": []}
+
+    try:
+        mcp_res = await _call_mcp_chat(system_prompt, user_prompt, model="pro")
+        raw = mcp_res.get("response", "{}").strip().replace("```json", "").replace("```", "").strip()
+        content_data = json.loads(raw)
+    except Exception as e:
+        results["errors"].append(f"Content generation: {str(e)}")
+        return JSONResponse({"ok": False, "results": results})
+
+    # Step 2: Post tweet 1 of thread to Twitter
+    tw_key    = os.environ.get("TWITTER_API_KEY", "")
+    tw_secret = os.environ.get("TWITTER_API_SECRET", "")
+    tw_token  = os.environ.get("TWITTER_ACCESS_TOKEN", "")
+    tw_tsecret= os.environ.get("TWITTER_ACCESS_SECRET", "")
+
+    tweet_text = content_data.get("twitter_thread", [""])[0]
+    if tweet_text and tw_key and tw_secret and tw_token and tw_tsecret:
+        try:
+            import requests_oauthlib
+            from requests_oauthlib import OAuth1Session
+            oauth = OAuth1Session(tw_key, tw_secret, tw_token, tw_tsecret)
+            resp = oauth.post("https://api.twitter.com/2/tweets", json={"text": tweet_text})
+            if resp.status_code in (200, 201):
+                results["posted"].append("twitter")
+                if supabase_admin:
+                    supabase_admin.table("marketing_content").insert({
+                        "date": date_str, "platform": "twitter",
+                        "content": tweet_text, "theme": theme,
+                        "status": "posted", "posted_at": datetime.datetime.utcnow().isoformat()
+                    }).execute()
+            else:
+                results["queued"].append(f"twitter (status {resp.status_code})")
+        except Exception as e:
+            results["queued"].append(f"twitter (error: {str(e)[:60]})")
+    else:
+        results["queued"].append("twitter (keys not configured)")
+
+    # Step 3: Post to LinkedIn
+    li_token = os.environ.get("LINKEDIN_ACCESS_TOKEN", "")
+    li_post  = content_data.get("linkedin", "")
+    if li_post and li_token:
+        try:
+            async with httpx.AsyncClient() as hc:
+                # Get LinkedIn user ID first
+                me_resp = await hc.get("https://api.linkedin.com/v2/me",
+                    headers={"Authorization": f"Bearer {li_token}"}, timeout=10)
+                if me_resp.status_code == 200:
+                    li_uid = me_resp.json().get("id", "")
+                    post_resp = await hc.post("https://api.linkedin.com/v2/ugcPosts",
+                        headers={"Authorization": f"Bearer {li_token}", "Content-Type": "application/json"},
+                        json={
+                            "author": f"urn:li:person:{li_uid}",
+                            "lifecycleState": "PUBLISHED",
+                            "specificContent": {"com.linkedin.ugc.ShareContent": {
+                                "shareCommentary": {"text": li_post},
+                                "shareMediaCategory": "NONE"
+                            }},
+                            "visibility": {"com.linkedin.ugc.MemberNetworkVisibility": "PUBLIC"}
+                        }, timeout=15)
+                    if post_resp.status_code in (200, 201):
+                        results["posted"].append("linkedin")
+                    else:
+                        results["queued"].append(f"linkedin (status {post_resp.status_code})")
+                else:
+                    results["queued"].append("linkedin (auth failed)")
+        except Exception as e:
+            results["queued"].append(f"linkedin (error: {str(e)[:60]})")
+    else:
+        results["queued"].append("linkedin (token not configured)")
+
+    # Remaining platforms go to manual approval queue
+    for platform in ["instagram", "facebook", "tiktok"]:
+        results["queued"].append(f"{platform} (manual approval)")
+
+    return JSONResponse({"ok": True, "results": results})
+
+
+@app.post("/api/marketing/capture-lead")
+async def capture_lead(request: Request):
+    """
+    Fire when a user signs up for Free tier:
+    1. Create GHL contact
+    2. Start 7-day nurture sequence (GHL workflow trigger)
+    3. Log to Supabase
+    4. Day 3 — ElevenLabs voice call
+    """
+    body = await request.json()
+    email     = body.get("email", "")
+    firstName = body.get("firstName", body.get("first_name", ""))
+    lastName  = body.get("lastName", body.get("last_name", ""))
+    phone     = body.get("phone", "")
+    user_id   = body.get("user_id", "")
+    tier      = body.get("tier", "free")
+
+    if not email:
+        return JSONResponse({"error": "email required"}, status_code=400)
+
+    results = {"ghl": None, "nurture": None, "errors": []}
+
+    # ── Step 1: Create GHL Contact ──
+    try:
+        async with httpx.AsyncClient() as hc:
+            contact_data = {
+                "locationId": GHL_LOCATION_ID,
+                "email": email,
+                "firstName": firstName or email.split("@")[0],
+                "lastName": lastName or "",
+                "phone": phone or "",
+                "tags": [f"tier:{tier}", "sal_signup", "nurture_active"],
+                "source": "SAL Signup",
+                "customField": [
+                    {"id": "sal_tier",    "value": tier},
+                    {"id": "sal_user_id", "value": str(user_id)},
+                    {"id": "signup_date", "value": __import__("datetime").date.today().isoformat()},
+                ]
+            }
+            resp = await hc.post(
+                "https://rest.gohighlevel.com/v1/contacts/",
+                headers={"Authorization": f"Bearer {GHL_PRIVATE_TOKEN}", "Content-Type": "application/json"},
+                json=contact_data,
+                timeout=15,
+            )
+            if resp.status_code in (200, 201):
+                ghl_contact = resp.json().get("contact", {})
+                results["ghl"] = {"contact_id": ghl_contact.get("id"), "status": "created"}
+            else:
+                results["errors"].append(f"GHL contact creation failed: {resp.status_code}")
+    except Exception as e:
+        results["errors"].append(f"GHL error: {str(e)[:80]}")
+
+    # ── Step 2: Log nurture sequence start to Supabase ──
+    if supabase_admin:
+        try:
+            import datetime
+            supabase_admin.table("marketing_leads").insert({
+                "email": email,
+                "first_name": firstName,
+                "last_name": lastName,
+                "phone": phone,
+                "user_id": str(user_id) if user_id else None,
+                "tier": tier,
+                "ghl_contact_id": results["ghl"]["contact_id"] if results["ghl"] else None,
+                "nurture_day": 1,
+                "signed_up_at": datetime.datetime.utcnow().isoformat(),
+            }).execute()
+            results["nurture"] = "day_1_started"
+        except Exception as e:
+            results["errors"].append(f"Supabase log: {str(e)[:80]}")
+
+    # ── Step 3: Send Day 1 Welcome Email via Resend ──
+    if RESEND_API_KEY and email:
+        try:
+            async with httpx.AsyncClient() as hc:
+                await hc.post("https://api.resend.com/emails",
+                    headers={"Authorization": f"Bearer {RESEND_API_KEY}", "Content-Type": "application/json"},
+                    json={
+                        "from": "SAL <sal@saintsallabs.com>",
+                        "to": [email],
+                        "subject": f"Welcome to SaintSal Labs, {firstName or 'friend'} — Your AI is Ready",
+                        "html": f"""
+<div style="background:#050505;color:#E8E6E1;font-family:'Helvetica Neue',sans-serif;max-width:600px;margin:0 auto;padding:40px 20px">
+  <div style="color:#ffd709;font-size:28px;font-weight:900;letter-spacing:-0.5px;margin-bottom:8px">SAINTSALLABS™</div>
+  <div style="color:#9CA3AF;font-size:11px;letter-spacing:2px;text-transform:uppercase;margin-bottom:32px">PATENT #10,290,222 · HACP PROTOCOL</div>
+  <h1 style="font-size:24px;font-weight:800;margin:0 0 12px">Welcome, {firstName or 'friend'}. SAL is live.</h1>
+  <p style="color:#9CA3AF;font-size:15px;line-height:1.7">You just joined the most powerful AI infrastructure platform built by an entrepreneur, for entrepreneurs.</p>
+  <p style="color:#9CA3AF;font-size:15px;line-height:1.7">88 APIs. Voice AI. GHL CRM. Builder. Real Estate. Finance. All in one.</p>
+  <div style="background:#111;border:1px solid #ffd70944;border-radius:8px;padding:24px;margin:28px 0">
+    <div style="color:#ffd709;font-size:12px;font-weight:700;letter-spacing:1px;margin-bottom:12px">WHAT SAL CAN DO FOR YOU — DAY 1</div>
+    <div style="color:#E8E6E1;font-size:14px;margin-bottom:8px">✅ Research any market, stock, or property in seconds</div>
+    <div style="color:#E8E6E1;font-size:14px;margin-bottom:8px">✅ Generate full business plans, pitch decks, and legal docs</div>
+    <div style="color:#E8E6E1;font-size:14px;margin-bottom:8px">✅ Build and deploy web apps with one prompt</div>
+    <div style="color:#E8E6E1;font-size:14px">✅ Get voice-powered AI calls for your clients (Pro)</div>
+  </div>
+  <a href="https://saintsallabs.com" style="background:#ffd709;color:#000;padding:14px 28px;border-radius:6px;font-weight:800;text-decoration:none;display:inline-block;font-size:14px">LAUNCH SAL NOW →</a>
+  <p style="color:#555;font-size:12px;margin-top:32px">More coming over the next 7 days. Watch for SAL's calls — this is just Day 1.</p>
+</div>""",
+                    }, timeout=10)
+        except Exception as e:
+            results["errors"].append(f"Welcome email: {str(e)[:60]}")
+
+    return JSONResponse({"ok": True, "email": email, "results": results})
+
+
+@app.post("/api/marketing/nurture-trigger")
+async def nurture_trigger(request: Request):
+    """
+    Called by a cron job daily. Advances leads through their 7-day nurture sequence.
+    Day sequences:
+    1: Welcome + What SAL can do
+    2: Feature spotlight (Builder)
+    3: CookinCards + Pokemon 30th (viral hook) + ElevenLabs voice call
+    4: ROI calculator — What is your time worth?
+    5: Case study / social proof
+    6: Upgrade offer — 50% off first month
+    7: Final call — SAL Pro trial expires
+    """
+    import datetime
+
+    if not supabase_admin:
+        return JSONResponse({"error": "Supabase not configured"}, status_code=503)
+
+    today = datetime.date.today()
+    results = {"processed": 0, "errors": []}
+
+    NURTURE_EMAILS = {
+        2: {
+            "subject": "SAL Builder just dropped — build any app in 60 seconds",
+            "headline": "Day 2: The Builder Changes Everything",
+            "body": "Yesterday you got access to SAL. Today I want to show you what the Builder does.<br><br>One prompt. Full web app. Deployed.<br><br>Try it: type <strong>\"Build me a landing page for [your business]\"</strong> and watch SAL generate the entire codebase.",
+            "cta_text": "TRY THE BUILDER →",
+        },
+        3: {
+            "subject": "🎴 Pokemon 30th Anniversary + SAL = Your next 10x investment thesis",
+            "headline": "Day 3: CookinCards is Live",
+            "body": "Pokemon's 30th Anniversary is here. Base Set Charizard PSA 10 just crossed $500k.<br><br>SAL's CookinCards tracks deals, rare finds, and portfolio value in real-time.<br><br>This is the viral hook nobody saw coming — AI meets the most valuable trading card market in history.",
+            "cta_text": "SEE COOKINSCARDS →",
+        },
+        4: {
+            "subject": "What is 1 hour of your time worth? (SAL calculates it)",
+            "headline": "Day 4: The ROI Math",
+            "body": "If you bill $100/hr, SAL's research tools save you 5 hours/week = <strong>$2,000/mo</strong> in value.<br><br>Pro is $97/mo.<br><br>The math is obvious. The question is: what are you waiting for?",
+            "cta_text": "UPGRADE TO PRO →",
+        },
+        5: {
+            "subject": "How a real estate operator closed 3 deals using SAL this quarter",
+            "headline": "Day 5: Social Proof",
+            "body": "Built by a JP Morgan + Oppenheimer veteran.<br><br>Patent filed 2015 — predates every major AI company pre-GPT-1.<br><br>88 live API integrations. Real estate. Finance. Legal. Voice. Builder.<br><br>This isn't a chatbot. This is infrastructure.",
+            "cta_text": "SEE ALL FEATURES →",
+        },
+        6: {
+            "subject": "⚡ 50% off your first month — 24 hours only",
+            "headline": "Day 6: Founding Member Offer",
+            "body": "You've been exploring SAL for 5 days. Time to go Pro.<br><br>Today only: <strong>50% off your first Pro month.</strong><br><br>Pro includes: Unlimited AI, Voice AI, Full Builder, Career Suite, Real Estate Suite, all 88 APIs.",
+            "cta_text": "CLAIM 50% OFF →",
+        },
+        7: {
+            "subject": "This is your last SAL message (unless you upgrade)",
+            "headline": "Day 7: Final Call",
+            "body": "Your 7-day SAL journey ends today.<br><br>You've seen the Builder. You've seen CookinCards. You've seen what 88 APIs looks like in one platform.<br><br>Pro is $97/mo. Enterprise is $497/mo. Both lock in founding member pricing forever.<br><br>This is your last nudge. What you do next is on you.",
+            "cta_text": "JOIN PRO NOW →",
+        },
+    }
+
+    try:
+        # Get all active leads and advance their day counter
+        leads_result = supabase_admin.table("marketing_leads").select("*").lte("nurture_day", 7).execute()
+        leads = leads_result.data or []
+
+        for lead in leads:
+            day = lead.get("nurture_day", 1)
+            email = lead.get("email", "")
+            first_name = lead.get("first_name", "")
+            lead_id = lead.get("id")
+
+            next_day = day + 1
+            if next_day > 7:
+                # Nurture complete
+                supabase_admin.table("marketing_leads").update({"nurture_day": 8, "nurture_complete": True}).eq("id", lead_id).execute()
+                continue
+
+            # Send nurture email if we have content for this day
+            if next_day in NURTURE_EMAILS and RESEND_API_KEY and email:
+                em = NURTURE_EMAILS[next_day]
+                try:
+                    async with httpx.AsyncClient() as hc:
+                        await hc.post("https://api.resend.com/emails",
+                            headers={"Authorization": f"Bearer {RESEND_API_KEY}", "Content-Type": "application/json"},
+                            json={
+                                "from": "Ryan @ SAL <ryan@saintsallabs.com>",
+                                "to": [email],
+                                "subject": em["subject"],
+                                "html": f"""
+<div style="background:#050505;color:#E8E6E1;font-family:'Helvetica Neue',sans-serif;max-width:600px;margin:0 auto;padding:40px 20px">
+  <div style="color:#ffd709;font-size:12px;font-weight:700;letter-spacing:2px;margin-bottom:24px">SAINTSALLABS™ · DAY {next_day} OF 7</div>
+  <h1 style="font-size:22px;font-weight:800;margin:0 0 16px">{em['headline']}</h1>
+  <p style="color:#9CA3AF;font-size:15px;line-height:1.8">{em['body']}</p>
+  <a href="https://saintsallabs.com" style="background:#ffd709;color:#000;padding:14px 28px;border-radius:6px;font-weight:800;text-decoration:none;display:inline-block;font-size:14px;margin-top:20px">{em['cta_text']}</a>
+  <p style="color:#333;font-size:11px;margin-top:40px">SaintSal Labs · Patent #10,290,222 · <a href="https://saintsallabs.com" style="color:#555">saintsallabs.com</a></p>
+</div>""",
+                            }, timeout=10)
+                except Exception as e:
+                    results["errors"].append(f"Email day {next_day} to {email}: {str(e)[:60]}")
+
+            # Day 3: ElevenLabs voice call
+            if next_day == 3 and lead.get("phone") and ELEVENLABS_API_KEY:
+                try:
+                    async with httpx.AsyncClient() as hc:
+                        await hc.post(
+                            f"https://api.elevenlabs.io/v1/convai/conversations/outbound",
+                            headers={"xi-api-key": ELEVENLABS_API_KEY, "Content-Type": "application/json"},
+                            json={
+                                "agent_id": "agent_5401k855rq5afqprn6vd3mh6sn7z",
+                                "to_phone_number": lead["phone"],
+                                "conversation_initiation_client_data": {
+                                    "dynamic_variables": {
+                                        "first_name": first_name or "friend",
+                                        "custom_greeting": f"Hey {first_name or 'there'}, this is SAL calling from SaintSal Labs. You signed up a couple days ago and I wanted to personally reach out about CookinCards — our Pokemon 30th Anniversary trading card platform. It's insane right now. Charizard just crossed half a million dollars. We built an AI that tracks every deal in real time. I wanted to make sure you knew about it. Check it out at saintsallabs dot com. Talk soon."
+                                    }
+                                }
+                            }, timeout=15)
+                except Exception as e:
+                    results["errors"].append(f"Voice call day 3 for {email}: {str(e)[:60]}")
+
+            # Advance day counter
+            supabase_admin.table("marketing_leads").update({"nurture_day": next_day}).eq("id", lead_id).execute()
+            results["processed"] += 1
+
+    except Exception as e:
+        results["errors"].append(f"Nurture loop: {str(e)[:120]}")
+
+    return JSONResponse({"ok": True, "date": today.isoformat(), **results})
+
+
+@app.get("/api/marketing/content-history")
+async def marketing_content_history(date: str = "", platform: str = ""):
+    """Get marketing content history from Supabase."""
+    if not supabase_admin:
+        return JSONResponse({"content": []})
+    try:
+        q = supabase_admin.table("marketing_content").select("*").order("date", desc=True).limit(50)
+        if date:
+            q = q.eq("date", date)
+        if platform:
+            q = q.eq("platform", platform)
+        result = q.execute()
+        return JSONResponse({"content": result.data or []})
+    except Exception as e:
+        return JSONResponse({"content": [], "error": str(e)})

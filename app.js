@@ -41,7 +41,8 @@ var views = {
   'my-sal': document.getElementById('mySalView'),
   'cookin-cards': document.getElementById('cookinCardsView'),
   'ghl-bridge': document.getElementById('ghlBridgeView'),
-  'builder-settings': document.getElementById('builderSettingsView')
+  'builder-settings': document.getElementById('builderSettingsView'),
+  partners: document.getElementById('partnersView')
 };
 
 /* ============================================
@@ -153,7 +154,7 @@ function setView(view) {
     document.getElementById('topbarBreadcrumb').innerHTML = '<span>' + (verticalNames[currentVertical] || 'Search') + '</span>';
   } else {
     document.querySelectorAll('.nav-item[data-vertical]').forEach(function(i) { i.classList.remove('active'); });
-    var breadcrumbMap = { pricing:'Pricing', welcome:'Welcome', account:'Account', studio:'Builder', domains:'Domains & SSL', launchpad:'Business Center', connectors:'Integrations', bizplan:'Business Plan', voice:'Voice AI', dashboard:'Dashboard', landing:'Home', personality:'SAL Personality', career:'Career Suite', social:'Social Studio', calendar:'Calendar' };
+    var breadcrumbMap = { pricing:'Pricing', partners:'Partners &amp; Affiliates', welcome:'Welcome', account:'Account', studio:'Builder', domains:'Domains & SSL', launchpad:'Business Center', connectors:'Integrations', bizplan:'Business Plan', voice:'Voice AI', dashboard:'Dashboard', landing:'Home', personality:'SAL Personality', career:'Career Suite', social:'Social Studio', calendar:'Calendar' };
     document.getElementById('topbarBreadcrumb').innerHTML = '<span>' + (breadcrumbMap[view] || view) + '</span>';
   }
 
@@ -3232,7 +3233,22 @@ async function handleAuth(mode) {
         closeAuthModal();
         showToast(mode === 'login' ? 'Welcome back, ' + (data.user.full_name || data.user.email.split('@')[0]) : 'Welcome to SaintSal\u2122 Labs!', 'success');
         // Trigger DNA onboarding on first signup
-        if (mode === 'signup') { setTimeout(showDNAOnboarding, 400); }
+        if (mode === 'signup') {
+          setTimeout(showDNAOnboarding, 400);
+          // Fire lead capture + GHL nurture pipeline
+          var u = data.user || {};
+          fetch('/api/marketing/capture-lead', {
+            method: 'POST',
+            headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({
+              email: u.email || '',
+              firstName: (u.full_name || '').split(' ')[0] || '',
+              lastName: (u.full_name || '').split(' ').slice(1).join(' ') || '',
+              user_id: u.id || '',
+              tier: 'free'
+            })
+          }).catch(function(){});
+        }
       } else {
         // Email confirmation required
         successEl.textContent = data.message || 'Check your email to confirm your account';
@@ -8968,3 +8984,41 @@ function setBuilderMode(mode) {
 // ═══════════════════════════════════════════════════════════════════════════════
 // END GROK AGENTIC BUILDER
 // ═══════════════════════════════════════════════════════════════════════════════
+
+// ─── AFFILIATE / PARTNERS PAGE ───────────────────────────────────────────────
+
+function generateAffiliateLink() {
+  var handle = (document.getElementById('affiliateHandleInput').value || '').trim().toLowerCase().replace(/[^a-z0-9_-]/g,'');
+  if (!handle) { showToast('Enter your handle first', 'error'); return; }
+  var link = 'https://saintsallabs.com?ref=' + encodeURIComponent(handle);
+  document.getElementById('affiliateLinkText').textContent = link;
+  document.getElementById('affiliateLinkOutput').style.display = 'block';
+}
+
+function copyAffiliateLink() {
+  var text = document.getElementById('affiliateLinkText').textContent;
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(text).then(function() { showToast('Link copied!', 'success'); });
+  } else {
+    var ta = document.createElement('textarea');
+    ta.value = text;
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    showToast('Link copied!', 'success');
+  }
+}
+
+// ─── MARKETING DAILY CONTENT TRIGGER (admin/internal) ────────────────────────
+
+async function triggerDailyMarketing() {
+  try {
+    var resp = await fetch('/api/marketing/schedule', { method: 'POST', headers: {'Content-Type':'application/json'}, body: '{}' });
+    var data = await resp.json();
+    showToast(data.ok ? ('Posted: ' + (data.results.posted || []).join(', ') || 'Queued') : 'Marketing schedule failed', data.ok ? 'success' : 'error');
+    return data;
+  } catch(e) {
+    showToast('Marketing schedule error', 'error');
+  }
+}
