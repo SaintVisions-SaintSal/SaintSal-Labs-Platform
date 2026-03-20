@@ -1,0 +1,645 @@
+/* ═══════════════════════════════════════════════════════════════════════════════
+   GROK AGENTIC BUILDER — "The Kinetic Blueprint" Design System
+   Based on Stitch screens: grok_builder_building, grok_builder_planning,
+   grok_architect_planning_mode, grok_builder_output_preview
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+/* ─── DESIGN TOKENS ────────────────────────────────────────────────────────── */
+:root {
+  --void: #050505;
+  --surface: #0e0e0e;
+  --surface-low: #131313;
+  --surface-container: #1a1919;
+  --surface-high: #201f1f;
+  --surface-highest: #262626;
+  --surface-bright: #2c2c2c;
+  --neon-green: #a4ffb9;
+  --neon-green-hot: #00FF88;
+  --neon-green-dim: #00ed7e;
+  --neon-green-container: #00fd87;
+  --gold: #ffd709;
+  --gold-dim: #efc900;
+  --cyan: #00dcff;
+  --outline: #777575;
+  --outline-variant: #494847;
+  --error: #ff716c;
+  --on-surface: #ffffff;
+  --on-surface-variant: #adaaaa;
+  --glow-green: rgba(0, 255, 136, 0.25);
+  --glow-gold: rgba(255, 215, 9, 0.15);
+  --glow-cyan: rgba(0, 220, 255, 0.15);
+}
+
+/* ─── OVERLAY ──────────────────────────────────────────────────────────────── */
+.agentic-overlay {
+  position: absolute;
+  inset: 0;
+  background: var(--void);
+  background-image:
+    linear-gradient(rgba(73, 72, 71, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(73, 72, 71, 0.05) 1px, transparent 1px);
+  background-size: 40px 40px;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  animation: agenticSlideIn 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+  overflow: hidden;
+  font-family: 'Inter', -apple-system, sans-serif;
+}
+.agentic-overlay.closing {
+  animation: agenticSlideOut 0.25s ease forwards;
+}
+
+@keyframes agenticSlideIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes agenticSlideOut {
+  from { opacity: 1; }
+  to { opacity: 0; transform: translateY(4px); }
+}
+
+/* ─── TOP BAR ──────────────────────────────────────────────────────────────── */
+.agentic-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 20px;
+  background: var(--void);
+  box-shadow: 0px 0px 20px rgba(0, 255, 136, 0.08);
+  flex-shrink: 0;
+  z-index: 10;
+}
+.agentic-topbar-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.agentic-logo {
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--on-surface-variant);
+  letter-spacing: 3px;
+  text-transform: uppercase;
+}
+.agentic-logo-grok {
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 13px;
+  font-weight: 900;
+  color: var(--neon-green);
+  letter-spacing: 3px;
+  text-transform: uppercase;
+}
+.agentic-badge {
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--gold);
+  background: transparent;
+  border: 1px solid var(--gold);
+  padding: 2px 8px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+}
+.agentic-close-btn {
+  background: transparent;
+  border: 1px solid var(--outline-variant);
+  padding: 6px;
+  color: var(--outline);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.agentic-close-btn:hover {
+  background: rgba(255, 113, 108, 0.1);
+  color: var(--error);
+  border-color: var(--error);
+}
+
+/* ─── BODY: 3-COLUMN LAYOUT ───────────────────────────────────────────────── */
+.agentic-body {
+  display: grid;
+  grid-template-columns: 240px 1fr 1fr;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* ─── LEFT: AGENT CARDS ───────────────────────────────────────────────────── */
+.agentic-agents {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 20px 16px;
+  position: relative;
+  background: var(--surface);
+}
+
+.agentic-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 16px 14px;
+  background: var(--surface-low);
+  border: 0.5px solid rgba(73, 72, 71, 0.2);
+  transition: all 0.4s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+/* Card ring — the frame-corner spinner */
+.agentic-card-ring {
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  flex-shrink: 0;
+  background: var(--surface-highest);
+  border: 1px solid rgba(73, 72, 71, 0.3);
+}
+
+.agentic-card-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.agentic-card-info {
+  flex: 1;
+  min-width: 0;
+}
+.agentic-card-name {
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--on-surface);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.agentic-card-role {
+  font-family: monospace;
+  font-size: 10px;
+  color: var(--on-surface-variant);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-top: 1px;
+}
+.agentic-card-status {
+  font-family: monospace;
+  font-size: 10px;
+  color: var(--outline);
+  margin-top: 4px;
+  transition: color 0.3s;
+}
+
+/* ─── AGENT STATES ─────────────────────────────────────────────────────────── */
+
+/* STANDBY — ghosted */
+.agentic-card[data-status="STANDBY"] {
+  opacity: 0.45;
+}
+.agentic-card[data-status="STANDBY"] .agentic-card-status {
+  color: var(--outline);
+}
+
+/* ACTIVE — neon green glow + corner brackets */
+.agentic-card[data-status="ACTIVE"] {
+  background: var(--surface-container);
+  border-color: var(--neon-green-hot);
+  box-shadow: 0px 0px 20px var(--glow-green);
+}
+.agentic-card[data-status="ACTIVE"]::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 255, 136, 0.03);
+  animation: activePulse 2s ease infinite;
+}
+.agentic-card[data-status="ACTIVE"] .agentic-card-ring {
+  border-color: rgba(0, 255, 136, 0.4);
+}
+/* Corner bracket spinners */
+.agentic-card[data-status="ACTIVE"] .agentic-card-ring::before {
+  content: '';
+  position: absolute;
+  top: -3px;
+  left: -3px;
+  width: 8px;
+  height: 8px;
+  border-top: 2px solid var(--neon-green-hot);
+  border-left: 2px solid var(--neon-green-hot);
+  animation: cornerPulse 1.5s ease infinite;
+}
+.agentic-card[data-status="ACTIVE"] .agentic-card-ring::after {
+  content: '';
+  position: absolute;
+  bottom: -3px;
+  right: -3px;
+  width: 8px;
+  height: 8px;
+  border-bottom: 2px solid var(--neon-green-hot);
+  border-right: 2px solid var(--neon-green-hot);
+  animation: cornerPulse 1.5s ease infinite 0.75s;
+}
+.agentic-card[data-status="ACTIVE"] .agentic-card-status {
+  color: var(--neon-green);
+}
+/* Progress bar under active card */
+.agentic-card[data-status="ACTIVE"]::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  height: 2px;
+  background: var(--neon-green-hot);
+  box-shadow: 0px 0px 10px var(--neon-green-hot);
+  animation: progressSweep 3s ease infinite;
+}
+
+/* COMPLETE — gold glow */
+.agentic-card[data-status="COMPLETE"] {
+  background: var(--surface-low);
+  border-color: var(--gold);
+  box-shadow: 0px 0px 20px var(--glow-gold);
+}
+.agentic-card[data-status="COMPLETE"] .agentic-card-ring {
+  border-color: rgba(255, 215, 9, 0.3);
+}
+.agentic-card[data-status="COMPLETE"] .agentic-card-status {
+  color: var(--gold);
+}
+
+/* ERROR — red */
+.agentic-card[data-status="ERROR"] {
+  border-color: var(--error);
+  box-shadow: 0px 0px 15px rgba(255, 113, 108, 0.15);
+}
+.agentic-card[data-status="ERROR"] .agentic-card-status {
+  color: var(--error);
+}
+
+/* ─── SPINNER ANIMATIONS ───────────────────────────────────────────────────── */
+@keyframes activePulse {
+  0%, 100% { opacity: 0.3; }
+  50% { opacity: 1; }
+}
+
+@keyframes cornerPulse {
+  0%, 100% { opacity: 0.4; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.3); }
+}
+
+@keyframes progressSweep {
+  0% { width: 0%; }
+  50% { width: 67%; }
+  100% { width: 100%; }
+}
+
+/* ─── FLOW LINES (connecting agents) ──────────────────────────────────────── */
+.agentic-flow {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+  position: absolute;
+  left: 36px;
+  pointer-events: none;
+}
+.agentic-flow-line {
+  width: 1px;
+  height: 12px;
+  background: var(--outline-variant);
+  opacity: 0.3;
+  transition: all 0.6s ease;
+}
+.agentic-flow-line.active {
+  background: var(--gold);
+  opacity: 1;
+  box-shadow: 0 0 6px var(--glow-gold);
+}
+
+/* ─── CENTER: PLAN + CODE ─────────────────────────────────────────────────── */
+.agentic-center {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--surface);
+}
+
+.agentic-section-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--outline);
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  background: var(--surface-low);
+  flex-shrink: 0;
+}
+.agentic-section-dot {
+  width: 6px;
+  height: 6px;
+  flex-shrink: 0;
+}
+
+/* Plan Section */
+.agentic-plan-section {
+  flex: 0 0 auto;
+  max-height: 45%;
+  overflow-y: auto;
+  border-bottom: 0.5px solid rgba(73, 72, 71, 0.2);
+}
+.agentic-plan-content {
+  padding: 16px;
+}
+.agentic-plan-empty {
+  color: var(--outline);
+  font-family: monospace;
+  font-size: 11px;
+  padding: 24px;
+}
+.agentic-plan-name {
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 20px;
+  font-weight: 900;
+  color: var(--on-surface);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-bottom: 4px;
+}
+.agentic-plan-desc {
+  font-size: 12px;
+  color: var(--on-surface-variant);
+  margin-bottom: 16px;
+}
+.agentic-plan-screens {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+.agentic-plan-screen {
+  background: var(--surface-low);
+  border: 0.5px solid rgba(73, 72, 71, 0.2);
+  padding: 10px 12px;
+}
+.agentic-plan-screen-name {
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--on-surface);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.agentic-plan-screen-purpose {
+  font-size: 11px;
+  color: var(--on-surface-variant);
+  margin-top: 2px;
+}
+.agentic-plan-components {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 6px;
+}
+.agentic-plan-chip {
+  font-family: monospace;
+  font-size: 9px;
+  padding: 2px 8px;
+  background: rgba(0, 255, 136, 0.06);
+  color: var(--neon-green);
+  border: 0.5px solid rgba(0, 255, 136, 0.15);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.agentic-plan-tech {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 8px;
+}
+.agentic-plan-tech-chip {
+  font-family: monospace;
+  font-size: 9px;
+  padding: 3px 10px;
+  background: var(--surface-low);
+  color: var(--on-surface-variant);
+  border: 0.5px solid rgba(73, 72, 71, 0.2);
+}
+.agentic-plan-tech-chip strong {
+  color: var(--gold);
+}
+.agentic-stitch-link {
+  margin-top: 12px;
+}
+.agentic-stitch-link a {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: monospace;
+  font-size: 11px;
+  color: var(--cyan);
+  text-decoration: none;
+  padding: 6px 14px;
+  border: 1px solid var(--cyan);
+  transition: all 0.2s;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+.agentic-stitch-link a:hover {
+  box-shadow: 0 0 15px var(--glow-cyan);
+}
+
+/* Code Section */
+.agentic-code-section {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: #000000;
+}
+.agentic-code-stream {
+  flex: 1;
+  margin: 0;
+  padding: 12px 16px;
+  background: #000000;
+  color: var(--neon-green-dim);
+  font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', ui-monospace, monospace;
+  font-size: 11px;
+  line-height: 1.6;
+  overflow: auto;
+  border: none;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+.agentic-code-stream::-webkit-scrollbar { width: 4px; }
+.agentic-code-stream::-webkit-scrollbar-track { background: #0e0e0e; }
+.agentic-code-stream::-webkit-scrollbar-thumb { background: #262626; }
+.agentic-code-stream code {
+  color: inherit;
+  font: inherit;
+}
+
+/* ─── RIGHT: PREVIEW ──────────────────────────────────────────────────────── */
+.agentic-preview {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: #000000;
+  border-left: 0.5px solid rgba(73, 72, 71, 0.2);
+}
+.agentic-preview-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 14px;
+  background: var(--surface-low);
+  flex-shrink: 0;
+}
+.agentic-preview-dots {
+  display: flex;
+  gap: 5px;
+}
+.agentic-preview-dots span {
+  width: 7px;
+  height: 7px;
+}
+.agentic-preview-dots span:nth-child(1) { background: rgba(73, 72, 71, 0.3); }
+.agentic-preview-dots span:nth-child(2) { background: rgba(73, 72, 71, 0.3); }
+.agentic-preview-dots span:nth-child(3) { background: rgba(73, 72, 71, 0.3); }
+.agentic-preview-url {
+  font-size: 10px;
+  color: var(--on-surface-variant);
+  font-family: monospace;
+  letter-spacing: 0.5px;
+}
+.agentic-preview-iframe {
+  flex: 1;
+  border: none;
+  background: #0c0c0c;
+  min-height: 200px;
+}
+
+/* ─── STATUS BAR ───────────────────────────────────────────────────────────── */
+.agentic-statusbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 20px;
+  background: var(--void);
+  flex-shrink: 0;
+}
+.agentic-status-text {
+  font-family: monospace;
+  font-size: 10px;
+  color: var(--neon-green-dim);
+  letter-spacing: 0.5px;
+}
+.agentic-status-timer {
+  font-family: monospace;
+  font-size: 10px;
+  color: var(--outline);
+  letter-spacing: 1px;
+}
+
+/* ─── MODE TOGGLE (in builder welcome) ─────────────────────────────────────── */
+.builder-mode-toggle {
+  display: flex;
+  gap: 0;
+  background: var(--surface-low, rgba(255,255,255,0.04));
+  border: 0.5px solid rgba(73, 72, 71, 0.3);
+  padding: 3px;
+  margin: 0 auto 16px auto;
+  width: fit-content;
+}
+.builder-mode-btn {
+  padding: 8px 20px;
+  border: none;
+  background: transparent;
+  color: var(--outline, rgba(255,255,255,0.4));
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.3s;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+.builder-mode-btn.active {
+  background: var(--surface-highest, rgba(255,255,255,0.1));
+  color: var(--on-surface, #fff);
+}
+.builder-mode-btn[data-mode="supergrok"].active {
+  background: linear-gradient(135deg, var(--neon-green-hot, #00FF88), var(--neon-green-dim, #00ed7e));
+  color: #000;
+  box-shadow: 0 0 20px var(--glow-green, rgba(0,255,136,0.25));
+}
+.builder-mode-btn .mode-icon {
+  width: 14px;
+  height: 14px;
+}
+
+/* Powered-by badges */
+.agentic-powered {
+  display: flex;
+  justify-content: center;
+  gap: 16px;
+  padding: 8px;
+}
+.agentic-powered-badge {
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--outline);
+  opacity: 0.4;
+  transition: opacity 0.3s;
+}
+.agentic-powered-badge:hover {
+  opacity: 1;
+}
+
+/* ─── RESPONSIVE: MOBILE ───────────────────────────────────────────────────── */
+@media (max-width: 768px) {
+  .agentic-body {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr auto;
+  }
+  .agentic-agents {
+    flex-direction: row;
+    justify-content: center;
+    padding: 12px;
+    gap: 6px;
+  }
+  .agentic-card {
+    flex-direction: column;
+    padding: 10px 8px;
+    text-align: center;
+    gap: 6px;
+    flex: 1;
+    max-width: 110px;
+    align-items: center;
+  }
+  .agentic-card-ring {
+    width: 36px;
+    height: 36px;
+  }
+  .agentic-card-ring svg { width: 20px; height: 20px; }
+  .agentic-card-name { font-size: 10px; }
+  .agentic-card-role { font-size: 8px; }
+  .agentic-card-status { font-size: 9px; }
+  .agentic-flow { display: none; }
+  .agentic-center { border-right: none; }
+  .agentic-preview { max-height: 40vh; border-left: none; border-top: 0.5px solid rgba(73,72,71,0.2); }
+}

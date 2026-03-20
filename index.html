@@ -79,6 +79,8 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
 <link rel="stylesheet" href="admin-fulfillment.css">
 <link rel="stylesheet" href="builder-ide.css">
 <link rel="stylesheet" href="social-studio.css">
+<link rel="stylesheet" href="agentic-builder.css">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="realestate.css">
     <link rel="stylesheet" href="medical.css">
   <script src="https://unpkg.com/@elevenlabs/convai-widget-embed" async type="text/javascript"></script>
@@ -659,6 +661,11 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
               </div>
               <div class="builder-welcome-title">What do you want to build?</div>
               <div class="builder-welcome-sub">Websites, apps, widgets, dashboards — describe it and SAL builds it.</div>
+              <!-- Mode Toggle: Quick Build vs SuperGrok -->
+              <div class="builder-mode-toggle">
+                <button class="builder-mode-btn active" data-mode="quick" onclick="setBuilderMode('quick')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg> Quick Build</button>
+                <button class="builder-mode-btn" data-mode="supergrok" onclick="setBuilderMode('supergrok')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><circle cx="12" cy="12" r="10"/><path d="M8 12l3 3 5-6"/></svg> SuperGrok</button>
+              </div>
               <div class="builder-showcase-grid">
                 <div class="builder-showcase-card" onclick="builderQuickPrompt('Build me a modern SaaS landing page for an AI analytics startup called NovaMind. Dark theme, hero section with animated gradient, features grid, pricing table with 3 tiers, testimonials, and footer. Fully responsive.')">
                   <div class="builder-showcase-preview showcase-preview-saas"><div class="showcase-mock-nav"><span class="showcase-dot" style="background:#ef4444"></span><span class="showcase-dot" style="background:#f59e0b"></span><span class="showcase-dot" style="background:#22c55e"></span><span class="showcase-url">novamind.ai</span></div><div class="showcase-mock-hero"><div class="showcase-hero-badge">AI Analytics</div><div class="showcase-hero-text">NovaMind</div><div class="showcase-hero-sub">Enterprise Intelligence</div></div><div class="showcase-mock-cards"><div class="showcase-mini-card"></div><div class="showcase-mini-card"></div><div class="showcase-mini-card"></div></div></div>

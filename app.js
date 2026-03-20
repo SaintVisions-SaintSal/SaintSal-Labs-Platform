@@ -5340,6 +5340,11 @@ function builderSwitchPage(btn, iframeId) {
 }
 
 async function builderSend() {
+  // SuperGrok mode redirect
+  if (typeof builderMode !== 'undefined' && builderMode === 'supergrok') {
+    builderAgenticSend();
+    return;
+  }
   if (builderChatState.generating) return;
   var promptEl = document.getElementById('builderPrompt');
   if (!promptEl || !promptEl.value.trim()) return;
@@ -8215,3 +8220,457 @@ function renderBuilderSettings() {
     '</div>';  // end wrapper
 }
 // ─── END BUILDER SETTINGS ────────────────────────────────────────────────────
+// ─── END COOKIN CARDS ────────────────────────────────────────────────────────
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// GROK AGENTIC BUILDER — 3-Agent Spinner UI (SuperGrok Mode)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+var agenticBuilderActive = false;
+
+// Agent definitions with branding
+var AGENTIC_AGENTS = {
+  grok: {
+    name: 'Grok',
+    role: 'Architect',
+    icon: '<svg viewBox="0 0 24 24" fill="none" width="28" height="28"><circle cx="12" cy="12" r="10" stroke="#fff" stroke-width="1.5" opacity="0.3"/><path d="M8 12l3 3 5-6" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    color: '#FFFFFF',
+    glow: 'rgba(255,255,255,0.4)',
+    desc: 'Plans architecture & data model'
+  },
+  stitch: {
+    name: 'Stitch',
+    role: 'Designer',
+    icon: '<svg viewBox="0 0 24 24" fill="none" width="28" height="28"><rect x="3" y="3" width="7" height="7" rx="1.5" stroke="#4285F4" stroke-width="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5" stroke="#EA4335" stroke-width="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5" stroke="#FBBC04" stroke-width="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5" stroke="#34A853" stroke-width="1.5"/></svg>',
+    color: '#4285F4',
+    glow: 'rgba(66,133,244,0.4)',
+    desc: 'Designs UI with Google Stitch'
+  },
+  claude: {
+    name: 'SAL Code',
+    role: 'Engineer',
+    icon: '<svg viewBox="0 0 24 24" fill="none" width="28" height="28"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" stroke="#D4AF37" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    color: '#D4AF37',
+    glow: 'rgba(212,175,55,0.4)',
+    desc: 'Writes production-ready code'
+  }
+};
+
+// Render the agentic overlay into the builder IDE
+function renderAgenticOverlay() {
+  var existing = document.getElementById('agenticOverlay');
+  if (existing) existing.remove();
+
+  var overlay = document.createElement('div');
+  overlay.id = 'agenticOverlay';
+  overlay.className = 'agentic-overlay';
+
+  var html = '';
+  // Top bar
+  html += '<div class="agentic-topbar">';
+  html += '<div class="agentic-topbar-left">';
+  html += '<span class="agentic-logo">SUPER</span><span class="agentic-logo-grok">GROK</span>';
+  html += '<span class="agentic-badge">3-AGENT</span>';
+  html += '</div>';
+  html += '<button class="agentic-close-btn" onclick="closeAgenticBuilder()">'
+    + '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>'
+    + '</button>';
+  html += '</div>';
+
+  // Main body: 3-column layout
+  html += '<div class="agentic-body">';
+
+  // LEFT: Agent cards
+  html += '<div class="agentic-agents">';
+  ['grok', 'stitch', 'claude'].forEach(function(id) {
+    var a = AGENTIC_AGENTS[id];
+    html += '<div class="agentic-card" id="agentCard_' + id + '" data-status="IDLE">';
+    html += '<div class="agentic-card-ring" style="--agent-color:' + a.color + ';--agent-glow:' + a.glow + ';">';
+    html += '<div class="agentic-card-icon">' + a.icon + '</div>';
+    html += '</div>';
+    html += '<div class="agentic-card-info">';
+    html += '<div class="agentic-card-name">' + a.name + '</div>';
+    html += '<div class="agentic-card-role">' + a.role + '</div>';
+    html += '<div class="agentic-card-status" id="agentStatus_' + id + '">Idle</div>';
+    html += '</div>';
+    html += '</div>';
+  });
+  // Connection lines between cards
+  html += '<div class="agentic-flow">';
+  html += '<div class="agentic-flow-line" id="flowLine1"></div>';
+  html += '<div class="agentic-flow-line" id="flowLine2"></div>';
+  html += '</div>';
+  html += '</div>';
+
+  // CENTER: Plan + Code stream
+  html += '<div class="agentic-center">';
+  html += '<div class="agentic-plan-section" id="agenticPlanSection">';
+  html += '<div class="agentic-section-header"><span class="agentic-section-dot" style="background:#fff"></span>Architecture Plan</div>';
+  html += '<div class="agentic-plan-content" id="agenticPlanContent"><div class="agentic-plan-empty">Waiting for Grok to plan...</div></div>';
+  html += '</div>';
+  html += '<div class="agentic-code-section" id="agenticCodeSection">';
+  html += '<div class="agentic-section-header"><span class="agentic-section-dot" style="background:#D4AF37"></span>Live Code Stream</div>';
+  html += '<pre class="agentic-code-stream" id="agenticCodeStream"><code></code></pre>';
+  html += '</div>';
+  html += '</div>';
+
+  // RIGHT: Preview iframe
+  html += '<div class="agentic-preview">';
+  html += '<div class="agentic-preview-bar">';
+  html += '<div class="agentic-preview-dots"><span></span><span></span><span></span></div>';
+  html += '<span class="agentic-preview-url">preview://supergrok</span>';
+  html += '</div>';
+  html += '<iframe id="agenticPreviewFrame" class="agentic-preview-iframe"></iframe>';
+  html += '</div>';
+
+  html += '</div>'; // end body
+
+  // Bottom status bar
+  html += '<div class="agentic-statusbar" id="agenticStatusbar">';
+  html += '<span class="agentic-status-text" id="agenticStatusText">Ready</span>';
+  html += '<span class="agentic-status-timer" id="agenticTimer">0:00</span>';
+  html += '</div>';
+
+  overlay.innerHTML = html;
+
+  var ide = document.getElementById('builderIDE');
+  if (ide) ide.appendChild(overlay);
+}
+
+// Update agent card state: IDLE / STANDBY / ACTIVE / COMPLETE / ERROR
+function setAgentStatus(id, status, label) {
+  var card = document.getElementById('agentCard_' + id);
+  var statusEl = document.getElementById('agentStatus_' + id);
+  if (!card) return;
+  card.setAttribute('data-status', status);
+  if (statusEl) statusEl.textContent = label || status;
+
+  // Update flow lines
+  var agents = ['grok', 'stitch', 'claude'];
+  var idx = agents.indexOf(id);
+  if (idx === 0 && (status === 'COMPLETE')) {
+    var fl1 = document.getElementById('flowLine1');
+    if (fl1) fl1.classList.add('active');
+  }
+  if (idx === 1 && (status === 'COMPLETE')) {
+    var fl2 = document.getElementById('flowLine2');
+    if (fl2) fl2.classList.add('active');
+  }
+}
+
+// Timer for agentic build
+var _agenticTimerInterval = null;
+var _agenticTimerStart = 0;
+function startAgenticTimer() {
+  _agenticTimerStart = Date.now();
+  var timerEl = document.getElementById('agenticTimer');
+  _agenticTimerInterval = setInterval(function() {
+    var elapsed = Math.floor((Date.now() - _agenticTimerStart) / 1000);
+    var min = Math.floor(elapsed / 60);
+    var sec = elapsed % 60;
+    if (timerEl) timerEl.textContent = min + ':' + (sec < 10 ? '0' : '') + sec;
+  }, 1000);
+}
+function stopAgenticTimer() {
+  if (_agenticTimerInterval) clearInterval(_agenticTimerInterval);
+  _agenticTimerInterval = null;
+}
+
+// Launch SuperGrok agentic builder
+function builderAgenticSend(promptText) {
+  var prompt = promptText;
+  if (!prompt) {
+    var el = document.getElementById('builderPrompt');
+    prompt = el ? el.value.trim() : '';
+  }
+  if (!prompt) return;
+
+  // Clear prompt input
+  var promptEl = document.getElementById('builderPrompt');
+  if (promptEl) { promptEl.value = ''; promptEl.style.height = 'auto'; }
+
+  // Hide welcome
+  var welcome = document.getElementById('builderWelcome');
+  if (welcome) welcome.style.display = 'none';
+
+  agenticBuilderActive = true;
+  renderAgenticOverlay();
+  startAgenticTimer();
+
+  var statusText = document.getElementById('agenticStatusText');
+  if (statusText) statusText.textContent = 'Initializing agents...';
+
+  var codeBuffer = '';
+
+  // SSE Connection to /api/builder/agent
+  var abortController = new AbortController();
+  var timeoutId = setTimeout(function() { abortController.abort(); }, 300000); // 5 min
+
+  fetch(API + '/api/builder/agent', {
+    method: 'POST',
+    headers: Object.assign({ 'Content-Type': 'application/json' }, authHeaders()),
+    signal: abortController.signal,
+    body: JSON.stringify({ prompt: prompt })
+  }).then(function(resp) {
+    if (!resp.ok) throw new Error('API error: ' + resp.status);
+    var reader = resp.body.getReader();
+    var decoder = new TextDecoder();
+    var buffer = '';
+
+    function processChunk() {
+      return reader.read().then(function(result) {
+        if (result.done) {
+          finishAgenticBuild();
+          return;
+        }
+        buffer += decoder.decode(result.value, { stream: true });
+        var lines = buffer.split('\n');
+        buffer = lines.pop();
+
+        var currentEvent = '';
+        for (var i = 0; i < lines.length; i++) {
+          var line = lines[i].trim();
+          if (line.startsWith('event: ')) {
+            currentEvent = line.slice(7).trim();
+          } else if (line.startsWith('data: ')) {
+            var jsonStr = line.slice(6);
+            if (jsonStr === '[DONE]') continue;
+            try {
+              var data = JSON.parse(jsonStr);
+              if (currentEvent) {
+                handleAgenticEvent(currentEvent, data);
+              } else {
+                // Remote format: data-only with phase/agent fields
+                handleAgenticPhase(data);
+              }
+            } catch(e) { /* skip bad json */ }
+            currentEvent = '';
+          }
+        }
+        return processChunk();
+      });
+    }
+    return processChunk();
+  }).catch(function(err) {
+    console.error('Agentic builder error:', err);
+    if (statusText) statusText.textContent = 'Error: ' + (err.message || 'Connection failed');
+    stopAgenticTimer();
+  }).finally(function() {
+    clearTimeout(timeoutId);
+  });
+
+  function handleAgenticEvent(event, data) {
+    if (event === 'agent') {
+      setAgentStatus(data.id, data.status, data.label);
+      if (statusText) {
+        var agentName = (AGENTIC_AGENTS[data.id] || {}).name || data.id;
+        statusText.textContent = agentName + ': ' + (data.label || data.status);
+      }
+    } else if (event === 'plan') {
+      renderAgenticPlan(data.text);
+    } else if (event === 'design') {
+      renderAgenticDesign(data.result);
+    } else if (event === 'code') {
+      codeBuffer += data.token || '';
+      renderAgenticCode(codeBuffer);
+      // Live preview update every 500 chars
+      if (codeBuffer.length % 500 < (data.token || '').length) {
+        updateAgenticPreview(codeBuffer);
+      }
+    } else if (event === 'done') {
+      finishAgenticBuild();
+      updateAgenticPreview(codeBuffer);
+      // Also update the main builder state so files are available for download/deploy
+      if (codeBuffer.length > 50) {
+        builderChatState.files = [{ name: 'index.html', content: codeBuffer }];
+        if (typeof builderUpdateIDEFileTree === 'function') builderUpdateIDEFileTree(builderChatState.files);
+        if (typeof builderUpdateIDEPreview === 'function') builderUpdateIDEPreview(builderChatState.files);
+      }
+    }
+  }
+  // Handle remote SSE format (phase-based events from server v2)
+  function handleAgenticPhase(data) {
+    var phase = data.phase || '';
+    var agent = data.agent || '';
+    
+    if (phase === 'planning') {
+      setAgentStatus('grok', 'ACTIVE', data.message || 'Planning...');
+      setAgentStatus('stitch', 'STANDBY', 'Waiting...');
+      setAgentStatus('claude', 'STANDBY', 'Waiting...');
+    } else if (phase === 'plan_ready') {
+      setAgentStatus('grok', 'COMPLETE', 'Architecture ready');
+      if (data.plan) renderAgenticPlan(JSON.stringify(data.plan));
+    } else if (phase === 'building' && agent === 'stitch') {
+      setAgentStatus('stitch', 'ACTIVE', data.message || 'Designing UI...');
+    } else if (phase === 'stitch_ready') {
+      setAgentStatus('stitch', 'COMPLETE', 'UI design ready');
+      if (data.design) {
+        var planEl = document.getElementById('agenticPlanContent');
+        if (planEl) planEl.innerHTML += '<div style="margin-top:12px;font-size:11px;color:var(--neon-green-dim,#00ed7e);font-family:monospace;">' + escapeHtml(data.design) + '</div>';
+      }
+    } else if (phase === 'wiring' || phase === 'executing') {
+      setAgentStatus('claude', 'ACTIVE', data.message || 'Writing code...');
+    } else if (phase === 'code_token') {
+      codeBuffer += data.token || '';
+      renderAgenticCode(codeBuffer);
+      if (codeBuffer.length % 500 < (data.token || '').length) {
+        updateAgenticPreview(codeBuffer);
+      }
+    } else if (phase === 'files_ready') {
+      setAgentStatus('claude', 'COMPLETE', 'Code complete');
+      // Render files into preview
+      if (data.files && data.files.length) {
+        var htmlFile = data.files.find(function(f) { return f.name === 'index.html' || /\.html$/i.test(f.name); });
+        if (htmlFile && htmlFile.content) {
+          codeBuffer = htmlFile.content;
+          renderAgenticCode(codeBuffer);
+          updateAgenticPreview(codeBuffer);
+        }
+        builderChatState.files = data.files;
+        if (typeof builderUpdateIDEFileTree === 'function') builderUpdateIDEFileTree(data.files);
+        if (typeof builderUpdateIDEPreview === 'function') builderUpdateIDEPreview(data.files);
+      }
+    } else if (phase === 'complete') {
+      finishAgenticBuild();
+      updateAgenticPreview(codeBuffer);
+    } else if (phase === 'error') {
+      if (agent === 'grok') setAgentStatus('grok', 'ERROR', data.message || 'Error');
+      else if (agent === 'stitch') setAgentStatus('stitch', 'ERROR', data.message || 'Error');
+      else setAgentStatus('claude', 'ERROR', data.message || 'Error');
+    }
+
+    if (statusText) {
+      var agentName = agent === 'grok' ? 'Grok' : agent === 'stitch' ? 'Stitch' : agent === 'claude' ? 'SAL Code' : 'System';
+      statusText.textContent = agentName + ': ' + (data.message || phase);
+    }
+  }
+}
+
+// Render plan JSON into visual cards
+function renderAgenticPlan(text) {
+  var container = document.getElementById('agenticPlanContent');
+  if (!container) return;
+  try {
+    var plan = JSON.parse(text);
+    var html = '';
+    html += '<div class="agentic-plan-name">' + escapeHtml(plan.app_name || 'App') + '</div>';
+    html += '<div class="agentic-plan-desc">' + escapeHtml(plan.description || '') + '</div>';
+    if (plan.screens && plan.screens.length) {
+      html += '<div class="agentic-plan-screens">';
+      plan.screens.forEach(function(s) {
+        html += '<div class="agentic-plan-screen">';
+        html += '<div class="agentic-plan-screen-name">' + escapeHtml(s.name || 'Screen') + '</div>';
+        html += '<div class="agentic-plan-screen-purpose">' + escapeHtml(s.purpose || '') + '</div>';
+        if (s.components && s.components.length) {
+          html += '<div class="agentic-plan-components">';
+          s.components.forEach(function(c) {
+            html += '<span class="agentic-plan-chip">' + escapeHtml(typeof c === 'string' ? c : c.name || '') + '</span>';
+          });
+          html += '</div>';
+        }
+        html += '</div>';
+      });
+      html += '</div>';
+    }
+    if (plan.tech_stack) {
+      html += '<div class="agentic-plan-tech">';
+      Object.keys(plan.tech_stack).forEach(function(k) {
+        html += '<span class="agentic-plan-tech-chip"><strong>' + escapeHtml(k) + ':</strong> ' + escapeHtml(String(plan.tech_stack[k])) + '</span>';
+      });
+      html += '</div>';
+    }
+    container.innerHTML = html;
+  } catch(e) {
+    // Show raw text if not valid JSON
+    container.innerHTML = '<pre style="white-space:pre-wrap;color:#ccc;font-size:12px;margin:0;">' + escapeHtml(text) + '</pre>';
+  }
+}
+
+// Render Stitch design result
+function renderAgenticDesign(result) {
+  if (!result) return;
+  var container = document.getElementById('agenticPlanContent');
+  if (!container) return;
+  if (result.stitch_url) {
+    container.innerHTML += '<div class="agentic-stitch-link">' +
+      '<a href="' + escapeHtml(result.stitch_url) + '" target="_blank" rel="noopener">' +
+      '<span class="agentic-section-dot" style="background:#4285F4"></span> View in Stitch' +
+      '</a></div>';
+  }
+  if (result.screens && result.screens.length) {
+    container.innerHTML += '<div style="font-size:11px;color:rgba(255,255,255,0.5);margin-top:8px;">' +
+      result.screens.length + ' screen(s) designed</div>';
+  }
+}
+
+// Render live code stream
+function renderAgenticCode(code) {
+  var stream = document.getElementById('agenticCodeStream');
+  if (!stream) return;
+  var codeEl = stream.querySelector('code');
+  if (codeEl) {
+    // Show last 80 lines for performance
+    var lines = code.split('\n');
+    var start = Math.max(0, lines.length - 80);
+    codeEl.textContent = lines.slice(start).join('\n');
+    stream.scrollTop = stream.scrollHeight;
+  }
+}
+
+// Update preview iframe
+function updateAgenticPreview(code) {
+  var iframe = document.getElementById('agenticPreviewFrame');
+  if (!iframe || !code || code.length < 50) return;
+  try {
+    var blob = new Blob([code], { type: 'text/html' });
+    var url = URL.createObjectURL(blob);
+    iframe.src = url;
+  } catch(e) { /* skip */ }
+}
+
+// Finish agentic build
+function finishAgenticBuild() {
+  stopAgenticTimer();
+  var statusText = document.getElementById('agenticStatusText');
+  if (statusText) statusText.textContent = 'Build complete';
+  // Flash all cards green
+  ['grok', 'stitch', 'claude'].forEach(function(id) {
+    var card = document.getElementById('agentCard_' + id);
+    if (card) card.setAttribute('data-status', 'COMPLETE');
+  });
+}
+
+// Close agentic overlay
+function closeAgenticBuilder() {
+  agenticBuilderActive = false;
+  stopAgenticTimer();
+  var overlay = document.getElementById('agenticOverlay');
+  if (overlay) {
+    overlay.classList.add('closing');
+    setTimeout(function() { overlay.remove(); }, 300);
+  }
+}
+
+// Mode toggle: switch builder between Quick and SuperGrok
+var builderMode = 'quick'; // 'quick' or 'supergrok'
+
+function setBuilderMode(mode) {
+  builderMode = mode;
+  var btns = document.querySelectorAll('.builder-mode-btn');
+  btns.forEach(function(b) {
+    b.classList.toggle('active', b.getAttribute('data-mode') === mode);
+  });
+  // Update send button hint
+  var sendBtn = document.getElementById('builderSendBtn');
+  if (sendBtn) {
+    if (mode === 'supergrok') {
+      sendBtn.title = 'Send (SuperGrok 3-Agent)';
+    } else {
+      sendBtn.title = 'Send';
+    }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// END GROK AGENTIC BUILDER
+// ═══════════════════════════════════════════════════════════════════════════════
