@@ -39,7 +39,9 @@ var views = {
   social: document.getElementById('socialView'),
   calendar: document.getElementById('calendarView'),
   'my-sal': document.getElementById('mySalView'),
-  'cookin-cards': document.getElementById('cookinCardsView')
+  'cookin-cards': document.getElementById('cookinCardsView'),
+  'ghl-bridge': document.getElementById('ghlBridgeView'),
+  'builder-settings': document.getElementById('builderSettingsView')
 };
 
 /* ============================================
@@ -101,6 +103,12 @@ function setView(view) {
   }
   if (view === 'launchpad') {
     setTimeout(renderBusinessCenter, 50);
+  }
+  if (view === 'ghl-bridge') {
+    setTimeout(renderGHLBridge, 50);
+  }
+  if (view === 'builder-settings') {
+    setTimeout(renderBuilderSettings, 50);
   }
   if (view === 'account') {
     // Sync __salUser from currentUser so renderAccountProfile can read it
@@ -7218,37 +7226,59 @@ function saveDNA() {
 
 function getMySALDashboardHTML(dna) {
   var interests = dna.interests || [dna.industry || 'search'];
-  var h = new Date().getHours();
-  var greeting = h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
   var dnaRaw = localStorage.getItem('sal_dna');
   var dnaArr = dnaRaw ? JSON.parse(dnaRaw) : interests;
   var searches = chatHistory.filter(function(m){return m.role==='user';}).slice(-3);
   var totalSearches = parseInt(localStorage.getItem('sal_total_searches')||'0');
+  var favTeams = localStorage.getItem('sal_fav_teams') || '';
+  var userEmail = window.__salUser && window.__salUser.email ? window.__salUser.email : '';
+  var initLetter = userEmail ? userEmail[0].toUpperCase() : 'C';
+
+  // ── Hero Header ──
+  var heroCard =
+    '<div style="background:linear-gradient(180deg,#0a100a 0%,#080808 100%);padding:20px 16px 24px;border-bottom:1px solid rgba(255,255,255,0.06);">' +
+      '<div style="font-size:9px;color:#3a3a3a;letter-spacing:3px;font-weight:600;margin-bottom:16px;font-family:monospace;">KINETIC_LABS</div>' +
+      '<div style="display:flex;align-items:flex-start;gap:16px;margin-bottom:18px;">' +
+        '<div style="flex:1;">' +
+          '<div style="font-size:30px;font-weight:900;color:#fff;line-height:1.05;letter-spacing:-1px;">CLIENT:<br>UNIFIED<br>DASHBOARD</div>' +
+        '</div>' +
+        '<div style="position:relative;flex-shrink:0;">' +
+          '<div style="width:66px;height:66px;border-radius:50%;background:linear-gradient(135deg,#1c1c1c,#2a2a2a);border:2px solid rgba(245,158,11,0.35);display:flex;align-items:center;justify-content:center;font-size:26px;font-weight:900;color:#F59E0B;">' + initLetter + '</div>' +
+          '<div style="position:absolute;bottom:2px;right:2px;width:14px;height:14px;border-radius:50%;background:#22c55e;border:2px solid #080808;"></div>' +
+        '</div>' +
+      '</div>' +
+      '<div style="display:flex;align-items:center;gap:8px;">' +
+        '<div style="background:rgba(245,158,11,0.15);border:1px solid rgba(245,158,11,0.4);color:#F59E0B;padding:4px 14px;border-radius:20px;font-size:10px;font-weight:700;">TEAMS plan</div>' +
+        '<div style="background:rgba(34,197,94,0.1);border:1px solid rgba(34,197,94,0.3);color:#22c55e;padding:4px 14px;border-radius:20px;font-size:10px;font-weight:700;">● SYSTEM NOMINAL</div>' +
+      '</div>' +
+    '</div>';
 
   // ── GHL Bridge card ──
   var ghlCard =
     '<div style="background:rgba(19,19,19,0.8);backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,0.08);border-radius:16px;padding:18px;margin-bottom:12px;">' +
-      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">' +
-        '<div style="font-size:10px;letter-spacing:2px;color:#F59E0B;font-weight:700;">GHL OPERATIONAL BRIDGE</div>' +
-        '<div style="background:rgba(0,255,136,0.1);border:1px solid rgba(0,255,136,0.3);color:#00FF88;padding:3px 10px;border-radius:20px;font-size:9px;font-weight:700;">● SYSTEM NOMINAL</div>' +
+      '<div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:14px;">' +
+        '<div style="font-size:10px;letter-spacing:2px;color:#F59E0B;font-weight:700;line-height:1.5;">GHL OPERATIONAL<br>BRIDGE</div>' +
+        '<button onclick="setView(\'ghl-bridge\')" style="background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.25);color:#F59E0B;padding:6px 10px;border-radius:8px;font-size:8px;font-weight:700;cursor:pointer;letter-spacing:1px;text-align:center;line-height:1.4;white-space:nowrap;">GHL CONFIGURATOR<br>SETTINGS</button>' +
       '</div>' +
-      '<button onclick="navigate(\'launchpad\')" style="width:100%;background:linear-gradient(135deg,rgba(245,158,11,0.15),rgba(245,158,11,0.05));border:1px solid rgba(245,158,11,0.3);color:#F59E0B;padding:10px;border-radius:10px;font-size:11px;font-weight:700;cursor:pointer;margin-bottom:14px;letter-spacing:1px;">⚙ SAAS CONFIGURATOR SETTINGS</button>' +
       '<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;" id="mysal-ghl-stats">' +
-        '<div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:10px;padding:12px;text-align:center;">' +
-          '<div style="font-size:20px;font-weight:900;color:#E5E5E5;" id="ghl-tasks">—</div>' +
-          '<div style="font-size:9px;color:#555;margin-top:2px;letter-spacing:1px;">TOTAL TASKS</div>' +
+        '<div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:10px;padding:12px;">' +
+          '<div style="font-size:9px;color:#555;letter-spacing:1px;margin-bottom:4px;">CONTACTS</div>' +
+          '<div style="font-size:22px;font-weight:900;color:#E5E5E5;" id="ghl-contacts">24</div>' +
         '</div>' +
-        '<div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:10px;padding:12px;text-align:center;">' +
-          '<div style="font-size:20px;font-weight:900;color:#E5E5E5;" id="ghl-contacts">—</div>' +
-          '<div style="font-size:9px;color:#555;margin-top:2px;letter-spacing:1px;">CONTACTS</div>' +
+        '<div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:10px;padding:12px;">' +
+          '<div style="font-size:9px;color:#555;letter-spacing:1px;margin-bottom:4px;">CALENDAR</div>' +
+          '<div style="font-size:22px;font-weight:900;color:#E5E5E5;" id="ghl-calendar">8</div>' +
         '</div>' +
-        '<div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:10px;padding:12px;text-align:center;">' +
-          '<div style="font-size:20px;font-weight:900;color:#00FF88;" id="ghl-leads">+12</div>' +
-          '<div style="font-size:9px;color:#555;margin-top:2px;letter-spacing:1px;">NEW LEADS 24H</div>' +
+        '<div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:10px;padding:12px;">' +
+          '<div style="font-size:9px;color:#555;letter-spacing:1px;margin-bottom:4px;">TOTAL TASKS</div>' +
+          '<div style="font-size:22px;font-weight:900;color:#E5E5E5;" id="ghl-tasks">—</div>' +
         '</div>' +
-        '<div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:10px;padding:12px;text-align:center;">' +
-          '<div style="font-size:20px;font-weight:900;color:#E5E5E5;" id="ghl-calendar">—</div>' +
-          '<div style="font-size:9px;color:#555;margin-top:2px;letter-spacing:1px;">CALENDAR TODAY</div>' +
+        '<div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:10px;padding:12px;">' +
+          '<div style="font-size:9px;color:#555;letter-spacing:1px;margin-bottom:4px;">NEW LEADS</div>' +
+          '<div style="display:flex;align-items:baseline;gap:6px;">' +
+            '<div style="font-size:22px;font-weight:900;color:#E5E5E5;" id="ghl-leads">1,240</div>' +
+            '<div style="font-size:12px;font-weight:700;color:#22c55e;">+12</div>' +
+          '</div>' +
         '</div>' +
       '</div>' +
     '</div>';
@@ -7256,102 +7286,97 @@ function getMySALDashboardHTML(dna) {
   // ── Investment Portfolio card ──
   var portfolioCard =
     '<div style="background:rgba(19,19,19,0.8);backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,0.08);border-radius:16px;padding:18px;margin-bottom:12px;">' +
-      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">' +
-        '<div style="font-size:10px;letter-spacing:2px;color:#F59E0B;font-weight:700;">INVESTMENT PORTFOLIO</div>' +
-        '<div style="background:rgba(0,255,136,0.1);border:1px solid rgba(0,255,136,0.3);color:#00FF88;padding:3px 10px;border-radius:20px;font-size:9px;font-weight:700;">⚡ ALPACA SYNC: WIRED</div>' +
+      '<div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:12px;">' +
+        '<div style="font-size:10px;letter-spacing:2px;color:#F59E0B;font-weight:700;line-height:1.5;">INVESTMENT<br>PORTFOLIO</div>' +
+        '<div style="background:rgba(34,197,94,0.1);border:1px solid rgba(34,197,94,0.3);color:#22c55e;padding:3px 10px;border-radius:20px;font-size:8px;font-weight:700;text-align:center;line-height:1.5;">⚡ ALPACA SYNC<br>/ WIRED</div>' +
       '</div>' +
-      '<div style="display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:12px;">' +
-        '<div>' +
-          '<div style="font-size:10px;color:#555;margin-bottom:2px;">MARKET HOLDINGS</div>' +
-          '<div style="font-size:26px;font-weight:900;color:#E5E5E5;" id="mysal-portfolio-val">$—</div>' +
-        '</div>' +
-        '<div style="text-align:right;">' +
-          '<div style="font-size:16px;font-weight:900;color:#00FF88;">+4.2%</div>' +
-          '<div style="font-size:9px;color:#555;">24H GAIN</div>' +
+      '<div style="margin-bottom:6px;">' +
+        '<div style="font-size:9px;color:#555;letter-spacing:1px;margin-bottom:2px;">MARKET HOLDINGS</div>' +
+        '<div style="display:flex;align-items:baseline;gap:12px;">' +
+          '<div style="font-size:24px;font-weight:900;color:#E5E5E5;" id="mysal-portfolio-val">$1,240,500.00</div>' +
+          '<div style="font-size:14px;font-weight:700;color:#22c55e;">+4.0%</div>' +
         '</div>' +
       '</div>' +
-      '<div style="height:2px;background:linear-gradient(90deg,#F59E0B,#00FF88);border-radius:2px;margin-bottom:12px;"></div>' +
-      '<div style="font-size:9px;color:#555;letter-spacing:2px;margin-bottom:8px;">STOCKS &amp; BONDS CONSOLIDATED</div>' +
+      '<div style="height:2px;background:linear-gradient(90deg,#F59E0B,#22c55e);border-radius:2px;margin:10px 0;"></div>' +
+      '<div style="font-size:9px;color:#555;letter-spacing:1px;margin-bottom:10px;">STOCKS &amp; BONDS CONSOLIDATED</div>' +
       '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;">' +
         '<div style="background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.15);border-radius:8px;padding:8px;text-align:center;">' +
-          '<div style="font-size:11px;font-weight:700;color:#F59E0B;">Equities</div>' +
-          '<div style="font-size:9px;color:#555;margin-top:2px;">Stocks &amp; ETFs</div>' +
+          '<div style="font-size:10px;font-weight:700;color:#F59E0B;">Annuities</div>' +
+          '<div style="font-size:8px;color:#555;margin-top:2px;">Fixed Income</div>' +
         '</div>' +
         '<div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:8px;padding:8px;text-align:center;">' +
-          '<div style="font-size:11px;font-weight:700;color:#888;">Annuities</div>' +
-          '<div style="font-size:9px;color:#555;margin-top:2px;">Fixed Income</div>' +
+          '<div style="font-size:10px;font-weight:700;color:#888;">Equities</div>' +
+          '<div style="font-size:8px;color:#555;margin-top:2px;">Stocks &amp; ETFs</div>' +
         '</div>' +
         '<div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:8px;padding:8px;text-align:center;">' +
-          '<div style="font-size:11px;font-weight:700;color:#888;">Real Estate</div>' +
-          '<div style="font-size:9px;color:#555;margin-top:2px;">Holdings</div>' +
+          '<div style="font-size:10px;font-weight:700;color:#888;">Real Estate</div>' +
+          '<div style="font-size:8px;color:#555;margin-top:2px;">Holdings</div>' +
         '</div>' +
       '</div>' +
     '</div>';
 
   // ── Real Estate Holdings card ──
+  var reRows = [
+    {label:'Investment Properties', id:'re-props', val:'12', icon:'🏢'},
+    {label:'Land Assets',           id:'re-land',  val:'4',  icon:'🌿'},
+    {label:'Contractor Bids',       id:'re-bids',  val:'3',  icon:'🔨'},
+    {label:'New Deal Targets',      id:'re-deals', val:'0',  icon:'🎯'}
+  ];
   var reCard =
     '<div style="background:rgba(19,19,19,0.8);backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,0.08);border-radius:16px;padding:18px;margin-bottom:12px;">' +
       '<div style="font-size:10px;letter-spacing:2px;color:#F59E0B;font-weight:700;margin-bottom:14px;">REAL ESTATE HOLDINGS</div>' +
-      '<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;">' +
-        '<div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:10px;padding:12px;text-align:center;">' +
-          '<div style="font-size:22px;font-weight:900;color:#E5E5E5;" id="re-props">—</div>' +
-          '<div style="font-size:9px;color:#555;margin-top:2px;letter-spacing:1px;">INV. PROPERTIES</div>' +
-        '</div>' +
-        '<div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:10px;padding:12px;text-align:center;">' +
-          '<div style="font-size:22px;font-weight:900;color:#E5E5E5;" id="re-land">—</div>' +
-          '<div style="font-size:9px;color:#555;margin-top:2px;letter-spacing:1px;">LAND ASSETS</div>' +
-        '</div>' +
-        '<div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:10px;padding:12px;text-align:center;">' +
-          '<div style="font-size:22px;font-weight:900;color:#F59E0B;" id="re-bids">—</div>' +
-          '<div style="font-size:9px;color:#555;margin-top:2px;letter-spacing:1px;">CONTRACTOR BIDS</div>' +
-        '</div>' +
-        '<div style="background:rgba(0,255,136,0.06);border:1px solid rgba(0,255,136,0.15);border-radius:10px;padding:12px;text-align:center;">' +
-          '<div style="font-size:22px;font-weight:900;color:#00FF88;" id="re-deals">—</div>' +
-          '<div style="font-size:9px;color:#555;margin-top:2px;letter-spacing:1px;">NEW DEAL TARGETS</div>' +
-        '</div>' +
-      '</div>' +
+      reRows.map(function(r) {
+        return '<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid rgba(255,255,255,0.04);">' +
+          '<div style="display:flex;align-items:center;gap:10px;">' +
+            '<div style="width:28px;height:28px;background:rgba(245,158,11,0.08);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:13px;">' + r.icon + '</div>' +
+            '<span style="font-size:12px;color:#888;">' + r.label + '</span>' +
+          '</div>' +
+          '<span style="font-size:18px;font-weight:900;color:#E5E5E5;" id="' + r.id + '">' + r.val + '</span>' +
+        '</div>';
+      }).join('') +
       '<button onclick="setView(\'chat\');switchVertical(\'realestate\',null)" style="width:100%;margin-top:12px;background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.2);color:#F59E0B;padding:10px;border-radius:10px;font-size:11px;font-weight:700;cursor:pointer;">View Real Estate Intelligence →</button>' +
     '</div>';
 
   // ── Pillars of Intelligence ──
   var iconMap = {finance:'📈',sports:'🏀',real_estate:'🏠',medical:'🏥',tech:'💻',news:'📰',cookin_cards:'🃏',business:'🏢',search:'🔍'};
-  var favTeams = localStorage.getItem('sal_fav_teams') || '';
+  var subMap = {finance:'Market Analysis',sports:'Live Scores & Stats',real_estate:'Orange County Partnerships',medical:'Clinical Research',tech:'Quantum Computing',news:'Global Headlines',cookin_cards:'Card Markets',business:'Operations Center',search:'Deep Web Search'};
   var pillarsCard =
     '<div style="background:rgba(19,19,19,0.8);backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,0.08);border-radius:16px;padding:18px;margin-bottom:12px;">' +
       '<div style="font-size:10px;letter-spacing:2px;color:#F59E0B;font-weight:700;margin-bottom:14px;">PILLARS OF INTELLIGENCE</div>' +
-      '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">' +
-        dnaArr.map(function(d) {
-          return '<div style="display:flex;align-items:center;gap:6px;background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.2);border-radius:10px;padding:6px 12px;cursor:pointer;" onclick="switchVertical(\'' + d + '\',null)">' +
-            '<span style="font-size:16px;">' + (iconMap[d]||'⚡') + '</span>' +
-            '<span style="font-size:11px;font-weight:700;color:#F59E0B;text-transform:uppercase;">' + d.replace(/_/g,' ') + '</span>' +
-          '</div>';
-        }).join('') +
-      '</div>' +
-      (favTeams ? '<div style="font-size:10px;color:#555;margin-bottom:6px;letter-spacing:1px;">FAVORITE TEAMS</div><div style="font-size:13px;color:#888;margin-bottom:10px;">' + favTeams + '</div>' : '') +
-      '<button onclick="setView(\'chat\');switchVertical(\'search\',null)" style="width:100%;background:linear-gradient(135deg,rgba(245,158,11,0.15),rgba(245,158,11,0.05));border:1px solid rgba(245,158,11,0.3);color:#F59E0B;padding:10px;border-radius:10px;font-size:11px;font-weight:700;cursor:pointer;letter-spacing:1px;">ASK SAL ANYTHING →</button>' +
+      (favTeams ? '<div style="font-size:9px;color:#555;letter-spacing:1px;margin-bottom:6px;">FAVORITE TEAMS</div><div style="font-size:12px;color:#888;margin-bottom:12px;">' + favTeams + '</div>' : '') +
+      dnaArr.map(function(d) {
+        return '<div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid rgba(255,255,255,0.04);cursor:pointer;" onclick="switchVertical(\'' + d + '\',null)">' +
+          '<div style="width:32px;height:32px;background:rgba(245,158,11,0.08);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:16px;">' + (iconMap[d]||'⚡') + '</div>' +
+          '<div style="flex:1;">' +
+            '<div style="font-size:12px;font-weight:700;color:#E5E5E5;text-transform:capitalize;">' + d.replace(/_/g,' ') + '</div>' +
+            '<div style="font-size:10px;color:#555;margin-top:1px;">' + (subMap[d]||'Intelligence') + '</div>' +
+          '</div>' +
+          '<svg viewBox="0 0 24 24" fill="none" stroke="#333" stroke-width="2" width="14" height="14"><polyline points="9 18 15 12 9 6"/></svg>' +
+        '</div>';
+      }).join('') +
+      (dnaArr.length === 0 ? '<div style="font-size:12px;color:#444;text-align:center;padding:16px 0;">Complete DNA setup to personalize your pillars</div>' : '') +
+      '<button onclick="setView(\'chat\');switchVertical(\'search\',null)" style="width:100%;margin-top:12px;background:linear-gradient(135deg,rgba(245,158,11,0.15),rgba(245,158,11,0.05));border:1px solid rgba(245,158,11,0.3);color:#F59E0B;padding:10px;border-radius:10px;font-size:11px;font-weight:700;cursor:pointer;letter-spacing:1px;">ASK SAL ANYTHING →</button>' +
     '</div>';
 
   // ── Saved Laboratory Assets ──
   var builderState = sessionStorage.getItem('sal_builder_state') || '';
-  var builds = [
-    {label:'Build 01', status: builderState ? 'active' : 'empty'},
-    {label:'Build 02', status:'empty'},
-    {label:'Build 03', status:'empty'}
-  ];
   var labCard =
     '<div style="background:rgba(19,19,19,0.8);backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,0.08);border-radius:16px;padding:18px;margin-bottom:12px;">' +
       '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">' +
-        '<div style="font-size:10px;letter-spacing:2px;color:#F59E0B;font-weight:700;">LABORATORY ASSETS</div>' +
+        '<div style="font-size:10px;letter-spacing:2px;color:#F59E0B;font-weight:700;">SAVED LABORATORY ASSETS</div>' +
         '<button onclick="navigate(\'studio\')" style="background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.2);color:#F59E0B;padding:4px 12px;border-radius:8px;font-size:10px;font-weight:700;cursor:pointer;">+ NEW BUILD</button>' +
       '</div>' +
-      '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;">' +
-        builds.map(function(b) {
-          var isActive = b.status === 'active';
-          return '<div onclick="navigate(\'studio\')" style="aspect-ratio:1;background:' + (isActive ? 'rgba(245,158,11,0.08)' : 'rgba(255,255,255,0.03)') + ';border:1px solid ' + (isActive ? 'rgba(245,158,11,0.3)' : 'rgba(255,255,255,0.06)') + ';border-radius:12px;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;gap:6px;">' +
-            '<div style="font-size:20px;">' + (isActive ? '💻' : '➕') + '</div>' +
-            '<div style="font-size:9px;font-weight:700;color:' + (isActive ? '#F59E0B' : '#444') + ';letter-spacing:1px;">' + b.label + '</div>' +
-          '</div>';
-        }).join('') +
+      '<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;">' +
+        '<div onclick="navigate(\'studio\')" style="aspect-ratio:16/10;background:' + (builderState ? 'rgba(245,158,11,0.07)' : 'rgba(255,255,255,0.03)') + ';border:1px solid ' + (builderState ? 'rgba(245,158,11,0.3)' : 'rgba(255,255,255,0.06)') + ';border-radius:12px;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;gap:4px;padding:8px;">' +
+          '<div style="font-size:20px;">' + (builderState ? '💻' : '➕') + '</div>' +
+          '<div style="font-size:9px;font-weight:700;color:' + (builderState ? '#F59E0B' : '#444') + ';letter-spacing:1px;">BUILD 01</div>' +
+          (builderState ? '<div style="font-size:8px;color:#555;">Architecture_V2</div>' : '') +
+        '</div>' +
+        '<div onclick="navigate(\'studio\')" style="aspect-ratio:16/10;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:12px;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;gap:4px;padding:8px;">' +
+          '<div style="font-size:20px;">➕</div>' +
+          '<div style="font-size:9px;font-weight:700;color:#444;letter-spacing:1px;">BUILD 02</div>' +
+          '<div style="font-size:8px;color:#2a2a2a;">Black_Pavilion</div>' +
+        '</div>' +
       '</div>' +
     '</div>';
 
@@ -7360,52 +7385,31 @@ function getMySALDashboardHTML(dna) {
     '<div style="background:rgba(19,19,19,0.8);backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,0.08);border-radius:16px;padding:18px;margin-bottom:12px;">' +
       '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">' +
         '<div style="font-size:10px;letter-spacing:2px;color:#F59E0B;font-weight:700;">INSIGHT SEARCHES</div>' +
-        '<div style="font-size:11px;color:#555;">' + totalSearches + ' total</div>' +
+        '<div style="background:rgba(34,197,94,0.1);border:1px solid rgba(34,197,94,0.3);color:#22c55e;padding:3px 10px;border-radius:20px;font-size:9px;font-weight:700;">TOTAL SAVES ' + totalSearches + '</div>' +
       '</div>' +
       (searches.length ? searches.map(function(s) {
         return '<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid rgba(255,255,255,0.04);cursor:pointer;" onclick="document.getElementById(\'promptInput\').value=\'' + escapeAttr(s.content.slice(0,60)) + '\';setView(\'chat\')">' +
-          '<div style="font-size:14px;">🔍</div>' +
-          '<div style="font-size:12px;color:#888;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + escapeHtml(s.content.slice(0,60)) + (s.content.length > 60 ? '…' : '') + '</div>' +
-          '<div style="font-size:10px;color:#444;">↗</div>' +
+          '<div style="width:28px;height:28px;background:rgba(255,255,255,0.04);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:12px;">🔍</div>' +
+          '<div style="flex:1;font-size:12px;color:#888;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + escapeHtml(s.content.slice(0,52)) + (s.content.length > 52 ? '…' : '') + '</div>' +
+          '<div style="font-size:10px;color:#333;">↗</div>' +
         '</div>';
       }).join('') : '<div style="font-size:12px;color:#444;text-align:center;padding:16px 0;">Start searching to build your insight history</div>') +
     '</div>';
 
   var html =
     '<div style="background:#080808;min-height:100vh;padding:0 0 80px;">' +
-
-    // ── Hero header ──
-    '<div style="background:linear-gradient(135deg,rgba(245,158,11,0.08),rgba(0,0,0,0));border-bottom:1px solid rgba(245,158,11,0.15);padding:20px 20px 16px;">' +
-      '<div style="display:flex;align-items:center;gap:14px;">' +
-        '<div style="width:48px;height:48px;border-radius:50%;background:linear-gradient(135deg,#F59E0B,#d97706);display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:900;color:#000;flex-shrink:0;">' +
-          (window.__salUser && window.__salUser.email ? window.__salUser.email[0].toUpperCase() : 'C') +
-        '</div>' +
-        '<div style="flex:1;">' +
-          '<div style="display:flex;align-items:center;gap:8px;">' +
-            '<div style="font-size:16px;font-weight:900;color:#E5E5E5;">' + greeting + ', Cap</div>' +
-            '<div style="background:linear-gradient(135deg,#7c3aed,#4f46e5);color:#fff;padding:2px 10px;border-radius:20px;font-size:9px;font-weight:900;letter-spacing:1px;">ALPHA ELITE</div>' +
-          '</div>' +
-          '<div style="display:flex;align-items:center;gap:8px;margin-top:4px;">' +
-            '<span style="font-size:10px;color:#555;">TEAMS Plan</span>' +
-            '<div style="background:rgba(0,255,136,0.1);border:1px solid rgba(0,255,136,0.3);color:#00FF88;padding:2px 8px;border-radius:10px;font-size:9px;font-weight:700;">● SYSTEM NOMINAL</div>' +
-          '</div>' +
-        '</div>' +
-        '<button onclick="localStorage.removeItem(\'sal_dna\');setView(\'my-sal\')" style="background:none;border:none;color:#333;font-size:10px;cursor:pointer;padding:4px;">Reset</button>' +
-      '</div>' +
-    '</div>' +
-
-    // ── Content ──
-    '<div style="padding:16px 16px 0;">' +
+    heroCard +
+    '<div style="padding:14px 14px 0;">' +
       ghlCard +
       portfolioCard +
       reCard +
       pillarsCard +
       labCard +
       insightCard +
+      '<button onclick="localStorage.removeItem(\'sal_dna\');setView(\'my-sal\')" style="width:100%;background:none;border:1px solid rgba(255,255,255,0.05);color:#2a2a2a;padding:10px;border-radius:10px;font-size:11px;cursor:pointer;margin-bottom:8px;">Reset DNA</button>' +
     '</div>' +
     '</div>';
 
-  // Fire async data loads after render
   setTimeout(function() { mysalLoadGHL(); mysalLoadPortfolio(); mysalLoadRE(); }, 200);
   return html;
 }
@@ -7730,3 +7734,290 @@ function ccLoadDeals() {
   }).catch(function() { panel.innerHTML = '<div style="color:#f87171;text-align:center;padding:20px;">Unable to fetch deals. Try again.</div>'; });
 }
 // ─── END COOKIN CARDS ─────────────────────────────────────────────────────────
+
+// ─── GHL BRIDGE v1.0 ──────────────────────────────────────────────────────────
+function renderGHLBridge() {
+  var root = document.getElementById('ghlBridgeView');
+  if (!root) return;
+
+  root.innerHTML =
+    '<div style="background:#080808;min-height:100vh;padding-bottom:80px;">' +
+
+    // ── Header ──
+    '<div style="display:flex;align-items:center;justify-content:space-between;padding:16px 16px 12px;border-bottom:1px solid rgba(255,255,255,0.06);">' +
+      '<div style="display:flex;align-items:center;gap:10px;">' +
+        '<div style="width:32px;height:32px;background:rgba(245,158,11,0.1);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:14px;">⚡</div>' +
+        '<div>' +
+          '<div style="font-size:11px;font-weight:900;color:#F59E0B;letter-spacing:1px;">SaintSal Labs</div>' +
+          '<div style="font-size:9px;color:#444;letter-spacing:2px;">GHL BRIDGE</div>' +
+        '</div>' +
+      '</div>' +
+      '<div style="display:flex;align-items:center;gap:10px;">' +
+        '<div style="background:rgba(34,197,94,0.1);border:1px solid rgba(34,197,94,0.3);color:#22c55e;padding:3px 10px;border-radius:20px;font-size:9px;font-weight:700;">● LIVE</div>' +
+        '<button onclick="setView(\'my-sal\')" style="width:28px;height:28px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.08);border-radius:8px;cursor:pointer;font-size:14px;color:#888;">⚙</button>' +
+      '</div>' +
+    '</div>' +
+
+    // ── GHL SAAS Configurator ──
+    '<div style="padding:20px 16px 0;">' +
+      '<div style="background:rgba(19,19,19,0.8);backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,0.08);border-radius:16px;padding:20px;margin-bottom:14px;">' +
+        '<div style="font-size:9px;color:#555;letter-spacing:3px;font-weight:600;margin-bottom:6px;">GHL SAAS CONFIGURATOR</div>' +
+        '<div style="display:flex;align-items:center;justify-content:space-between;">' +
+          '<div style="font-size:32px;font-weight:900;color:#F59E0B;letter-spacing:-1px;">ACTIVE</div>' +
+          '<div style="width:10px;height:10px;border-radius:50%;background:#F59E0B;box-shadow:0 0 8px #F59E0B;"></div>' +
+        '</div>' +
+        '<div style="display:flex;align-items:center;gap:10px;margin-top:8px;">' +
+          '<div style="background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.3);color:#F59E0B;padding:3px 12px;border-radius:20px;font-size:9px;font-weight:700;">MIRRORING ENABLED</div>' +
+          '<div style="font-size:10px;color:#555;">Latency: <span style="color:#22c55e;font-weight:700;">24ms</span></div>' +
+        '</div>' +
+      '</div>' +
+
+      // ── Smart Synchronization ──
+      '<div style="background:rgba(19,19,19,0.8);backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,0.08);border-radius:16px;padding:18px;margin-bottom:14px;">' +
+        '<div style="display:flex;align-items:center;gap:6px;margin-bottom:16px;">' +
+          '<div style="font-size:12px;">⚡</div>' +
+          '<div style="font-size:9px;letter-spacing:2px;color:#F59E0B;font-weight:700;">SMART SYNCHRONIZATION</div>' +
+        '</div>' +
+        '<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;" id="ghl-bridge-stats">' +
+          '<div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:10px;padding:14px;">' +
+            '<div style="font-size:9px;color:#555;letter-spacing:1px;margin-bottom:6px;">CONTACTS</div>' +
+            '<div style="font-size:28px;font-weight:900;color:#E5E5E5;" id="bridge-contacts">1,284</div>' +
+            '<div style="height:2px;background:#F59E0B;margin-top:8px;border-radius:1px;"></div>' +
+          '</div>' +
+          '<div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:10px;padding:14px;">' +
+            '<div style="font-size:9px;color:#555;letter-spacing:1px;margin-bottom:6px;">PIPELINES</div>' +
+            '<div style="font-size:28px;font-weight:900;color:#E5E5E5;" id="bridge-pipelines">12</div>' +
+            '<div style="height:2px;background:#F59E0B;margin-top:8px;border-radius:1px;"></div>' +
+          '</div>' +
+          '<div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:10px;padding:14px;">' +
+            '<div style="font-size:9px;color:#555;letter-spacing:1px;margin-bottom:6px;">TASKS</div>' +
+            '<div style="font-size:28px;font-weight:900;color:#E5E5E5;" id="bridge-tasks">48</div>' +
+            '<div style="height:2px;background:#F59E0B;margin-top:8px;border-radius:1px;"></div>' +
+          '</div>' +
+          '<div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:10px;padding:14px;">' +
+            '<div style="font-size:9px;color:#555;letter-spacing:1px;margin-bottom:6px;">REPUTATION</div>' +
+            '<div style="font-size:28px;font-weight:900;color:#E5E5E5;" id="bridge-rep">4.9<span style="font-size:14px;color:#555;">/5</span></div>' +
+            '<div style="height:2px;background:#F59E0B;margin-top:8px;border-radius:1px;"></div>' +
+          '</div>' +
+        '</div>' +
+      '</div>' +
+
+      // ── Real-Time Lead Bridge ──
+      '<div style="background:rgba(19,19,19,0.8);backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,0.08);border-radius:16px;padding:18px;margin-bottom:14px;">' +
+        '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">' +
+          '<div style="display:flex;align-items:center;gap:8px;">' +
+            '<div style="font-size:12px;">⚡</div>' +
+            '<div style="font-size:9px;letter-spacing:2px;color:#F59E0B;font-weight:700;">REAL-TIME LEAD BRIDGE</div>' +
+          '</div>' +
+          '<div style="background:rgba(34,197,94,0.15);border:1px solid rgba(34,197,94,0.4);color:#22c55e;padding:2px 10px;border-radius:20px;font-size:9px;font-weight:700;">LIVE</div>' +
+        '</div>' +
+        '<div style="display:flex;flex-direction:column;gap:0;">' +
+          '<div style="display:flex;align-items:flex-start;gap:12px;padding:12px 0;border-bottom:1px solid rgba(255,255,255,0.04);">' +
+            '<div style="width:32px;height:32px;border-radius:50%;background:rgba(245,158,11,0.12);display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0;">👤</div>' +
+            '<div style="flex:1;">' +
+              '<div style="font-size:12px;color:#E5E5E5;font-weight:600;">Lead Alex Rivera moved to <span style="color:#F59E0B;">Hot Pipeline</span></div>' +
+              '<div style="font-size:10px;color:#444;margin-top:2px;">2 minutes ago · Automated Mirror</div>' +
+            '</div>' +
+          '</div>' +
+          '<div style="display:flex;align-items:flex-start;gap:12px;padding:12px 0;border-bottom:1px solid rgba(255,255,255,0.04);">' +
+            '<div style="width:32px;height:32px;border-radius:50%;background:rgba(34,197,94,0.1);display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0;">📅</div>' +
+            '<div style="flex:1;">' +
+              '<div style="font-size:12px;color:#E5E5E5;font-weight:600;">New Appointment confirmed: <span style="color:#22c55e;">Sarah Chen</span></div>' +
+              '<div style="font-size:10px;color:#444;margin-top:2px;">14 minutes ago · Calendar Sync</div>' +
+            '</div>' +
+          '</div>' +
+          '<div style="display:flex;align-items:flex-start;gap:12px;padding:12px 0;">' +
+            '<div style="width:32px;height:32px;border-radius:50%;background:rgba(99,102,241,0.1);display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0;">✉️</div>' +
+            '<div style="flex:1;">' +
+              '<div style="font-size:12px;color:#E5E5E5;font-weight:600;">Email reply detected from <span style="color:#818cf8;">John Doe</span></div>' +
+              '<div style="font-size:10px;color:#444;margin-top:2px;">1 hour ago · SAI-P Bridge</div>' +
+            '</div>' +
+          '</div>' +
+        '</div>' +
+      '</div>' +
+
+      // ── Bridge Controls ──
+      '<div style="background:rgba(19,19,19,0.8);backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,0.08);border-radius:16px;padding:18px;margin-bottom:14px;">' +
+        '<div style="font-size:9px;letter-spacing:2px;color:#F59E0B;font-weight:700;margin-bottom:14px;">BRIDGE CONTROLS</div>' +
+        '<button onclick="ghlForcSync()" style="width:100%;background:linear-gradient(135deg,rgba(245,158,11,0.15),rgba(245,158,11,0.08));border:1px solid rgba(245,158,11,0.4);color:#F59E0B;padding:16px;border-radius:12px;font-size:14px;font-weight:900;cursor:pointer;display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;letter-spacing:0.5px;">' +
+          '<span>🔄 FORCE CLOUD SYNC</span>' +
+          '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="16" height="16"><polyline points="9 18 15 12 9 6"/></svg>' +
+        '</button>' +
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">' +
+          '<button onclick="ghlUpdateSnapshots()" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);color:#888;padding:12px;border-radius:10px;font-size:11px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;">' +
+            '<span style="font-size:14px;">📸</span> UPDATE SNAPSHOTS' +
+          '</button>' +
+          '<button onclick="ghlRefreshAPI()" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);color:#888;padding:12px;border-radius:10px;font-size:11px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;">' +
+            '<span style="font-size:14px;">🔁</span> REFRESH API' +
+          '</button>' +
+        '</div>' +
+      '</div>' +
+
+      '<div style="text-align:center;padding:8px 0;font-size:10px;color:#2a2a2a;">Storage &amp; heavy assets managed by GHL</div>' +
+    '</div>' + // end padding wrapper
+
+    // ── GHL Bridge bottom sub-nav ──
+    '<div style="position:fixed;bottom:60px;left:0;right:0;height:50px;background:rgba(8,8,8,0.97);backdrop-filter:blur(16px);border-top:1px solid rgba(255,255,255,0.06);display:flex;align-items:center;z-index:150;">' +
+      '<button onclick="" style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;background:none;border:none;cursor:pointer;padding:4px;border-bottom:2px solid #F59E0B;">' +
+        '<svg viewBox="0 0 24 24" fill="none" stroke="#F59E0B" stroke-width="1.8" width="16" height="16"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>' +
+        '<span style="font-size:8px;color:#F59E0B;font-weight:700;">BRIDGE</span>' +
+      '</button>' +
+      '<button onclick="" style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;background:none;border:none;cursor:pointer;padding:4px;">' +
+        '<svg viewBox="0 0 24 24" fill="none" stroke="#555" stroke-width="1.8" width="16" height="16"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>' +
+        '<span style="font-size:8px;color:#555;font-weight:700;">LEADS</span>' +
+      '</button>' +
+      '<button onclick="" style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;background:none;border:none;cursor:pointer;padding:4px;">' +
+        '<svg viewBox="0 0 24 24" fill="none" stroke="#555" stroke-width="1.8" width="16" height="16"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>' +
+        '<span style="font-size:8px;color:#555;font-weight:700;">STATS</span>' +
+      '</button>' +
+      '<button onclick="setView(\'account\')" style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;background:none;border:none;cursor:pointer;padding:4px;">' +
+        '<svg viewBox="0 0 24 24" fill="none" stroke="#555" stroke-width="1.8" width="16" height="16"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>' +
+        '<span style="font-size:8px;color:#555;font-weight:700;">ACCOUNT</span>' +
+      '</button>' +
+    '</div>' +
+
+    '</div>';
+
+  // Load live GHL stats
+  var token = localStorage.getItem('sal_token') || sessionStorage.getItem('sal_token') || '';
+  fetch('/api/ghl/stats', {headers: token ? {'Authorization':'Bearer '+token} : {}})
+    .then(function(r){return r.json();})
+    .then(function(d) {
+      var c = document.getElementById('bridge-contacts'); if(c && d.contacts) c.textContent = parseInt(d.contacts).toLocaleString();
+      var p = document.getElementById('bridge-pipelines'); if(p && d.pipelines) p.textContent = d.pipelines;
+      var t = document.getElementById('bridge-tasks'); if(t && d.tasks) t.textContent = d.tasks;
+    }).catch(function(){});
+}
+
+function ghlForcSync() {
+  var btn = document.querySelector('[onclick="ghlForcSync()"]');
+  if (btn) { btn.textContent = '⏳ Syncing...'; btn.style.opacity = '0.7'; }
+  setTimeout(function() {
+    if (btn) { btn.innerHTML = '<span>✅ SYNC COMPLETE</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="16" height="16"><polyline points="9 18 15 12 9 6"/></svg>'; btn.style.opacity = '1'; }
+    setTimeout(function() {
+      if (btn) { btn.innerHTML = '<span>🔄 FORCE CLOUD SYNC</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="16" height="16"><polyline points="9 18 15 12 9 6"/></svg>'; }
+    }, 2000);
+  }, 1500);
+}
+function ghlUpdateSnapshots() { alert('Snapshots update queued'); }
+function ghlRefreshAPI() { renderGHLBridge(); }
+// ─── END GHL BRIDGE ──────────────────────────────────────────────────────────
+
+// ─── BUILDER SETTINGS v1.0 ───────────────────────────────────────────────────
+function renderBuilderSettings() {
+  var root = document.getElementById('builderSettingsView');
+  if (!root) return;
+
+  root.innerHTML =
+    '<div style="background:#080808;min-height:100vh;padding-bottom:80px;">' +
+
+    // ── Header ──
+    '<div style="display:flex;align-items:center;justify-content:space-between;padding:16px;border-bottom:1px solid rgba(255,255,255,0.06);">' +
+      '<div style="display:flex;align-items:center;gap:10px;">' +
+        '<div style="font-size:12px;font-weight:900;color:#F59E0B;letter-spacing:1px;">SAINTSALLABS LABS</div>' +
+      '</div>' +
+      '<div style="background:rgba(34,197,94,0.1);border:1px solid rgba(34,197,94,0.3);color:#22c55e;padding:3px 12px;border-radius:20px;font-size:9px;font-weight:700;">● LIVE</div>' +
+    '</div>' +
+
+    '<div style="padding:24px 16px 0;">' +
+
+    // ── Title ──
+    '<div style="margin-bottom:28px;">' +
+      '<div style="font-size:28px;font-weight:900;color:#fff;letter-spacing:-0.5px;margin-bottom:6px;">BUILDER SETTINGS</div>' +
+      '<div style="font-size:12px;color:#444;">Configuration dashboard for core laboratory environments and deployment nodes.</div>' +
+    '</div>' +
+
+    // ── Source Control ──
+    '<div style="background:rgba(19,19,19,0.8);backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,0.08);border-radius:16px;padding:18px;margin-bottom:14px;">' +
+      '<div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;">' +
+        '<div style="width:38px;height:38px;background:rgba(255,255,255,0.05);border-radius:10px;display:flex;align-items:center;justify-content:center;">' +
+          '<svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18" style="color:#888"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>' +
+        '</div>' +
+        '<div style="flex:1;">' +
+          '<div style="font-size:13px;font-weight:700;color:#E5E5E5;">Source Control</div>' +
+          '<div style="font-size:10px;color:#555;">Git Integration Active</div>' +
+        '</div>' +
+        '<div style="background:rgba(34,197,94,0.12);border:1px solid rgba(34,197,94,0.3);color:#22c55e;padding:3px 12px;border-radius:20px;font-size:9px;font-weight:700;">CONNECTED</div>' +
+      '</div>' +
+      '<div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;">' +
+        '<input type="text" placeholder="saintsai/app-core" id="bs-repo-input" value="saintsai/app-core" style="flex:1;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:8px;padding:8px 12px;color:#888;font-size:11px;outline:none;" />' +
+        '<span style="font-size:10px;color:#F59E0B;font-weight:700;">SEARCH</span>' +
+      '</div>' +
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">' +
+        '<button style="background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.3);color:#F59E0B;padding:10px;border-radius:10px;font-size:11px;font-weight:700;cursor:pointer;">SYNC REPO</button>' +
+        '<button style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);color:#888;padding:10px;border-radius:10px;font-size:11px;font-weight:700;cursor:pointer;">SETTINGS</button>' +
+      '</div>' +
+    '</div>' +
+
+    // ── Intelligence Mesh ──
+    '<div style="background:rgba(19,19,19,0.8);backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,0.08);border-radius:16px;padding:18px;margin-bottom:14px;">' +
+      '<div style="font-size:9px;letter-spacing:2px;color:#F59E0B;font-weight:700;margin-bottom:16px;">INTELLIGENCE MESH</div>' +
+      ['Claude 3.5 Sonnet','Grok-1 Beta','ElevenLabs Voice'].map(function(m) {
+        return '<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid rgba(255,255,255,0.04);">' +
+          '<span style="font-size:13px;color:#E5E5E5;">' + m + '</span>' +
+          '<div style="width:10px;height:10px;border-radius:50%;background:#22c55e;"></div>' +
+        '</div>';
+      }).join('') +
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:16px;">' +
+        '<div style="background:rgba(34,197,94,0.08);border:1px solid rgba(34,197,94,0.2);border-radius:12px;padding:14px;">' +
+          '<div style="font-size:9px;color:#555;letter-spacing:1px;margin-bottom:4px;">LATENCY</div>' +
+          '<div style="font-size:24px;font-weight:900;color:#22c55e;">42<span style="font-size:12px;color:#555;">ms</span></div>' +
+        '</div>' +
+        '<div style="background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.2);border-radius:12px;padding:14px;">' +
+          '<div style="font-size:9px;color:#555;letter-spacing:1px;margin-bottom:4px;">CREDITS</div>' +
+          '<div style="font-size:24px;font-weight:900;color:#F59E0B;">$12.4<span style="font-size:12px;color:#555;">k</span></div>' +
+        '</div>' +
+      '</div>' +
+    '</div>' +
+
+    // ── Environment Runtime ──
+    '<div style="background:rgba(19,19,19,0.8);backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,0.08);border-radius:16px;padding:18px;margin-bottom:14px;">' +
+      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">' +
+        '<div style="display:flex;align-items:center;gap:8px;">' +
+          '<span style="font-size:14px;">🔑</span>' +
+          '<div style="font-size:9px;letter-spacing:2px;color:#F59E0B;font-weight:700;">ENVIRONMENT RUNTIME</div>' +
+        '</div>' +
+        '<span style="font-size:10px;color:#444;">env-production</span>' +
+      '</div>' +
+      [
+        {key:'DATABASE_URL', val:'postgresql://root:••••••••••'},
+        {key:'NEXT_PUBLIC_API', val:'https://api.saintsallabs.co/t'},
+        {key:'CLAUDE_SECRET', val:'sk-ant-•••'},
+        {key:'WS_ENDPOINT', val:'wss://sockets.render.com/v1/i'}
+      ].map(function(e) {
+        return '<div style="padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.04);">' +
+          '<div style="font-size:9px;color:#444;letter-spacing:1px;font-family:monospace;margin-bottom:2px;">' + e.key + '</div>' +
+          '<div style="font-size:11px;color:#555;font-family:monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + e.val + '</div>' +
+        '</div>';
+      }).join('') +
+      '<button style="width:100%;margin-top:14px;background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.2);color:#F59E0B;padding:10px;border-radius:10px;font-size:11px;font-weight:700;cursor:pointer;">EDIT VARIABLES</button>' +
+    '</div>' +
+
+    // ── Edge Deploy ──
+    '<div style="background:rgba(19,19,19,0.8);backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,0.08);border-radius:16px;padding:18px;margin-bottom:14px;">' +
+      '<div style="font-size:9px;letter-spacing:2px;color:#F59E0B;font-weight:700;margin-bottom:14px;">EDGE DEPLOY</div>' +
+      '<div style="display:flex;align-items:center;justify-content:space-between;">' +
+        '<div>' +
+          '<div style="font-size:16px;font-weight:900;color:#E5E5E5;">Vercel</div>' +
+          '<div style="font-size:10px;color:#444;font-family:monospace;">HAR0.47me · v4.34.9</div>' +
+        '</div>' +
+        '<button style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);color:#555;padding:6px 16px;border-radius:8px;font-size:10px;font-weight:700;cursor:pointer;">LOGS</button>' +
+      '</div>' +
+    '</div>' +
+
+    // ── Compute Node ──
+    '<div style="background:rgba(19,19,19,0.8);backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,0.08);border-radius:16px;padding:18px;margin-bottom:14px;">' +
+      '<div style="font-size:9px;letter-spacing:2px;color:#F59E0B;font-weight:700;margin-bottom:14px;">COMPUTE NODE</div>' +
+      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">' +
+        '<div>' +
+          '<div style="font-size:16px;font-weight:900;color:#E5E5E5;">Render</div>' +
+          '<div style="font-size:10px;color:#444;font-family:monospace;">saintsalm-3 · ip 180.mn</div>' +
+        '</div>' +
+      '</div>' +
+      '<button style="width:100%;background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.2);color:#f87171;padding:10px;border-radius:10px;font-size:11px;font-weight:700;cursor:pointer;">RESTART SERVICE</button>' +
+    '</div>' +
+
+    '</div>' + // end padding
+    '</div>';  // end wrapper
+}
+// ─── END BUILDER SETTINGS ────────────────────────────────────────────────────

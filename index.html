@@ -622,9 +622,8 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
       <!-- ═══ TOP NAV BAR — Always visible ═══ -->
       <div class="builder-topbar" id="builderTopbar">
         <div class="builder-topbar-left">
-          <svg viewBox="0 0 24 24" fill="none" stroke="var(--accent-gold)" stroke-width="2" width="18" height="18"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
-          <span class="builder-topbar-title">SAL Builder</span>
-          <span class="builder-topbar-badge">CODE</span>
+          <span class="builder-topbar-title" style="font-size:11px;font-weight:900;color:#F59E0B;letter-spacing:0.5px;">THE KINETIC LABORATORY</span>
+          <span class="builder-topbar-badge" style="font-size:9px;background:rgba(255,255,255,0.05);color:#444;border:1px solid rgba(255,255,255,0.08);">Project Genesis, Alpha</span>
         </div>
         <div class="builder-topbar-tabs" id="builderTopTabs">
           <button class="builder-topbar-tab active" data-tab="preview" onclick="builderSwitchTopTab('preview',this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/></svg> Preview</button>
@@ -1106,6 +1105,12 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
       <!-- Dynamically rendered by business-center.js renderBusinessCenter() -->
     </div>
 
+    <!-- GHL Bridge View -->
+    <div class="view" id="ghlBridgeView" style="overflow-y:auto;height:100%;"></div>
+
+    <!-- Builder Settings View -->
+    <div class="view" id="builderSettingsView" style="overflow-y:auto;height:100%;"></div>
+
     <!-- SAL Personality / Settings View -->
     <div class="view personality-view" id="personalityView">
       <div class="personality-inner" id="personalityInner"></div>
@@ -1265,7 +1270,7 @@ window.addEventListener('DOMContentLoaded', function() {
     <button onclick="switchVertical('realestate',null);toggleMoreSheet()" style="display:flex;flex-direction:column;align-items:center;gap:6px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:12px 6px;font-size:10px;color:#ccc;cursor:pointer;">🏠<span style="font-size:9px">Real Estate</span></button>
     <button onclick="switchVertical('medical',null);toggleMoreSheet()" style="display:flex;flex-direction:column;align-items:center;gap:6px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:12px 6px;font-size:10px;color:#ccc;cursor:pointer;">🏥<span style="font-size:9px">Medical</span></button>
     <button onclick="setView('social');toggleMoreSheet()" style="display:flex;flex-direction:column;align-items:center;gap:6px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:12px 6px;font-size:10px;color:#ccc;cursor:pointer;">🃏<span style="font-size:9px">Cards</span></button>
-    <button onclick="setView('launchpad');toggleMoreSheet()" style="display:flex;flex-direction:column;align-items:center;gap:6px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:12px 6px;font-size:10px;color:#ccc;cursor:pointer;">⚡<span style="font-size:9px">GHL CRM</span></button>
+    <button onclick="setView('ghl-bridge');toggleMoreSheet()" style="display:flex;flex-direction:column;align-items:center;gap:6px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:12px 6px;font-size:10px;color:#ccc;cursor:pointer;">⚡<span style="font-size:9px">GHL CRM</span></button>
     <button onclick="setView('career');toggleMoreSheet()" style="display:flex;flex-direction:column;align-items:center;gap:6px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:12px 6px;font-size:10px;color:#ccc;cursor:pointer;">💼<span style="font-size:9px">Career</span></button>
     <button onclick="setView('voice');toggleMoreSheet()" style="display:flex;flex-direction:column;align-items:center;gap:6px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:12px 6px;font-size:10px;color:#ccc;cursor:pointer;">🎙️<span style="font-size:9px">Voice AI</span></button>
     <button onclick="setView('domains');toggleMoreSheet()" style="display:flex;flex-direction:column;align-items:center;gap:6px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:12px 6px;font-size:10px;color:#ccc;cursor:pointer;">🌐<span style="font-size:9px">Domains</span></button>
@@ -1273,7 +1278,7 @@ window.addEventListener('DOMContentLoaded', function() {
     <button onclick="setView('account');toggleMoreSheet()" style="display:flex;flex-direction:column;align-items:center;gap:6px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:12px 6px;font-size:10px;color:#ccc;cursor:pointer;">👤<span style="font-size:9px">Account</span></button>
     <button onclick="navigate('pricing');toggleMoreSheet()" style="display:flex;flex-direction:column;align-items:center;gap:6px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:12px 6px;font-size:10px;color:#ccc;cursor:pointer;">💳<span style="font-size:9px">Pricing</span></button>
     <button onclick="navigate('connectors');toggleMoreSheet()" style="display:flex;flex-direction:column;align-items:center;gap:6px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:12px 6px;font-size:10px;color:#ccc;cursor:pointer;">🔌<span style="font-size:9px">Connect</span></button>
-    <button onclick="setView('dashboard');toggleMoreSheet()" style="display:flex;flex-direction:column;align-items:center;gap:6px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:12px 6px;font-size:10px;color:#ccc;cursor:pointer;">⚙️<span style="font-size:9px">Settings</span></button>
+    <button onclick="setView('builder-settings');toggleMoreSheet()" style="display:flex;flex-direction:column;align-items:center;gap:6px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:12px 6px;font-size:10px;color:#ccc;cursor:pointer;">⚙️<span style="font-size:9px">Settings</span></button>
   </div>
 </div>
 <div id="more-backdrop" onclick="toggleMoreSheet()" style="display:none;position:fixed;inset:0;z-index:299;background:rgba(0,0,0,0.6);"></div>
