@@ -49,6 +49,7 @@ function navigate(view) {
   window.location.hash = view;
   setView(view);
 }
+function showView(v) { navigate(v); }
 
 function setView(view) {
   // Save builder state before leaving
