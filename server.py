@@ -37,14 +37,14 @@ limiter = Limiter(key_func=get_remote_address)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-ALLOWED_ORIGINS = [
+_PROD_ORIGINS = [
     "https://saintsallabs.com",
     "https://www.saintsallabs.com",
     "https://saintsal.ai",
     "https://www.saintsal.ai",
-    "http://localhost:3000",
-    "http://localhost:5173",
 ]
+_DEV_ORIGINS = ["http://localhost:3000", "http://localhost:5173"]
+ALLOWED_ORIGINS = _PROD_ORIGINS + (_DEV_ORIGINS if os.environ.get("ENV") != "production" else [])
 app.add_middleware(CORSMiddleware, allow_origins=ALLOWED_ORIGINS, allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
 # Initialize Anthropic client (requires ANTHROPIC_API_KEY env var)
@@ -65,12 +65,12 @@ if XAI_API_KEY:
     except Exception as e:
         print(f"⚠️ xAI/Grok client not initialized: {e}")
 
-ELEVENLABS_API_KEY = os.environ.get("ELEVENLABS_API_KEY", "sk_20510a2269d6cc6cd4e505efcde230d1d87b31bc5aae98a2")
+ELEVENLABS_API_KEY = os.environ.get("ELEVENLABS_API_KEY", "")
 RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "")
 print(f"{'✅' if ELEVENLABS_API_KEY else '⚠️'} ElevenLabs API key {'configured' if ELEVENLABS_API_KEY else 'not set'}")
 
 # ─── Supabase Client ──────────────────────────────────────────────────────────
-SUPABASE_URL = os.environ.get("SUPABASE_URL", "https://euxrlpuegeiggedqbkiv.supabase.co")
+SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
 SUPABASE_ANON_KEY = os.environ.get("SUPABASE_ANON_KEY", "")
 SUPABASE_SERVICE_KEY = os.environ.get("SUPABASE_SERVICE_KEY", "")
 
@@ -173,24 +173,24 @@ social_connections = {}
 
 # ─── API Keys ─────────────────────────────────────────────────────────────────
 
-GODADDY_API_KEY = os.environ.get("GODADDY_API_KEY", "fYfvRW8R6NBK_P7LYBzA3hSUAWMXGNMkpJT")
-GODADDY_API_SECRET = os.environ.get("GODADDY_API_SECRET", "XxC9jFsNJuL1TW7YH6yxkE")
-GODADDY_PL_ID = os.environ.get("GODADDY_PL_ID", "600402")
-GODADDY_STOREFRONT_URL = os.environ.get("GODADDY_STOREFRONT_URL", "https://www.secureserver.net/?pl_id=600402")
+GODADDY_API_KEY = os.environ.get("GODADDY_API_KEY", "")
+GODADDY_API_SECRET = os.environ.get("GODADDY_API_SECRET", "")
+GODADDY_PL_ID = os.environ.get("GODADDY_PL_ID", "")
+GODADDY_STOREFRONT_URL = os.environ.get("GODADDY_STOREFRONT_URL", "")
 GODADDY_BASE = os.environ.get("GODADDY_BASE", "https://api.godaddy.com")  # switch to api.ote-godaddy.com for testing
-CORPNET_DATA_API_KEY = os.environ.get("CORPNET_STAGING_TOKEN", os.environ.get("CORPNET_DATA_API_KEY", "0D3DB6A514DAED0CEF4F97D71DC9292BA84C895FE25A4EB34D09CDF4F2242F95DB554C9C88D3044F5A05F67457B4F82C44F6"))
-CORPNET_API_KEY = os.environ.get("CORPNET_API_KEY", "7E90-738C-175F-41BD-886C")
+CORPNET_DATA_API_KEY = os.environ.get("CORPNET_STAGING_TOKEN", os.environ.get("CORPNET_DATA_API_KEY", ""))
+CORPNET_API_KEY = os.environ.get("CORPNET_API_KEY", "")
 CORPNET_BASE_URL = os.environ.get("CORPNET_API_BASE_STAGING", "https://api.staging24.corpnet.com")
 
 # ─── Real Estate API Keys ────────────────────────────────────────────────────
-RENTCAST_API_KEY = os.environ.get("RENTCAST_API_KEY", "e14286fed9e243c6afcba08fcce4bd8f")
+RENTCAST_API_KEY = os.environ.get("RENTCAST_API_KEY", "")
 RENTCAST_BASE = "https://api.rentcast.io/v1"
 
 # PropertyAPI for parcel/property data
-PROPERTY_API_KEY = os.environ.get("PROPERTY_API_KEY", "papi_70d8da74b40ac2bf57b6be8f576cd9bb47ebac1a947ca2c8")
+PROPERTY_API_KEY = os.environ.get("PROPERTY_API_KEY", "")
 PROPERTY_API_BASE = "https://propertyapi.co/api/v1"
 PROPERTY_API_HEADERS = {"X-Api-Key": PROPERTY_API_KEY}
-GOOGLE_MAPS_KEY = os.environ.get("GOOGLE_MAPS_KEY", "AIzaSyA2RxjYuME6mEa1-Sb-8ZfZjR0ujJ-lITQ")
+GOOGLE_MAPS_KEY = os.environ.get("GOOGLE_MAPS_KEY", "")
 
 
 # ─── System Prompts by Vertical ───────────────────────────────────────────────
@@ -1007,6 +1007,7 @@ async def delete_conversation(conv_id: str, authorization: str = Header(None)):
 async def mcp_index():
     return JSONResponse({"gateway":"SAL MCP Gateway","version":"1.0.0","patent":"US #10,290,222","routes":["/api/mcp/chat","/api/mcp/search","/api/mcp/crm"],"status":"operational"})
 
+@limiter.limit("20/minute")
 @app.post("/api/mcp/chat")
 async def mcp_gateway(request: Request):
     try:
@@ -1014,7 +1015,7 @@ async def mcp_gateway(request: Request):
     except Exception:
         return JSONResponse({"error":"Invalid JSON"},status_code=400)
     sal_key = request.headers.get("x-sal-key","")
-    VALID = os.environ.get("SAL_GATEWAY_SECRET","saintvision_gateway_2025")
+    VALID = os.environ.get("SAL_GATEWAY_SECRET", "")
     auth = request.headers.get("authorization","").replace("Bearer ","")
     if sal_key != VALID and auth != VALID and len(auth) < 100:
         return JSONResponse({"error":"Unauthorized"},status_code=401)
@@ -1079,6 +1080,7 @@ RULES:
 - When editing existing files, ONLY modify what the user asked for — preserve everything else
 - For React apps, embed everything in a single HTML file using Babel standalone + React CDN for WebView compatibility"""
 
+@limiter.limit("10/minute")
 @app.post("/api/builder/v2/generate")
 async def builder_v2_generate(request: Request):
     """Builder V2 codegen endpoint — prompt-to-app via Claude/xAI/Gemini cascade"""
@@ -1089,7 +1091,7 @@ async def builder_v2_generate(request: Request):
 
     # Auth check
     sal_key = request.headers.get("x-sal-key", "")
-    VALID = os.environ.get("SAL_GATEWAY_SECRET", "saintvision_gateway_2025")
+    VALID = os.environ.get("SAL_GATEWAY_SECRET", "")
     auth = request.headers.get("authorization", "").replace("Bearer ", "")
     if sal_key != VALID and auth != VALID and len(auth) < 100:
         return JSONResponse({"error": "Unauthorized"}, status_code=401)
@@ -2800,7 +2802,7 @@ STUDIO_VOICES = {
 # GOOGLE STITCH — AI UI Design via MCP (Model Context Protocol)
 # ═══════════════════════════════════════════════════════════════════════════════
 
-STITCH_API_KEY = os.environ.get("STITCH_API_KEY", "AQ.Ab8RN6KWP2VrGlNboo262W7tcL5gVDZgBegwOr3Y2Oxyju3tZA")
+STITCH_API_KEY = os.environ.get("STITCH_API_KEY", "")
 STITCH_MCP_URL = "https://stitch.googleapis.com/mcp"
 STITCH_MODEL_MAP = {"stitch_flash": "GEMINI_3_FLASH", "stitch_pro": "GEMINI_3_PRO"}
 
@@ -3009,6 +3011,7 @@ async def perplexity_research(query: str, model: str = "sonar-pro") -> dict:
             return {"answer": "", "citations": [], "error": str(e)}
 
 
+@limiter.limit("15/minute")
 @app.post("/api/research")
 async def research_endpoint(request: Request):
     """Dedicated research endpoint using Perplexity Sonar."""
@@ -7853,6 +7856,7 @@ async def _builder_ai_call(system: str, user_msg: str, preferred_model: str = "c
 
 # ── GROK AGENTIC BUILDER — 3-Agent Pipeline ─────────────────────────────────
 
+@limiter.limit("5/minute")
 @app.post("/api/builder/agent")
 async def agent_build(request: Request):
     """3-Agent Pipeline: Grok plans → Stitch/Gemini UI → Claude executes. SAL BuilderAI v2."""
@@ -9170,10 +9174,6 @@ async def career_tracker_update(job_id: str, request: Request):
     return {"status": "success", "job": _job_tracker_store[job_id]}
 
 
-if __name__ == "__main__":
-    import uvicorn
-    port = int(os.environ.get("PORT", 8000))
-    uvicorn.run(app, host="0.0.0.0", port=port)
 
 
 # ── Builder Publishing Pipeline Endpoints ──────────────────────────────────────
@@ -10242,6 +10242,7 @@ async def delete_campaign_item(item_id: str, request: Request, authorization: st
 
 # ── Platform-Aware Content Generation ──
 
+@limiter.limit("10/minute")
 @app.post("/api/social-studio/generate")
 async def social_studio_generate(request: Request, authorization: str = Header(None)):
     """Generate platform-optimized content with Brand DNA applied."""
@@ -11481,8 +11482,8 @@ async def cards_portfolio_add(request: Request):
 # Daily content, auto-post scheduler, lead capture, GHL nurture
 # ════════════════════════════════════════════════════════════════════════════════
 
-GHL_PRIVATE_TOKEN = os.environ.get("GHL_PRIVATE_TOKEN", "pit-24654b55-6e44-49f5-8912-5632ab08c615")
-GHL_LOCATION_ID   = os.environ.get("GHL_LOCATION_ID", "oRA8vL3OSiCPjpwmEC0V")
+GHL_PRIVATE_TOKEN = os.environ.get("GHL_PRIVATE_TOKEN", "")
+GHL_LOCATION_ID   = os.environ.get("GHL_LOCATION_ID", "")
 
 CONTENT_ROTATION = {
     0: {"day": "Monday",    "theme": "AI + Real Estate",          "target": "agents and real estate brokers"},
@@ -11969,3 +11970,84 @@ async def marketing_content_history(date: str = "", platform: str = ""):
         return JSONResponse({"content": result.data or []})
     except Exception as e:
         return JSONResponse({"content": [], "error": str(e)})
+
+
+if __name__ == "__main__":
+    import uvicorn
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run(app, host="0.0.0.0", port=port)
+
+
+# ════════════════════════════════════════════════════════════════════════════════
+# ISSUE #3 FIX — Dashboard endpoints missing from backend (audit fix)
+# ════════════════════════════════════════════════════════════════════════════════
+
+@app.get("/api/ghl/stats")
+async def ghl_stats(request: Request):
+    """GHL pipeline + contact stats for dashboard."""
+    try:
+        async with httpx.AsyncClient() as hc:
+            token  = os.environ.get("GHL_PRIVATE_TOKEN", "")
+            loc_id = os.environ.get("GHL_LOCATION_ID", "")
+            if not token:
+                return JSONResponse({"contacts": 0, "opportunities": 0, "pipelines": 0, "error": "GHL not configured"})
+            hdrs = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+            contacts_r = await hc.get(
+                f"https://rest.gohighlevel.com/v1/contacts/?locationId={loc_id}&limit=1",
+                headers=hdrs, timeout=10)
+            contacts_total = contacts_r.json().get("meta", {}).get("total", 0) if contacts_r.status_code == 200 else 0
+            opps_r = await hc.get(
+                f"https://rest.gohighlevel.com/v1/opportunities/search/?location_id={loc_id}&limit=1",
+                headers=hdrs, timeout=10)
+            opps_total = opps_r.json().get("meta", {}).get("total", 0) if opps_r.status_code == 200 else 0
+        return JSONResponse({"contacts": contacts_total, "opportunities": opps_total, "pipelines": 1, "ok": True})
+    except Exception as e:
+        return JSONResponse({"contacts": 0, "opportunities": 0, "pipelines": 0, "error": str(e)})
+
+
+@app.get("/api/alpaca/portfolio")
+async def alpaca_portfolio(request: Request):
+    """Alpaca brokerage portfolio stats for dashboard."""
+    alpaca_key    = os.environ.get("ALPACA_API_KEY", "")
+    alpaca_secret = os.environ.get("ALPACA_API_SECRET", "")
+    if not alpaca_key or not alpaca_secret:
+        return JSONResponse({"equity": 0, "cash": 0, "positions": [], "ok": False, "error": "Alpaca not configured"})
+    try:
+        async with httpx.AsyncClient() as hc:
+            hdrs = {"APCA-API-KEY-ID": alpaca_key, "APCA-API-SECRET-KEY": alpaca_secret}
+            acct_r = await hc.get("https://paper-api.alpaca.markets/v2/account", headers=hdrs, timeout=10)
+            pos_r  = await hc.get("https://paper-api.alpaca.markets/v2/positions", headers=hdrs, timeout=10)
+            if acct_r.status_code == 200:
+                acct = acct_r.json()
+                positions = pos_r.json() if pos_r.status_code == 200 else []
+                return JSONResponse({
+                    "equity": float(acct.get("equity", 0)),
+                    "cash": float(acct.get("cash", 0)),
+                    "positions": positions[:10],
+                    "ok": True,
+                })
+    except Exception as e:
+        return JSONResponse({"equity": 0, "cash": 0, "positions": [], "ok": False, "error": str(e)})
+    return JSONResponse({"equity": 0, "cash": 0, "positions": [], "ok": False})
+
+
+@app.get("/api/realestate/portfolio")
+async def realestate_portfolio(request: Request):
+    """Real estate portfolio summary for dashboard (from Supabase card_portfolio + user properties)."""
+    user = await get_current_user(request)
+    if not user or not supabase_admin:
+        return JSONResponse({"properties": [], "total_value": 0, "ok": False})
+    try:
+        result = supabase_admin.table("card_portfolio").select("*").eq("user_id", user["id"]).execute()
+        items = result.data or []
+        # Also try a real-estate specific table if it exists
+        re_result = None
+        try:
+            re_result = supabase_admin.table("re_portfolio").select("*").eq("user_id", user["id"]).execute()
+        except Exception:
+            pass
+        properties = re_result.data if re_result and re_result.data else []
+        total = sum(float(p.get("estimated_value") or p.get("purchase_price") or 0) for p in properties)
+        return JSONResponse({"properties": properties, "total_value": round(total, 2), "count": len(properties), "ok": True})
+    except Exception as e:
+        return JSONResponse({"properties": [], "total_value": 0, "ok": False, "error": str(e)})

@@ -1,1 +1,29 @@
+# Python
 __pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Env & secrets
+.env
+.env.*
+!.env.example
+
+# Backup & log files
+*.bak
+*.backup
+*.log
+server.log
+
+# Media uploads
+media_uploads/
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+Thumbs.db
+
+# Node (if any)
+node_modules/
