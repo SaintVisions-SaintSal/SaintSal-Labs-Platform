@@ -8831,7 +8831,7 @@ async def career_generate_signature(request: Request):
   <tr><td style="border-top:2px solid {accent};padding:10px 0 0 0"><table cellpadding="0" cellspacing="0" border="0"><tr>
     <td style="padding-right:20px;font-size:11px;color:#666">✉ <a href="mailto:{email}" style="color:{accent};text-decoration:none">{email}</a></td>
     <td style="font-size:11px;color:#666">📞 <a href="tel:{phone}" style="color:#333;text-decoration:none">{phone}</a></td>
-  </tr>{f'<tr><td colspan="2" style="padding-top:4px;font-size:11px;color:#666">🌐 <a href="{website}" style="color:{accent};text-decoration:none">{website}</a>{f" | <a href='{linkedin}' style='color:{accent};text-decoration:none'>LinkedIn</a>" if linkedin else ""}</td></tr>' if website else ''}
+  # website/linkedin links - rendered separately
   </table></td></tr>
   <tr><td style="padding-top:10px"><div style="background:linear-gradient(90deg,{dark},{accent}22);border-radius:4px;padding:6px 12px;display:inline-block">
     <span style="font-size:9px;color:#fff;letter-spacing:2px;text-transform:uppercase;font-weight:600">Powered by SaintSal™ AI</span></div></td></tr>
