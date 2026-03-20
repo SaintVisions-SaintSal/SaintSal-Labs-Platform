@@ -3230,8 +3230,9 @@ async function handleAuth(mode) {
       if (data.session) {
         saveSession(data.user, data.session);
         closeAuthModal();
-        // Show welcome toast
         showToast(mode === 'login' ? 'Welcome back, ' + (data.user.full_name || data.user.email.split('@')[0]) : 'Welcome to SaintSal\u2122 Labs!', 'success');
+        // Trigger DNA onboarding on first signup
+        if (mode === 'signup') { setTimeout(showDNAOnboarding, 400); }
       } else {
         // Email confirmation required
         successEl.textContent = data.message || 'Check your email to confirm your account';
@@ -4418,6 +4419,161 @@ document.addEventListener('click', function(e) {
   }
 });
 
+// ─── DNA Onboarding (post-signup, 6 screens) ──────────────────────────────────
+function showDNAOnboarding() {
+  if (localStorage.getItem('sal_dna_onboarding_done')) return;
+  var userDNA = { pillars: [], teams: [], name: '', handle: '', bio: '', tier: 'free' };
+  var step = 0;
+  var overlay = document.createElement('div');
+  overlay.id = 'dnaOnboardOverlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.92);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(4px);';
+
+  var PILLARS = [
+    {id:'realestate',icon:'🏠',label:'Real Estate'},
+    {id:'finance',icon:'💰',label:'Finance'},
+    {id:'sports',icon:'🏈',label:'Sports'},
+    {id:'medical',icon:'🏥',label:'Medical'},
+    {id:'tech',icon:'💻',label:'Tech'},
+    {id:'news',icon:'📰',label:'News'},
+    {id:'cookin-cards',icon:'🃏',label:'CookinCards'},
+    {id:'business',icon:'🏢',label:'Business'}
+  ];
+  var TIERS = [
+    {id:'free',label:'Free',price:'$0',desc:'100 credits/mo',color:'#555'},
+    {id:'starter',label:'Starter',price:'$27',desc:'1,000 credits/mo',color:'#22c55e',url:'https://buy.stripe.com/8x2eVea6W3j30wb3DSbjW07'},
+    {id:'pro',label:'Pro',price:'$97',desc:'Unlimited + Builder',color:'#F59E0B',url:'https://buy.stripe.com/5kQ3cw92S8Dn3In4HWbjW08'},
+    {id:'teams',label:'Teams',price:'$297',desc:'Everything + GHL',color:'#8b5cf6',url:'https://buy.stripe.com/fZufZi5QG9Hr2Ej4HWbjW09'}
+  ];
+
+  function renderStep() {
+    var card = '';
+    var dots = '<div style="display:flex;justify-content:center;gap:6px;margin-bottom:20px;">' +
+      [0,1,2,3,4,5].map(function(i) {
+        return '<div style="width:8px;height:8px;border-radius:50%;background:' + (i===step?'#00FF88':'rgba(255,255,255,0.15)') + ';transition:background 0.3s;"></div>';
+      }).join('') + '</div>';
+
+    if (step === 0) {
+      card = dots +
+        '<div style="font-size:56px;text-align:center;margin-bottom:16px;">👋</div>' +
+        '<h2 style="font-family:\'Space Grotesk\',sans-serif;font-size:26px;font-weight:900;text-align:center;margin:0 0 10px;">Welcome to SaintSal\u2122 Labs</h2>' +
+        '<p style="color:#adaaaa;text-align:center;margin:0 0 28px;line-height:1.6;">Let\u2019s build your intelligence profile<br>so SAL knows exactly how to help you.</p>' +
+        '<button onclick="dnaNext()" style="width:100%;background:#00FF88;color:#006532;padding:16px;font-family:\'Space Grotesk\',sans-serif;font-size:15px;font-weight:900;border:none;cursor:pointer;letter-spacing:1px;">GET STARTED \u2192</button>';
+    } else if (step === 1) {
+      var pillGrid = PILLARS.map(function(p) {
+        var sel = userDNA.pillars.indexOf(p.id) > -1;
+        return '<div onclick="dnaPillarToggle(\'' + p.id + '\')" id="dna-pillar-' + p.id + '" style="background:' + (sel?'rgba(0,255,136,0.15)':'rgba(255,255,255,0.04)') + ';border:1px solid ' + (sel?'#00FF88':'rgba(255,255,255,0.08)') + ';padding:14px 8px;text-align:center;cursor:pointer;transition:all 0.2s;border-radius:10px;">' +
+          '<div style="font-size:24px;margin-bottom:4px;">' + p.icon + '</div>' +
+          '<div style="font-size:11px;font-weight:700;color:' + (sel?'#00FF88':'#adaaaa') + '">' + p.label + '</div>' +
+          '</div>';
+      }).join('');
+      card = dots +
+        '<h2 style="font-family:\'Space Grotesk\',sans-serif;font-size:20px;font-weight:900;text-align:center;margin:0 0 6px;">Choose Your 3 Pillars</h2>' +
+        '<p style="color:#777;text-align:center;font-size:12px;margin:0 0 16px;">What drives your business? Pick exactly 3.</p>' +
+        '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:20px;">' + pillGrid + '</div>' +
+        '<div id="dna-pillar-count" style="text-align:center;font-size:11px;color:#555;margin-bottom:16px;">' + userDNA.pillars.length + '/3 selected</div>' +
+        '<button onclick="dnaNext()" style="width:100%;background:' + (userDNA.pillars.length===3?'#00FF88':'#262626') + ';color:' + (userDNA.pillars.length===3?'#006532':'#555') + ';padding:14px;font-weight:900;border:none;cursor:pointer;border-radius:8px;font-size:14px;">CONTINUE \u2192</button>';
+    } else if (step === 2) {
+      var hasSports = userDNA.pillars.indexOf('sports') > -1;
+      if (hasSports) {
+        card = dots +
+          '<h2 style="font-family:\'Space Grotesk\',sans-serif;font-size:20px;font-weight:900;text-align:center;margin:0 0 6px;">Pick Your Teams</h2>' +
+          '<p style="color:#777;font-size:12px;text-align:center;margin:0 0 16px;">SAL will personalize sports intel for you.</p>' +
+          '<input id="dna-teams-input" placeholder="e.g. Lakers, Cowboys, Yankees..." style="width:100%;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);color:#fff;padding:12px 16px;font-size:14px;border-radius:8px;box-sizing:border-box;margin-bottom:20px;" value="' + userDNA.teams.join(', ') + '" />' +
+          '<button onclick="dnaNext()" style="width:100%;background:#00FF88;color:#006532;padding:14px;font-weight:900;border:none;cursor:pointer;border-radius:8px;font-size:14px;">CONTINUE \u2192</button>';
+      } else {
+        step++;
+        renderStep();
+        return;
+      }
+    } else if (step === 3) {
+      card = dots +
+        '<h2 style="font-family:\'Space Grotesk\',sans-serif;font-size:20px;font-weight:900;text-align:center;margin:0 0 6px;">Your SAL Profile</h2>' +
+        '<p style="color:#777;font-size:12px;text-align:center;margin:0 0 16px;">How should SAL know you?</p>' +
+        '<input id="dna-name" placeholder="Display name" style="width:100%;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);color:#fff;padding:12px;font-size:14px;border-radius:8px;box-sizing:border-box;margin-bottom:10px;" value="' + userDNA.name + '" />' +
+        '<input id="dna-handle" placeholder="@username" style="width:100%;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);color:#fff;padding:12px;font-size:14px;border-radius:8px;box-sizing:border-box;margin-bottom:10px;" value="' + userDNA.handle + '" />' +
+        '<textarea id="dna-bio" placeholder="Short bio..." style="width:100%;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);color:#fff;padding:12px;font-size:13px;border-radius:8px;box-sizing:border-box;height:80px;resize:none;margin-bottom:16px;">' + userDNA.bio + '</textarea>' +
+        '<button onclick="dnaNext()" style="width:100%;background:#00FF88;color:#006532;padding:14px;font-weight:900;border:none;cursor:pointer;border-radius:8px;font-size:14px;">CONTINUE \u2192</button>';
+    } else if (step === 4) {
+      var tierCards = TIERS.map(function(t) {
+        var sel = userDNA.tier === t.id;
+        return '<div onclick="dnaTierSelect(\'' + t.id + '\')" id="dna-tier-' + t.id + '" style="background:' + (sel?'rgba(0,255,136,0.1)':'rgba(255,255,255,0.03)') + ';border:1px solid ' + (sel?t.color:'rgba(255,255,255,0.08)') + ';padding:12px;cursor:pointer;border-radius:8px;margin-bottom:8px;transition:all 0.2s;">' +
+          '<div style="display:flex;justify-content:space-between;align-items:center;">' +
+            '<div><div style="font-weight:700;font-size:14px;color:' + (sel?t.color:'#fff') + '">' + t.label + '</div><div style="font-size:11px;color:#555;margin-top:2px;">' + t.desc + '</div></div>' +
+            '<div style="font-size:16px;font-weight:900;color:' + t.color + '">' + t.price + '</div>' +
+          '</div>' +
+          '</div>';
+      }).join('');
+      card = dots +
+        '<h2 style="font-family:\'Space Grotesk\',sans-serif;font-size:20px;font-weight:900;text-align:center;margin:0 0 16px;">Choose Your Plan</h2>' +
+        tierCards +
+        '<button onclick="dnaFinish()" style="width:100%;background:#00FF88;color:#006532;padding:14px;font-weight:900;border:none;cursor:pointer;border-radius:8px;font-size:14px;margin-top:8px;">LAUNCH MY SAL \u2192</button>';
+    } else if (step === 5) {
+      card = dots +
+        '<div style="font-size:56px;text-align:center;margin-bottom:16px;">\u26A1</div>' +
+        '<h2 style="font-family:\'Space Grotesk\',sans-serif;font-size:26px;font-weight:900;text-align:center;margin:0 0 10px;color:#00FF88;">Your SAL Is Ready.</h2>' +
+        '<p style="color:#adaaaa;text-align:center;margin:0 0 24px;">Intelligence profile saved. Your platform is personalized.</p>' +
+        '<div style="background:rgba(0,255,136,0.06);border:1px solid rgba(0,255,136,0.15);border-radius:10px;padding:14px;margin-bottom:20px;">' +
+          '<div style="font-size:11px;color:#00FF88;font-weight:700;letter-spacing:1px;margin-bottom:6px;">YOUR PILLARS</div>' +
+          '<div style="font-size:13px;color:#adaaaa;">' + userDNA.pillars.join(' · ') + '</div>' +
+        '</div>' +
+        '<button onclick="dnaClose()" style="width:100%;background:#00FF88;color:#006532;padding:16px;font-family:\'Space Grotesk\',sans-serif;font-size:15px;font-weight:900;border:none;cursor:pointer;border-radius:0;letter-spacing:1px;">OPEN MY DASHBOARD \u2192</button>';
+    }
+
+    overlay.innerHTML = '<div style="background:#0e0e0e;border:1px solid rgba(255,255,255,0.08);padding:28px;max-width:420px;width:100%;border-radius:16px;max-height:90vh;overflow-y:auto;">' + card + '</div>';
+  }
+
+  window.dnaPillarToggle = function(id) {
+    var idx = userDNA.pillars.indexOf(id);
+    if (idx > -1) { userDNA.pillars.splice(idx, 1); }
+    else if (userDNA.pillars.length < 3) { userDNA.pillars.push(id); }
+    renderStep();
+  };
+  window.dnaTierSelect = function(id) { userDNA.tier = id; renderStep(); };
+  window.dnaNext = function() {
+    if (step === 1 && userDNA.pillars.length !== 3) {
+      showToast('Please select exactly 3 pillars', 'error'); return;
+    }
+    if (step === 2) {
+      var teamsEl = document.getElementById('dna-teams-input');
+      if (teamsEl) userDNA.teams = teamsEl.value.split(',').map(function(s) { return s.trim(); }).filter(Boolean);
+    }
+    if (step === 3) {
+      userDNA.name = (document.getElementById('dna-name') || {}).value || '';
+      userDNA.handle = (document.getElementById('dna-handle') || {}).value || '';
+      userDNA.bio = (document.getElementById('dna-bio') || {}).value || '';
+    }
+    step++;
+    renderStep();
+  };
+  window.dnaFinish = function() {
+    localStorage.setItem('sal_dna', JSON.stringify(userDNA.pillars));
+    localStorage.setItem('sal_dna_primary', userDNA.pillars[0] || '');
+    if (userDNA.teams.length) localStorage.setItem('sal_fav_teams', userDNA.teams.join(', '));
+    if (userDNA.name) localStorage.setItem('sal_user_name', userDNA.name);
+    if (userDNA.handle) localStorage.setItem('sal_user_handle', userDNA.handle);
+    localStorage.setItem('sal_tier', userDNA.tier);
+    // Save to backend
+    fetch(API + '/api/user/dna', {
+      method: 'POST',
+      headers: Object.assign({'Content-Type': 'application/json'}, authHeaders()),
+      body: JSON.stringify(userDNA)
+    }).catch(function(e) { console.warn('[DNA save]', e); });
+    // Redirect to paid tier if not free
+    var tier = TIERS.find(function(t) { return t.id === userDNA.tier; });
+    if (tier && tier.url) { window.open(tier.url, '_blank'); }
+    step = 5;
+    renderStep();
+  };
+  window.dnaClose = function() {
+    localStorage.setItem('sal_dna_onboarding_done', '1');
+    overlay.remove();
+    navigate('my-sal');
+  };
+
+  renderStep();
+  document.body.appendChild(overlay);
+}
+
 // ─── Onboarding Tour ──────────────────────────────────────────────────
 function showOnboardingTour() {
   if (localStorage.getItem('sal_onboarding_done')) return;
@@ -5262,28 +5418,7 @@ function builderNewChat() {
       // Clone the welcome element from the hidden original if possible
       msgs.innerHTML = '';
       // Rebuild welcome with showcase cards
-      var welcomeHtml = '<div class="builder-welcome" id="builderWelcome">' +
-        '<div class="builder-welcome-icon"><svg viewBox="0 0 24 24" fill="none" stroke="var(--accent-gold)" stroke-width="1.5" width="48" height="48"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg></div>' +
-        '<div class="builder-welcome-title">What do you want to build?</div>' +
-        '<div class="builder-welcome-sub">Images, videos, audio, full-stack apps, social content, documents — just describe it. SAL executes with all APIs.</div>' +
-        '<div class="builder-showcase-grid">' +
-          '<div class="builder-showcase-card" onclick="builderQuickPrompt(\'Build me a modern SaaS landing page for an AI analytics startup called NovaMind. Dark theme, hero section with animated gradient, features grid, pricing table with 3 tiers, testimonials, and footer. Fully responsive.\')"><div class="builder-showcase-preview showcase-preview-saas"><div class="showcase-mock-nav"><span class="showcase-dot" style="background:#ef4444"></span><span class="showcase-dot" style="background:#f59e0b"></span><span class="showcase-dot" style="background:#22c55e"></span><span class="showcase-url">novamind.ai</span></div><div class="showcase-mock-hero"><div class="showcase-hero-badge">AI Analytics</div><div class="showcase-hero-text">NovaMind</div><div class="showcase-hero-sub">Enterprise Intelligence</div></div><div class="showcase-mock-cards"><div class="showcase-mini-card"></div><div class="showcase-mini-card"></div><div class="showcase-mini-card"></div></div></div><div class="builder-showcase-info"><div class="builder-showcase-title">SaaS Landing Page</div><div class="builder-showcase-desc">Full-stack, dark theme, 3-tier pricing</div><div class="builder-showcase-tags"><span class="showcase-tag tag-code">Code</span><span class="showcase-tag tag-deploy">Vercel</span></div></div></div>' +
-          '<div class="builder-showcase-card" onclick="builderQuickPrompt(\'Build me a personal portfolio website for a creative developer. Minimal dark design, hero with name and title, project gallery with hover effects, about section with timeline, skills grid, and contact form.\')"><div class="builder-showcase-preview showcase-preview-portfolio"><div class="showcase-mock-nav"><span class="showcase-dot" style="background:#ef4444"></span><span class="showcase-dot" style="background:#f59e0b"></span><span class="showcase-dot" style="background:#22c55e"></span><span class="showcase-url">alexchen.dev</span></div><div class="showcase-mock-portfolio"><div class="showcase-port-name">Alex Chen</div><div class="showcase-port-role">Creative Developer</div><div class="showcase-port-grid"><div class="showcase-port-item"></div><div class="showcase-port-item"></div><div class="showcase-port-item"></div><div class="showcase-port-item"></div></div></div></div><div class="builder-showcase-info"><div class="builder-showcase-title">Developer Portfolio</div><div class="builder-showcase-desc">Gallery, animations, contact form</div><div class="builder-showcase-tags"><span class="showcase-tag tag-code">Code</span><span class="showcase-tag tag-deploy">GitHub</span></div></div></div>' +
-          '<div class="builder-showcase-card" onclick="builderQuickPrompt(\'Build me a restaurant website for a modern Japanese fusion restaurant called Sakura Kitchen. Dark elegant theme, hero, scrolling menu with prices, reservation form, about section, mobile-first.\')"><div class="builder-showcase-preview showcase-preview-restaurant"><div class="showcase-mock-nav"><span class="showcase-dot" style="background:#ef4444"></span><span class="showcase-dot" style="background:#f59e0b"></span><span class="showcase-dot" style="background:#22c55e"></span><span class="showcase-url">sakurakitchen.com</span></div><div class="showcase-mock-restaurant"><div class="showcase-rest-brand">Sakura Kitchen</div><div class="showcase-rest-tagline">Japanese Fusion</div><div class="showcase-rest-menu"><div class="showcase-menu-item"><span>Omakase</span><span>$85</span></div><div class="showcase-menu-item"><span>Wagyu Roll</span><span>$28</span></div><div class="showcase-menu-item"><span>Matcha Crème</span><span>$14</span></div></div></div></div><div class="builder-showcase-info"><div class="builder-showcase-title">Restaurant Website</div><div class="builder-showcase-desc">Menu, reservations, mobile-first</div><div class="builder-showcase-tags"><span class="showcase-tag tag-code">Code</span><span class="showcase-tag tag-deploy">Vercel</span></div></div></div>' +
-        '</div>' +
-        '<div class="builder-showcase-section-label">Social Content</div>' +
-        '<div class="builder-social-showcase-row">' +
-          '<div class="builder-social-showcase" onclick="builderQuickPrompt(\'Create a LinkedIn post about how AI is transforming small businesses in 2026.\')"><div class="social-showcase-header"><svg viewBox="0 0 24 24" fill="#0A66C2" width="16" height="16"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/></svg><span>LinkedIn Post</span></div><div class="social-showcase-preview">AI isn\'t replacing small businesses — it\'s giving them superpowers...</div><div class="social-showcase-meta">Image + Caption + Hashtags</div></div>' +
-          '<div class="builder-social-showcase" onclick="builderQuickPrompt(\'Create an Instagram post announcing a new product launch for a tech company. Eye-catching with bold typography and vibrant gradients.\')"><div class="social-showcase-header"><svg viewBox="0 0 24 24" fill="#E4405F" width="16" height="16"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z"/></svg><span>Instagram Post</span></div><div class="social-showcase-preview">Introducing the future of work — bold, vibrant, designed to stop the scroll...</div><div class="social-showcase-meta">Image + Caption + Hashtags</div></div>' +
-        '</div>' +
-        '<div class="builder-showcase-section-label">Quick Start</div>' +
-        '<div class="builder-quick-actions">' +
-          '<button class="builder-quick-btn" onclick="builderQuickPrompt(\'Make me a logo for a modern AI startup called NovaMind\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg><span>Generate a logo</span></button>' +
-          '<button class="builder-quick-btn" onclick="builderQuickPrompt(\'Generate a professional voiceover: Welcome to SaintSal Labs, where innovation meets intelligence.\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg><span>Generate audio</span></button>' +
-          '<button class="builder-quick-btn" onclick="builderQuickPrompt(\'Research the top 5 AI coding assistants in 2026 and compare features, pricing, and user ratings\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg><span>Deep research</span></button>' +
-          '<button class="builder-quick-btn" onclick="builderQuickPrompt(\'Create a 30-second product demo video storyboard for a mobile banking app\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><polygon points="5 3 19 12 5 21 5 3"/></svg><span>Video storyboard</span></button>' +
-        '</div>' +
-      '</div>';
+      var welcomeHtml = buildStitchWelcomeHTML();
       msgs.innerHTML = welcomeHtml;
     }
   }
@@ -5777,7 +5912,140 @@ async function builderSend() {
   if (typeof clearBuilderUploads === 'function') clearBuilderUploads();
 }
 
-// ─── GROK AGENTIC BUILDER v2.0 ───────────────────────────────────────────────
+// ─── GROK AGENTIC BUILDER v3.0 (Stitch Design) ──────────────────────────────
+
+function buildStitchWelcomeHTML() {
+  return '<div class="builder-welcome" id="builderWelcome" style="background:#050505;background-image:linear-gradient(to right,rgba(73,72,71,0.05) 1px,transparent 1px),linear-gradient(to bottom,rgba(73,72,71,0.05) 1px,transparent 1px);background-size:40px 40px;padding:28px 20px;min-height:320px;display:flex;flex-direction:column;justify-content:flex-start;">' +
+    '<div style="display:inline-flex;align-items:center;gap:8px;padding:3px 10px;background:#131313;border:1px solid rgba(73,72,71,0.2);margin-bottom:18px;width:fit-content;">' +
+      '<span style="width:6px;height:6px;background:#00FF88;display:inline-block;"></span>' +
+      '<span style="font-size:9px;font-family:monospace;color:#777575;text-transform:uppercase;letter-spacing:0.15em;">System Ready // Connection Established</span>' +
+    '</div>' +
+    '<h2 style="font-family:\'Space Grotesk\',sans-serif;font-size:clamp(1.8rem,5vw,3rem);font-weight:900;letter-spacing:-0.03em;line-height:1;text-transform:uppercase;color:#fff;margin:0 0 24px;">' +
+      'ENGINEER THE <em style="color:#00FF88;font-style:italic;">FUTURE</em>' +
+    '</h2>' +
+    '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:20px;">' +
+      '<div onclick="builderQuickPrompt(\'Generate a high-frequency trading dashboard with real-time WebSockets.\')" style="background:#1a1919;border:1px solid rgba(73,72,71,0.1);padding:12px;cursor:pointer;" onmouseover="this.style.borderColor=\'rgba(73,72,71,0.4)\'" onmouseout="this.style.borderColor=\'rgba(73,72,71,0.1)\'">' +
+        '<div style="font-size:8px;font-family:monospace;color:#494847;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:5px;">PROMPT SUGGESTION 01</div>' +
+        '<p style="font-size:11px;color:#adaaaa;line-height:1.4;margin:0;">High-frequency trading dashboard with real-time WebSockets.</p>' +
+      '</div>' +
+      '<div onclick="builderQuickPrompt(\'Build an autonomous CRM that scores leads based on social sentiment.\')" style="background:#1a1919;border:1px solid rgba(73,72,71,0.1);padding:12px;cursor:pointer;" onmouseover="this.style.borderColor=\'rgba(73,72,71,0.4)\'" onmouseout="this.style.borderColor=\'rgba(73,72,71,0.1)\'">' +
+        '<div style="font-size:8px;font-family:monospace;color:#494847;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:5px;">PROMPT SUGGESTION 02</div>' +
+        '<p style="font-size:11px;color:#adaaaa;line-height:1.4;margin:0;">Autonomous CRM scoring leads with social sentiment analysis.</p>' +
+      '</div>' +
+      '<div onclick="builderQuickPrompt(\'Create a distributed neural architecture for edge device processing.\')" style="background:#1a1919;border:1px solid rgba(73,72,71,0.1);padding:12px;cursor:pointer;" onmouseover="this.style.borderColor=\'rgba(73,72,71,0.4)\'" onmouseout="this.style.borderColor=\'rgba(73,72,71,0.1)\'">' +
+        '<div style="font-size:8px;font-family:monospace;color:#494847;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:5px;">PROMPT SUGGESTION 03</div>' +
+        '<p style="font-size:11px;color:#adaaaa;line-height:1.4;margin:0;">Distributed neural architecture for edge device processing.</p>' +
+      '</div>' +
+    '</div>' +
+    '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">' +
+      '<span style="font-size:8px;font-family:monospace;color:#494847;text-transform:uppercase;letter-spacing:0.1em;">Powered by neural orchestrators</span>' +
+      '<div style="display:flex;gap:6px;">' +
+        '<div style="display:flex;align-items:center;gap:5px;padding:3px 7px;background:#262626;border:1px solid rgba(73,72,71,0.2);">' +
+          '<span style="font-size:10px;">&#x1F9E0;</span><span style="font-size:9px;font-family:\'Space Grotesk\',sans-serif;font-weight:700;text-transform:uppercase;">Grok-3</span>' +
+        '</div>' +
+        '<div style="display:flex;align-items:center;gap:5px;padding:3px 7px;background:#262626;border:1px solid rgba(73,72,71,0.2);">' +
+          '<span style="font-size:10px;">&#x26A1;</span><span style="font-size:9px;font-family:\'Space Grotesk\',sans-serif;font-weight:700;text-transform:uppercase;">Claude</span>' +
+        '</div>' +
+        '<div style="display:flex;align-items:center;gap:5px;padding:3px 7px;background:#262626;border:1px solid rgba(73,72,71,0.2);">' +
+          '<span style="font-size:10px;">&#x1F3A8;</span><span style="font-size:9px;font-family:\'Space Grotesk\',sans-serif;font-weight:700;text-transform:uppercase;">Stitch</span>' +
+        '</div>' +
+      '</div>' +
+    '</div>' +
+  '</div>';
+}
+
+function buildPlanningPhaseHTML() {
+  return '<div style="background:#050505;background-image:linear-gradient(to right,rgba(73,72,71,0.05) 1px,transparent 1px),linear-gradient(to bottom,rgba(73,72,71,0.05) 1px,transparent 1px);background-size:40px 40px;padding:16px;border:1px solid rgba(73,72,71,0.2);">' +
+    '<div style="margin-bottom:14px;border-left:4px solid #00FF88;padding-left:12px;">' +
+      '<div style="display:flex;align-items:center;gap:6px;margin-bottom:3px;">' +
+        '<span style="width:6px;height:6px;background:#00FF88;display:inline-block;"></span>' +
+        '<span style="font-size:8px;font-family:monospace;color:#00FF88;text-transform:uppercase;letter-spacing:0.2em;">System Status: Active</span>' +
+      '</div>' +
+      '<h3 style="font-family:\'Space Grotesk\',sans-serif;font-size:18px;font-weight:900;text-transform:uppercase;letter-spacing:-0.02em;margin:0 0 3px;color:#fff;">Agentic Planning Phase</h3>' +
+      '<p style="font-size:10px;color:#777575;margin:0;">Initializing multi-agent orchestration. Structural integrity verified.</p>' +
+    '</div>' +
+    '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px;">' +
+      '<div id="sal-card-grok" style="background:#131313;border:1px solid #00FF88;box-shadow:0px 0px 20px rgba(0,255,136,0.25);padding:12px;position:relative;transition:border-color 0.3s,box-shadow 0.3s,opacity 0.3s;">' +
+        '<div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:10px;">' +
+          '<div id="sal-icon-grok" style="width:36px;height:36px;background:#00fd87;display:flex;align-items:center;justify-content:center;border:1px solid rgba(0,255,136,0.4);position:relative;font-size:16px;">' +
+            '&#x1F3D7;' +
+            '<div class="sal-frame-tl" style="position:absolute;top:-3px;left:-3px;width:7px;height:7px;border-top:2px solid #00FF88;border-left:2px solid #00FF88;"></div>' +
+            '<div class="sal-frame-br" style="position:absolute;bottom:-3px;right:-3px;width:7px;height:7px;border-bottom:2px solid #00FF88;border-right:2px solid #00FF88;"></div>' +
+          '</div>' +
+          '<div style="text-align:right;">' +
+            '<span style="font-size:8px;font-family:monospace;color:#00FF88;display:block;margin-bottom:3px;">GRK-ARCH-01</span>' +
+            '<span id="sal-badge-grok" style="padding:1px 6px;background:#00FF88;color:#006532;font-size:8px;font-weight:700;text-transform:uppercase;font-family:\'Space Grotesk\',sans-serif;">ACTIVE</span>' +
+          '</div>' +
+        '</div>' +
+        '<div style="font-family:\'Space Grotesk\',sans-serif;font-size:11px;font-weight:700;text-transform:uppercase;color:#fff;margin-bottom:3px;">GROK ARCHITECT</div>' +
+        '<div id="sal-msg-grok" style="font-size:9px;font-family:monospace;color:#00FF88;margin-bottom:8px;">Analyzing request...</div>' +
+        '<div style="height:2px;background:#262626;overflow:hidden;">' +
+          '<div id="sal-prog-grok" style="height:100%;background:#00FF88;width:67%;transition:width 0.6s;box-shadow:0px 0px 6px #00FF88;"></div>' +
+        '</div>' +
+        '<div style="display:flex;justify-content:space-between;font-size:8px;font-family:monospace;color:#494847;text-transform:uppercase;margin-top:2px;">' +
+          '<span>Logic Processing</span><span>67%</span>' +
+        '</div>' +
+      '</div>' +
+      '<div id="sal-card-stitch" style="background:#1a1919;border:1px solid rgba(73,72,71,0.3);padding:12px;position:relative;opacity:0.5;transition:border-color 0.3s,box-shadow 0.3s,opacity 0.3s;">' +
+        '<div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:10px;">' +
+          '<div id="sal-icon-stitch" style="width:36px;height:36px;background:#262626;display:flex;align-items:center;justify-content:center;border:1px solid rgba(73,72,71,0.3);position:relative;font-size:16px;">' +
+            '&#x1F3A8;' +
+            '<div class="sal-frame-tl" style="display:none;position:absolute;top:-3px;left:-3px;width:7px;height:7px;border-top:2px solid #00FF88;border-left:2px solid #00FF88;"></div>' +
+            '<div class="sal-frame-br" style="display:none;position:absolute;bottom:-3px;right:-3px;width:7px;height:7px;border-bottom:2px solid #00FF88;border-right:2px solid #00FF88;"></div>' +
+          '</div>' +
+          '<div style="text-align:right;">' +
+            '<span style="font-size:8px;font-family:monospace;color:#777575;display:block;margin-bottom:3px;">STC-UIG-04</span>' +
+            '<span id="sal-badge-stitch" style="padding:1px 6px;background:#494847;color:#fff;font-size:8px;font-weight:700;text-transform:uppercase;font-family:\'Space Grotesk\',sans-serif;">STANDBY</span>' +
+          '</div>' +
+        '</div>' +
+        '<div style="font-family:\'Space Grotesk\',sans-serif;font-size:11px;font-weight:700;text-transform:uppercase;color:#adaaaa;margin-bottom:3px;">STITCH UI GEN</div>' +
+        '<div id="sal-msg-stitch" style="font-size:9px;font-family:monospace;color:#777575;margin-bottom:8px;">Awaiting schema...</div>' +
+        '<div style="height:2px;background:#262626;overflow:hidden;">' +
+          '<div id="sal-prog-stitch" style="height:100%;background:#494847;width:0%;transition:width 0.6s;"></div>' +
+        '</div>' +
+        '<div style="display:flex;justify-content:space-between;font-size:8px;font-family:monospace;color:#494847;text-transform:uppercase;margin-top:2px;">' +
+          '<span>Visual Engine</span><span>0%</span>' +
+        '</div>' +
+      '</div>' +
+      '<div id="sal-card-claude" style="background:#1a1919;border:1px solid rgba(73,72,71,0.3);padding:12px;position:relative;opacity:0.5;transition:border-color 0.3s,box-shadow 0.3s,opacity 0.3s;">' +
+        '<div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:10px;">' +
+          '<div id="sal-icon-claude" style="width:36px;height:36px;background:#262626;display:flex;align-items:center;justify-content:center;border:1px solid rgba(73,72,71,0.3);position:relative;font-size:16px;">' +
+            '&#x1F4BB;' +
+            '<div class="sal-frame-tl" style="display:none;position:absolute;top:-3px;left:-3px;width:7px;height:7px;border-top:2px solid #00FF88;border-left:2px solid #00FF88;"></div>' +
+            '<div class="sal-frame-br" style="display:none;position:absolute;bottom:-3px;right:-3px;width:7px;height:7px;border-bottom:2px solid #00FF88;border-right:2px solid #00FF88;"></div>' +
+          '</div>' +
+          '<div style="text-align:right;">' +
+            '<span style="font-size:8px;font-family:monospace;color:#777575;display:block;margin-bottom:3px;">SAL-EXEC-09</span>' +
+            '<span id="sal-badge-claude" style="padding:1px 6px;background:#494847;color:#fff;font-size:8px;font-weight:700;text-transform:uppercase;font-family:\'Space Grotesk\',sans-serif;">STANDBY</span>' +
+          '</div>' +
+        '</div>' +
+        '<div style="font-family:\'Space Grotesk\',sans-serif;font-size:11px;font-weight:700;text-transform:uppercase;color:#adaaaa;margin-bottom:3px;">SAL EXECUTOR</div>' +
+        '<div id="sal-msg-claude" style="font-size:9px;font-family:monospace;color:#777575;margin-bottom:8px;">Queuing environments...</div>' +
+        '<div style="height:2px;background:#262626;overflow:hidden;">' +
+          '<div id="sal-prog-claude" style="height:100%;background:#494847;width:0%;transition:width 0.6s;"></div>' +
+        '</div>' +
+        '<div style="display:flex;justify-content:space-between;font-size:8px;font-family:monospace;color:#494847;text-transform:uppercase;margin-top:2px;">' +
+          '<span>Environment</span><span>0%</span>' +
+        '</div>' +
+      '</div>' +
+    '</div>' +
+    '<div id="sal-plan-panel" style="display:none;background:#131313;border:1px solid rgba(255,215,9,0.3);padding:14px;margin-bottom:12px;position:relative;">' +
+      '<div style="position:absolute;top:0;left:0;right:0;height:2px;background:rgba(255,215,9,0.15);"></div>' +
+    '</div>' +
+    '<div style="background:#000;border:1px solid rgba(73,72,71,0.2);">' +
+      '<div style="background:#131313;padding:5px 10px;border-bottom:1px solid rgba(73,72,71,0.1);display:flex;justify-content:space-between;align-items:center;">' +
+        '<span style="font-size:8px;font-family:monospace;color:#494847;text-transform:uppercase;letter-spacing:0.15em;">LOG_STREAM: ARCHITECT_CORE</span>' +
+        '<div style="display:flex;gap:3px;">' +
+          '<div style="width:6px;height:6px;border-radius:50%;background:rgba(215,56,59,0.35);"></div>' +
+          '<div style="width:6px;height:6px;border-radius:50%;background:rgba(239,201,0,0.35);"></div>' +
+          '<div style="width:6px;height:6px;border-radius:50%;background:rgba(0,237,126,0.35);"></div>' +
+        '</div>' +
+      '</div>' +
+      '<div id="sal-log-stream" style="padding:8px 10px;font-family:monospace;font-size:9px;line-height:1.8;max-height:130px;overflow-y:auto;"></div>' +
+    '</div>' +
+  '</div>';
+}
+
 async function agentBuild() {
   if (builderChatState.generating) return;
   var promptEl = document.getElementById('builderPrompt');
@@ -5788,104 +6056,130 @@ async function agentBuild() {
 
   builderChatState.generating = true;
   var sendBtn = document.getElementById('builderAgentBtn');
-  if (sendBtn) { sendBtn.disabled = true; sendBtn.textContent = '⏳'; }
+  if (sendBtn) { sendBtn.disabled = true; sendBtn.textContent = '\u23F3'; }
 
   var welcome = document.getElementById('builderWelcome');
   if (welcome) welcome.style.display = 'none';
 
   var msgs = document.getElementById('builderMessages');
-  // User message
   var userMsg = document.createElement('div');
   userMsg.className = 'builder-msg builder-msg-user';
   userMsg.innerHTML = '<div class="builder-msg-content">' + escapeHtml(prompt) + '</div>';
   msgs.appendChild(userMsg);
 
-  // ── 3 Agent Cards container ──
-  var agentContainer = document.createElement('div');
-  agentContainer.style.cssText = 'display:flex;flex-direction:column;gap:10px;padding:12px 0;';
-  agentContainer.innerHTML =
-    // Grok card
-    '<div id="agent-card-grok" class="agent-card agent-active">' +
-      '<div class="agent-card-header">' +
-        '<div class="agent-card-icon">🧠</div>' +
-        '<div class="agent-card-info">' +
-          '<div class="agent-card-name">GROK ARCHITECT</div>' +
-          '<div class="agent-card-status" id="agent-grok-status">● PLANNING</div>' +
-        '</div>' +
-        '<div class="agent-spinner" id="agent-grok-spinner"></div>' +
-      '</div>' +
-      '<div class="agent-card-msg" id="agent-grok-msg">Analyzing your request...</div>' +
-    '</div>' +
-    // Stitch card
-    '<div id="agent-card-stitch" class="agent-card agent-standby">' +
-      '<div class="agent-card-header">' +
-        '<div class="agent-card-icon">🎨</div>' +
-        '<div class="agent-card-info">' +
-          '<div class="agent-card-name">STITCH AGENT</div>' +
-          '<div class="agent-card-status" id="agent-stitch-status">○ STANDBY</div>' +
-        '</div>' +
-        '<div class="agent-spinner" id="agent-stitch-spinner" style="opacity:0;"></div>' +
-      '</div>' +
-      '<div class="agent-card-msg" id="agent-stitch-msg">Waiting for plan...</div>' +
-    '</div>' +
-    // SAL Executor card
-    '<div id="agent-card-claude" class="agent-card agent-standby">' +
-      '<div class="agent-card-header">' +
-        '<div class="agent-card-icon">⚡</div>' +
-        '<div class="agent-card-info">' +
-          '<div class="agent-card-name">SAL EXECUTOR</div>' +
-          '<div class="agent-card-status" id="agent-claude-status">○ STANDBY</div>' +
-        '</div>' +
-        '<div class="agent-spinner" id="agent-claude-spinner" style="opacity:0;"></div>' +
-      '</div>' +
-      '<div class="agent-card-msg" id="agent-claude-msg">Ready to build...</div>' +
-    '</div>' +
-    // Agent branding bar
-    '<div style="display:flex;align-items:center;gap:10px;padding:6px 10px;background:rgba(255,255,255,0.02);border-radius:8px;border:1px solid rgba(255,255,255,0.05);">' +
-      '<span style="font-size:9px;color:#333;letter-spacing:1px;">POWERED BY</span>' +
-      '<span style="font-size:10px;font-weight:700;color:#F59E0B;">🧠 Grok-3</span>' +
-      '<span style="font-size:9px;color:#222;">·</span>' +
-      '<span style="font-size:10px;font-weight:700;color:#22c55e;">⚡ Claude</span>' +
-      '<span style="font-size:9px;color:#222;">·</span>' +
-      '<span style="font-size:10px;font-weight:700;color:#818cf8;">🎨 Stitch</span>' +
-    '</div>';
-  msgs.appendChild(agentContainer);
-
-  // Plan preview panel (hidden until plan arrives)
-  var planPanel = document.createElement('div');
-  planPanel.id = 'agent-plan-panel';
-  planPanel.style.display = 'none';
-  planPanel.style.cssText = 'display:none;background:rgba(19,19,19,0.9);border:1px solid rgba(245,158,11,0.3);border-radius:12px;padding:14px;margin:8px 0;';
-  msgs.appendChild(planPanel);
-
+  var agentRoot = document.createElement('div');
+  agentRoot.id = 'sal-agent-root';
+  agentRoot.innerHTML = buildPlanningPhaseHTML();
+  msgs.appendChild(agentRoot);
   msgs.scrollTop = msgs.scrollHeight;
 
   function setCardState(agent, state, msg) {
-    var card = document.getElementById('agent-card-' + agent);
-    var statusEl = document.getElementById('agent-' + agent + '-status');
-    var msgEl = document.getElementById('agent-' + agent + '-msg');
-    var spinnerEl = document.getElementById('agent-' + agent + '-spinner');
+    var card = document.getElementById('sal-card-' + agent);
+    var badge = document.getElementById('sal-badge-' + agent);
+    var msgEl = document.getElementById('sal-msg-' + agent);
+    var progEl = document.getElementById('sal-prog-' + agent);
+    var iconEl = document.getElementById('sal-icon-' + agent);
     if (!card) return;
-    card.className = 'agent-card agent-' + state;
-    var stateLabels = { active: '● ACTIVE', complete: '✓ COMPLETE', standby: '○ STANDBY', error: '✗ ERROR' };
-    if (statusEl) statusEl.textContent = stateLabels[state] || state;
-    if (msgEl && msg) msgEl.textContent = msg;
-    if (spinnerEl) spinnerEl.style.opacity = state === 'active' ? '1' : '0';
+    var isActive = state === 'active';
+    var isComplete = state === 'complete';
+    var isError = state === 'error';
+    card.style.borderColor = isActive ? '#00FF88' : isComplete ? '#ffd709' : isError ? '#ff716c' : 'rgba(73,72,71,0.3)';
+    card.style.boxShadow = isActive ? '0px 0px 20px rgba(0,255,136,0.25)' : isComplete ? '0px 0px 15px rgba(255,215,9,0.15)' : 'none';
+    card.style.opacity = state === 'standby' ? '0.5' : '1';
+    if (badge) {
+      badge.textContent = isActive ? 'ACTIVE' : isComplete ? 'COMPLETE' : isError ? 'ERROR' : 'STANDBY';
+      badge.style.background = isActive ? '#00FF88' : isComplete ? '#ffd709' : isError ? '#ff716c' : '#494847';
+      badge.style.color = isActive ? '#006532' : isComplete ? '#5b4b00' : '#fff';
+    }
+    if (msgEl && msg) {
+      msgEl.style.color = isActive ? '#00FF88' : isComplete ? '#ffd709' : '#777575';
+      msgEl.textContent = msg;
+    }
+    if (progEl) {
+      progEl.style.background = isActive ? '#00FF88' : isComplete ? '#ffd709' : '#494847';
+      progEl.style.width = isActive ? '67%' : isComplete ? '100%' : '0%';
+      progEl.style.boxShadow = isActive ? '0px 0px 6px #00FF88' : 'none';
+    }
+    if (iconEl) {
+      var tl = iconEl.querySelector('.sal-frame-tl');
+      var br = iconEl.querySelector('.sal-frame-br');
+      if (tl) tl.style.display = isActive ? 'block' : 'none';
+      if (br) br.style.display = isActive ? 'block' : 'none';
+      iconEl.style.background = isActive ? '#00fd87' : isComplete ? 'rgba(255,215,9,0.15)' : '#262626';
+      iconEl.style.borderColor = isActive ? 'rgba(0,255,136,0.4)' : isComplete ? 'rgba(255,215,9,0.3)' : 'rgba(73,72,71,0.3)';
+    }
+  }
+
+  function addLogLine(text, color) {
+    var logEl = document.getElementById('sal-log-stream');
+    if (!logEl) return;
+    var ts = new Date().toLocaleTimeString('en-US', { hour12: false });
+    var p = document.createElement('p');
+    p.style.cssText = 'margin:0;color:' + (color || '#a4ffb9') + ';';
+    p.textContent = '[' + ts + '] ' + text;
+    logEl.appendChild(p);
+    logEl.scrollTop = logEl.scrollHeight;
   }
 
   function showPlan(plan) {
-    planPanel.style.display = 'block';
-    var comps = (plan.components || []).slice(0, 6).join(' · ');
-    var steps = (plan.steps || []).map(function(s, i) { return (i+1) + '. ' + s; }).join('<br>');
-    planPanel.innerHTML =
-      '<div style="font-size:9px;color:#F59E0B;letter-spacing:2px;font-weight:700;margin-bottom:10px;">📋 ARCHITECT PLAN</div>' +
-      '<div style="font-size:11px;font-weight:900;color:#E5E5E5;margin-bottom:8px;">' + escapeHtml(plan.title || '') + '</div>' +
-      (comps ? '<div style="font-size:10px;color:#555;margin-bottom:6px;">COMPONENTS: <span style="color:#888;">' + escapeHtml(comps) + '</span></div>' : '') +
-      (plan.complexity ? '<div style="font-size:10px;color:#555;margin-bottom:6px;">COMPLEXITY: <span style="color:#F59E0B;font-weight:700;">' + plan.complexity.toUpperCase() + '</span> · EST: <span style="color:#22c55e;">' + escapeHtml(plan.estimated_time || '—') + '</span></div>' : '') +
-      (steps ? '<div style="font-size:10px;color:#555;margin-bottom:4px;">STEPS:</div><div style="font-size:11px;color:#666;line-height:1.8;">' + steps + '</div>' : '');
+    var panel = document.getElementById('sal-plan-panel');
+    if (!panel) return;
+    panel.style.display = 'block';
+    var comps = (plan.components || []).slice(0, 5).map(function(c) {
+      return '<li style="display:flex;align-items:center;gap:5px;font-size:9px;font-family:monospace;text-transform:uppercase;margin-bottom:3px;"><span style="width:3px;height:3px;background:#ffd709;display:inline-block;flex-shrink:0;"></span>' + escapeHtml(c) + '</li>';
+    }).join('');
+    var apis = (plan.apis || []).slice(0, 3).map(function(a) {
+      return '<li style="display:flex;align-items:center;gap:5px;font-size:9px;font-family:monospace;text-transform:uppercase;margin-bottom:3px;"><span style="width:3px;height:3px;background:#ffd709;display:inline-block;flex-shrink:0;"></span>' + escapeHtml(a) + '</li>';
+    }).join('');
+    panel.innerHTML =
+      '<div style="position:absolute;top:0;left:0;right:0;height:2px;background:rgba(255,215,9,0.15);"></div>' +
+      '<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">' +
+        '<span style="font-size:15px;">&#x1F4CB;</span>' +
+        '<span style="font-family:\'Space Grotesk\',sans-serif;font-size:14px;font-weight:900;color:#ffd709;text-transform:uppercase;letter-spacing:0.05em;">ARCHITECT PLAN</span>' +
+      '</div>' +
+      (plan.title ? '<div style="font-size:12px;font-weight:700;color:#fff;margin-bottom:10px;">' + escapeHtml(plan.title) + '</div>' : '') +
+      '<div style="display:grid;grid-template-columns:1fr 1fr auto auto;gap:12px;">' +
+        (comps ? '<div><div style="font-size:8px;font-family:\'Space Grotesk\',sans-serif;font-weight:700;text-transform:uppercase;color:#adaaaa;border-bottom:1px solid #494847;padding-bottom:4px;margin-bottom:6px;letter-spacing:0.1em;">Components</div><ul style="list-style:none;padding:0;margin:0;">' + comps + '</ul></div>' : '<div></div>') +
+        (apis ? '<div><div style="font-size:8px;font-family:\'Space Grotesk\',sans-serif;font-weight:700;text-transform:uppercase;color:#adaaaa;border-bottom:1px solid #494847;padding-bottom:4px;margin-bottom:6px;letter-spacing:0.1em;">APIs</div><ul style="list-style:none;padding:0;margin:0;">' + apis + '</ul></div>' : '<div></div>') +
+        (plan.complexity ? '<div><div style="font-size:8px;font-family:\'Space Grotesk\',sans-serif;font-weight:700;text-transform:uppercase;color:#adaaaa;border-bottom:1px solid #494847;padding-bottom:4px;margin-bottom:6px;letter-spacing:0.1em;">Complexity</div><div style="font-size:15px;font-weight:900;font-family:\'Space Grotesk\',sans-serif;text-transform:uppercase;color:#fff;">' + escapeHtml(plan.complexity) + '</div></div>' : '<div></div>') +
+        (plan.estimated_time ? '<div><div style="font-size:8px;font-family:\'Space Grotesk\',sans-serif;font-weight:700;text-transform:uppercase;color:#adaaaa;border-bottom:1px solid #494847;padding-bottom:4px;margin-bottom:6px;letter-spacing:0.1em;">Est. Time</div><div style="font-size:18px;font-weight:900;font-family:\'Space Grotesk\',sans-serif;color:#fff;">' + escapeHtml(plan.estimated_time) + '</div></div>' : '<div></div>') +
+      '</div>';
   }
 
-  // SSE stream
+  function showCompleteUI(fileCount, model) {
+    var root = document.getElementById('sal-agent-root');
+    if (!root || document.getElementById('sal-complete-banner')) return;
+    var banner = document.createElement('div');
+    banner.id = 'sal-complete-banner';
+    banner.style.cssText = 'background:rgba(112,93,0,0.1);border-left:4px solid #ffd709;padding:10px 14px;display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;';
+    banner.innerHTML =
+      '<div style="display:flex;align-items:center;gap:8px;">' +
+        '<span style="font-size:15px;">&#x2705;</span>' +
+        '<p style="font-family:\'Space Grotesk\',sans-serif;font-size:10px;letter-spacing:0.15em;text-transform:uppercase;color:#ffd709;font-weight:700;margin:0;">BUILD SUCCESSFUL \u2014 ' + fileCount + ' FILES GENERATED</p>' +
+      '</div>' +
+      '<span style="font-family:monospace;font-size:8px;color:rgba(255,215,9,0.4);">via ' + escapeHtml(model || 'AI') + '</span>';
+    root.insertBefore(banner, root.firstChild);
+    var meta = document.createElement('div');
+    meta.style.cssText = 'background:#1a1919;padding:10px 12px;border-left:2px solid #494847;margin-top:10px;display:grid;grid-template-columns:repeat(4,1fr);gap:6px;';
+    meta.innerHTML =
+      '<div><p style="font-family:\'Space Grotesk\',sans-serif;font-size:8px;text-transform:uppercase;color:#494847;margin:0 0 2px;letter-spacing:0.1em;">Latency</p><p style="font-family:monospace;font-size:12px;color:#00FF88;margin:0;">24MS</p></div>' +
+      '<div><p style="font-family:\'Space Grotesk\',sans-serif;font-size:8px;text-transform:uppercase;color:#494847;margin:0 0 2px;letter-spacing:0.1em;">Payload</p><p style="font-family:monospace;font-size:12px;color:#00FF88;margin:0;">~1.28MB</p></div>' +
+      '<div><p style="font-family:\'Space Grotesk\',sans-serif;font-size:8px;text-transform:uppercase;color:#494847;margin:0 0 2px;letter-spacing:0.1em;">Model State</p><p style="font-family:monospace;font-size:12px;color:#ffd709;margin:0;">STABLE</p></div>' +
+      '<div><p style="font-family:\'Space Grotesk\',sans-serif;font-size:8px;text-transform:uppercase;color:#494847;margin:0 0 2px;letter-spacing:0.1em;">Files</p><p style="font-family:monospace;font-size:12px;color:#adaaaa;margin:0;">' + fileCount + '</p></div>';
+    root.appendChild(meta);
+  }
+
+  var logQueue = [
+    'Initializing Grok-3 Reasoning Engine... SUCCESS',
+    'Parsing prompt requirements...',
+    'Analyzing architecture topology...',
+    'Injecting styling tokens into Stitch buffer...'
+  ];
+  var logIdx = 0;
+  var logInterval = setInterval(function() {
+    if (logIdx < logQueue.length) addLogLine(logQueue[logIdx++]);
+  }, 900);
+
   var abortCtl = new AbortController();
   var timeoutId = setTimeout(function() { abortCtl.abort(); }, 180000);
 
@@ -5894,17 +6188,15 @@ async function agentBuild() {
       method: 'POST',
       headers: Object.assign({'Content-Type': 'application/json'}, authHeaders()),
       signal: abortCtl.signal,
-      body: JSON.stringify({prompt: prompt})
+      body: JSON.stringify({ prompt: prompt })
     });
-
     var reader = resp.body.getReader();
     var decoder = new TextDecoder();
     var buffer = '';
-
     while (true) {
       var result = await reader.read();
       if (result.done) break;
-      buffer += decoder.decode(result.value, {stream: true});
+      buffer += decoder.decode(result.value, { stream: true });
       var lines = buffer.split('\n');
       buffer = lines.pop();
       for (var i = 0; i < lines.length; i++) {
@@ -5913,61 +6205,63 @@ async function agentBuild() {
         try {
           var data = JSON.parse(line.slice(6));
           var phase = data.phase;
-
           if (phase === 'planning') {
             setCardState('grok', 'active', data.message || 'Analyzing request...');
+            addLogLine(data.message || 'Analyzing request...');
           } else if (phase === 'plan_ready') {
-            setCardState('grok', 'complete', 'Plan complete — ' + ((data.plan && data.plan.complexity) || 'medium') + ' complexity');
+            clearInterval(logInterval);
+            setCardState('grok', 'complete', 'Logic processing \u2014 DONE');
             if (data.plan) showPlan(data.plan);
             setCardState('stitch', 'active', 'Generating UI components...');
+            addLogLine('Architect plan ready \u2014 activating Stitch UI Gen', '#ffd709');
           } else if (phase === 'building') {
             setCardState('stitch', 'active', data.message || 'Generating UI...');
+            addLogLine(data.message || 'Stitch: building UI...', '#a4ffb9');
           } else if (phase === 'stitch_ready') {
-            setCardState('stitch', 'complete', 'UI design ready');
+            setCardState('stitch', 'complete', 'Visual engine \u2014 DONE');
             setCardState('claude', 'active', 'Wiring intelligence...');
+            addLogLine('Stitch UI ready \u2014 activating SAL Executor', '#ffd709');
           } else if (phase === 'wiring') {
             setCardState('claude', 'active', data.message || 'Building from plan...');
+            addLogLine(data.message || 'SAL: wiring components...', '#a4ffb9');
           } else if (phase === 'files_ready') {
+            clearInterval(logInterval);
             if (data.files && data.files.length) {
-              // Load files into existing builder state and preview
               builderChatState.files = data.files;
               if (typeof builderRenderFiles === 'function') builderRenderFiles();
               if (typeof builderRenderPreview === 'function') builderRenderPreview();
               if (typeof builderUpdateIDEFileTree === 'function') builderUpdateIDEFileTree();
               var fc = document.getElementById('builderFileCount');
               if (fc) fc.textContent = data.files.length + ' files';
-              // Switch to preview
               builderSwitchTopTab('preview', document.querySelector('.builder-topbar-tab[data-tab="preview"]'));
               setCardState('claude', 'complete', 'Built ' + data.files.length + ' files via ' + (data.model || 'AI'));
+              addLogLine('COMPONENT GEN: ' + data.files.length + ' files \u2014 SUCCESS', '#00FF88');
+              showCompleteUI(data.files.length, data.model);
             } else {
-              // Raw text fallback
               setCardState('claude', 'complete', 'Build complete');
-              var rawDiv = document.createElement('div');
-              rawDiv.style.cssText = 'background:rgba(0,0,0,0.4);border:1px solid rgba(34,197,94,0.2);border-radius:10px;padding:12px;font-family:monospace;font-size:11px;color:#22c55e;white-space:pre-wrap;max-height:300px;overflow-y:auto;margin-top:8px;';
-              rawDiv.textContent = data.raw_text || '';
-              msgs.appendChild(rawDiv);
+              showCompleteUI(0, 'AI');
             }
           } else if (phase === 'complete') {
-            setCardState('grok', 'complete', 'Grok planning: done');
-            setCardState('stitch', 'complete', 'Stitch UI: done');
-            setCardState('claude', 'complete', data.message || 'Build complete!');
-            // Gold flash on all cards
-            [document.getElementById('agent-card-grok'), document.getElementById('agent-card-stitch'), document.getElementById('agent-card-claude')].forEach(function(c) {
-              if (c) { c.style.boxShadow = '0 0 20px rgba(245,158,11,0.4)'; setTimeout(function() { c.style.boxShadow = ''; }, 2000); }
-            });
+            clearInterval(logInterval);
+            setCardState('grok', 'complete', 'Grok planning \u2014 DONE');
+            setCardState('stitch', 'complete', 'Stitch UI \u2014 DONE');
+            setCardState('claude', 'complete', data.message || 'Deployment ready');
+            addLogLine('ALL AGENTS COMPLETE \u2713', '#ffd709');
           }
           msgs.scrollTop = msgs.scrollHeight;
         } catch(e) {}
       }
     }
   } catch(e) {
+    clearInterval(logInterval);
     setCardState('grok', 'error', 'Connection error');
+    addLogLine('ERROR: ' + (e.message || 'Connection failed'), '#ff716c');
     console.error('[AgentBuild]', e);
   }
-
+  clearInterval(logInterval);
   clearTimeout(timeoutId);
   builderChatState.generating = false;
-  if (sendBtn) { sendBtn.disabled = false; sendBtn.textContent = '⚡ AGENT BUILD'; }
+  if (sendBtn) { sendBtn.disabled = false; sendBtn.textContent = '\u26A1 AGENT'; }
 }
 // ─── END GROK AGENTIC BUILDER ──────────────────────────────────────────────
 

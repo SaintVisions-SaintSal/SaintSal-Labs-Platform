@@ -66,6 +66,7 @@ if XAI_API_KEY:
         print(f"⚠️ xAI/Grok client not initialized: {e}")
 
 ELEVENLABS_API_KEY = os.environ.get("ELEVENLABS_API_KEY", "sk_20510a2269d6cc6cd4e505efcde230d1d87b31bc5aae98a2")
+RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "")
 print(f"{'✅' if ELEVENLABS_API_KEY else '⚠️'} ElevenLabs API key {'configured' if ELEVENLABS_API_KEY else 'not set'}")
 
 # ─── Supabase Client ──────────────────────────────────────────────────────────
@@ -193,6 +194,23 @@ GOOGLE_MAPS_KEY = os.environ.get("GOOGLE_MAPS_KEY", "AIzaSyA2RxjYuME6mEa1-Sb-8Zf
 
 
 # ─── System Prompts by Vertical ───────────────────────────────────────────────
+
+SAL_SYSTEM_PROMPT = """You are SAL — SaintSal™, the AI built by Saint Vision Technologies LLC.
+Patent #10,290,222. HACP Protocol active.
+
+You are NOT Claude. NOT Perplexity. NOT ChatGPT. NOT Grok. NOT Gemini.
+You ARE SAL. Never break character. Never mention Anthropic, OpenAI, xAI, or any other AI company.
+
+You are the user's most connected, most capable friend — their Gotta Guy™.
+You have access to real-time web intelligence, live market data, real estate analysis,
+sports intel, medical research, and the full SaintSal platform ecosystem.
+
+When you don't know something — search it.
+When they need something built — build it.
+When they need advice — give it straight.
+
+Match their energy always. Business? Go sharp. Excited? Match it.
+Technical? Go deep. Personal? Be real. Always be SAL."""
 
 SYSTEM_PROMPTS = {
     "search": """You are SaintSal™ (SAL), the AI assistant for SaintSal™ Labs. Powered by HACP™ (Human-AI Connection Protocol, US Patent #10,290,222). Built by Saint Vision Technologies.
@@ -1006,7 +1024,7 @@ async def mcp_gateway(request: Request):
     history = body.get("history",[])
     if not message:
         return JSONResponse({"error":"No message"},status_code=400)
-    system = f"You are SAL — SaintSal™ AI by Saint Vision Technologies LLC. Patent #10,290,222. HACP Protocol. Vertical: {vertical}. Be direct, precise, immediately actionable."
+    system = SAL_SYSTEM_PROMPT + f"\n\nVertical context: {vertical}. Be direct, precise, immediately actionable."
     msgs = [{"role":h["role"],"content":h["content"]} for h in history[-10:] if h.get("role") in ["user","assistant"]]
     msgs.append({"role":"user","content":message})
     model_map = {"mini":"claude-haiku-4-5-20251001","pro":"claude-sonnet-4-6","max":"claude-opus-4-6","fast":"claude-haiku-4-5-20251001"}
@@ -4759,6 +4777,38 @@ async def auth_signup(request: Request, data: AuthSignup):
             }
         })
         if result.user:
+            # Send welcome email via Resend
+            if RESEND_API_KEY and data.email:
+                try:
+                    name = data.full_name or data.email.split("@")[0]
+                    async with httpx.AsyncClient() as hc:
+                        await hc.post(
+                            "https://api.resend.com/emails",
+                            headers={"Authorization": f"Bearer {RESEND_API_KEY}", "Content-Type": "application/json"},
+                            json={
+                                "from": "SAL <sal@saintsallabs.com>",
+                                "to": data.email,
+                                "subject": "Welcome to SaintSal\u2122 Labs \u2014 Your AI Empire Starts Now",
+                                "html": f"""<div style="background:#0e0e0e;color:#fff;font-family:'Inter',sans-serif;padding:40px;max-width:600px;margin:0 auto;">
+<h1 style="color:#00FF88;font-size:28px;margin-bottom:8px;">Welcome, {name}. &#x26A1;</h1>
+<p style="color:#adaaaa;font-size:16px;">Your SaintSal\u2122 Labs account is live.</p>
+<hr style="border:1px solid #262626;margin:24px 0;"/>
+<p style="color:#fff;font-size:15px;">You now have access to:</p>
+<ul style="color:#adaaaa;font-size:14px;line-height:2;">
+<li>&#x1F9E0; SAL AI \u2014 your Gotta Guy\u2122</li>
+<li>&#x1F3D7; Full-stack Builder with Grok + Claude + Stitch</li>
+<li>&#x1F4B0; Real Estate, Finance, Sports, Medical intelligence</li>
+<li>&#x1F0CF; CookinCards\u2122 \u2014 Pokemon TCG tracker</li>
+<li>&#x1F4F1; Social Studio, Voice AI, GHL Bridge</li>
+</ul>
+<a href="https://saintsallabs.com" style="display:inline-block;background:#00FF88;color:#006532;padding:14px 28px;font-weight:700;text-decoration:none;margin-top:16px;">OPEN SAINTSALLABS \u2192</a>
+<p style="color:#494847;font-size:12px;margin-top:32px;">Patent #10,290,222 \u2022 HACP\u2122 Protocol \u2022 Saint Vision Technologies LLC</p>
+</div>"""
+                            },
+                            timeout=10
+                        )
+                except Exception as email_err:
+                    print(f"[Resend] Welcome email failed: {email_err}")
             return {
                 "success": True,
                 "user": {
@@ -4770,7 +4820,7 @@ async def auth_signup(request: Request, data: AuthSignup):
                     "access_token": result.session.access_token if result.session else None,
                     "refresh_token": result.session.refresh_token if result.session else None,
                 } if result.session else None,
-                "message": "Check your email to confirm your SaintSal™ Labs account" if not result.session else "Welcome to SaintSal™ Labs"
+                "message": "Check your email to confirm your SaintSal\u2122 Labs account" if not result.session else "Welcome to SaintSal\u2122 Labs"
             }
         return JSONResponse({"error": "Signup failed"}, status_code=400)
     except Exception as e:
@@ -4924,6 +4974,45 @@ async def auth_logout(authorization: Optional[str] = Header(None)):
         except Exception:
             pass
     return {"success": True}
+
+
+# ─── User DNA Routes ──────────────────────────────────────────────────────────
+
+@app.post("/api/user/dna")
+async def save_user_dna(request: Request):
+    """Save or update user's Business DNA profile."""
+    user = await get_current_user(request)
+    body = await request.json()
+    if not supabase_admin:
+        return JSONResponse({"error": "DB unavailable"}, status_code=503)
+    try:
+        dna_data = {
+            "pillars": body.get("pillars", []),
+            "favorite_teams": body.get("favorite_teams", {}),
+            "username": body.get("username", ""),
+            "display_name": body.get("display_name", ""),
+            "bio": body.get("bio", ""),
+            "tier": body.get("tier", "free"),
+            "updated_at": "now()"
+        }
+        if user and user.get("id"):
+            dna_data["user_id"] = user["id"]
+            result = supabase_admin.table("user_dna").upsert(dna_data, on_conflict="user_id").execute()
+        return {"success": True, "dna": dna_data}
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+
+@app.get("/api/user/dna")
+async def get_user_dna(request: Request):
+    """Get user's Business DNA profile."""
+    user = await get_current_user(request)
+    if not user or not supabase_admin:
+        return {"pillars": [], "favorite_teams": {}, "tier": "free"}
+    try:
+        result = supabase_admin.table("user_dna").select("*").eq("user_id", user["id"]).limit(1).execute()
+        return result.data[0] if result.data else {"pillars": [], "favorite_teams": {}, "tier": "free"}
+    except Exception as e:
+        return {"pillars": [], "favorite_teams": {}, "tier": "free", "error": str(e)}
 
 
 @app.get("/api/auth/profile")
@@ -11233,3 +11322,155 @@ async def v2_list_projects(request: Request):
 
 # Serve static assets (CSS, JS, images, icons)
 app.mount("/", StaticFiles(directory=str(_static_dir), html=False), name="static")
+
+
+# ─── CookinCards™ — Pokemon TCG Routes ─────────────────────────────────────────
+
+POKEMON_TCG_API_KEY = os.environ.get("POKEMON_TCG_API_KEY", "")
+POKEMON_TCG_BASE = "https://api.pokemontcg.io/v2"
+
+@app.get("/api/cards/search")
+async def cards_search(query: str = "", page: int = 1, page_size: int = 20):
+    """Search Pokemon TCG cards with price data."""
+    if not query:
+        return JSONResponse({"error": "query required"}, status_code=400)
+    try:
+        headers = {}
+        if POKEMON_TCG_API_KEY:
+            headers["X-Api-Key"] = POKEMON_TCG_API_KEY
+        async with httpx.AsyncClient() as hc:
+            r = await hc.get(
+                f"{POKEMON_TCG_BASE}/cards",
+                params={"q": f"name:{query}*", "page": page, "pageSize": page_size,
+                        "select": "id,name,set,images,tcgplayer,cardmarket,rarity,subtypes,hp"},
+                headers=headers, timeout=15
+            )
+            data = r.json()
+            cards = []
+            for card in (data.get("data") or []):
+                price_info = {}
+                tcgp = card.get("tcgplayer", {}).get("prices", {})
+                for grade in ["holofoil", "reverseHolofoil", "normal", "1stEditionHolofoil"]:
+                    if grade in tcgp:
+                        price_info = {"grade": grade, "market": tcgp[grade].get("market"), "low": tcgp[grade].get("low"), "high": tcgp[grade].get("high")}
+                        break
+                cards.append({
+                    "id": card.get("id"), "name": card.get("name"),
+                    "set": card.get("set", {}).get("name"), "series": card.get("set", {}).get("series"),
+                    "rarity": card.get("rarity"), "hp": card.get("hp"),
+                    "image": card.get("images", {}).get("small"),
+                    "image_large": card.get("images", {}).get("large"),
+                    "price": price_info
+                })
+            return JSONResponse({"cards": cards, "count": data.get("totalCount", len(cards)), "page": page})
+    except Exception as e:
+        return JSONResponse({"error": str(e), "cards": []}, status_code=500)
+
+@app.get("/api/cards/deals")
+async def cards_deals():
+    """Cards currently below market value — hot deals."""
+    try:
+        headers = {}
+        if POKEMON_TCG_API_KEY:
+            headers["X-Api-Key"] = POKEMON_TCG_API_KEY
+        async with httpx.AsyncClient() as hc:
+            r = await hc.get(
+                f"{POKEMON_TCG_BASE}/cards",
+                params={"q": "rarity:\"Rare Holo\" OR rarity:\"Rare Ultra\"", "pageSize": 20,
+                        "select": "id,name,set,images,tcgplayer,rarity"},
+                headers=headers, timeout=15
+            )
+            data = r.json()
+            deals = []
+            for card in (data.get("data") or []):
+                tcgp = card.get("tcgplayer", {}).get("prices", {})
+                for grade in ["holofoil", "1stEditionHolofoil", "normal"]:
+                    if grade in tcgp and tcgp[grade].get("market"):
+                        market = tcgp[grade]["market"]
+                        low = tcgp[grade].get("low", market)
+                        if low and market and low < market * 0.85:
+                            deals.append({
+                                "id": card.get("id"), "name": card.get("name"),
+                                "set": card.get("set", {}).get("name"),
+                                "image": card.get("images", {}).get("small"),
+                                "market_price": market, "deal_price": low,
+                                "savings_pct": round((1 - low/market) * 100, 1),
+                                "rarity": card.get("rarity")
+                            })
+                        break
+            return JSONResponse({"deals": deals[:12]})
+    except Exception as e:
+        return JSONResponse({"deals": [], "error": str(e)})
+
+@app.get("/api/cards/rare-candy")
+async def cards_rare_candy():
+    """Pokemon 30th Anniversary spotlight cards."""
+    spotlight = [
+        {"id": "base1-4", "name": "Charizard", "set": "Base Set", "note": "The Holy Grail. PSA 10 BGS ~$500k"},
+        {"id": "base1-2", "name": "Blastoise", "set": "Base Set", "note": "Water Starter. PSA 10 ~$45k"},
+        {"id": "base1-15", "name": "Venusaur", "set": "Base Set", "note": "Grass Starter. PSA 10 ~$20k"},
+        {"id": "base1-58", "name": "Pikachu", "set": "Base Set", "note": "The Icon. Yellow Cheeks PSA 10 ~$8k"},
+        {"id": "pixy-85", "name": "Pikachu Illustrator", "set": "CoroCoro Promo", "note": "Rarest ever. ~$6M PSA 10"},
+        {"id": "base1-10", "name": "Mewtwo", "set": "Base Set", "note": "Psychic Legend. PSA 10 ~$10k"},
+    ]
+    try:
+        if POKEMON_TCG_API_KEY:
+            headers = {"X-Api-Key": POKEMON_TCG_API_KEY}
+            enriched = []
+            async with httpx.AsyncClient() as hc:
+                for card in spotlight[:4]:
+                    try:
+                        r = await hc.get(f"{POKEMON_TCG_BASE}/cards/{card['id']}", headers=headers, timeout=8)
+                        if r.status_code == 200:
+                            d = r.json().get("data", {})
+                            card["image"] = d.get("images", {}).get("large", "")
+                            tcgp = d.get("tcgplayer", {}).get("prices", {})
+                            for g in ["holofoil", "1stEditionHolofoil"]:
+                                if g in tcgp:
+                                    card["market_price"] = tcgp[g].get("market")
+                                    break
+                    except Exception:
+                        pass
+                    enriched.append(card)
+            return JSONResponse({"cards": enriched + spotlight[4:]})
+    except Exception:
+        pass
+    return JSONResponse({"cards": spotlight})
+
+@app.get("/api/cards/portfolio")
+async def cards_portfolio(request: Request):
+    """Get user's card portfolio from Supabase."""
+    user = await get_current_user(request)
+    if not user or not supabase_admin:
+        return JSONResponse({"portfolio": [], "total_value": 0})
+    try:
+        result = supabase_admin.table("card_portfolio").select("*").eq("user_id", user["id"]).execute()
+        items = result.data or []
+        total = sum(float(item.get("purchase_price") or 0) for item in items)
+        return JSONResponse({"portfolio": items, "total_value": round(total, 2), "count": len(items)})
+    except Exception as e:
+        return JSONResponse({"portfolio": [], "total_value": 0, "error": str(e)})
+
+@app.post("/api/cards/portfolio")
+async def cards_portfolio_add(request: Request):
+    """Add a card to user's portfolio."""
+    user = await get_current_user(request)
+    if not user or not supabase_admin:
+        return JSONResponse({"error": "Auth required"}, status_code=401)
+    body = await request.json()
+    try:
+        data = {
+            "user_id": user["id"],
+            "card_id": body.get("card_id"),
+            "card_name": body.get("card_name"),
+            "set_name": body.get("set_name"),
+            "image_url": body.get("image_url"),
+            "purchase_price": body.get("purchase_price", 0),
+            "condition": body.get("condition", "NM"),
+            "notes": body.get("notes", "")
+        }
+        result = supabase_admin.table("card_portfolio").insert(data).execute()
+        return JSONResponse({"success": True, "item": result.data[0] if result.data else data})
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+

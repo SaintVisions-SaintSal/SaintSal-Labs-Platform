@@ -7040,3 +7040,66 @@ body { padding-bottom: 64px !important; }
   50%  { box-shadow:0 0 20px rgba(34,197,94,0.8), 0 0 40px rgba(34,197,94,0.3); }
   100% { transform:rotate(360deg); box-shadow:0 0 6px rgba(34,197,94,0.4); }
 }
+
+/* ─── iPhone 17 Pro Max (430px) + modern mobile safe area ────────────────── */
+@media (max-width: 440px) {
+  /* Bottom nav — safe area for home indicator */
+  #bottom-nav, .mobile-bottom-nav {
+    height: 80px !important;
+    padding-bottom: 20px !important;
+  }
+
+  /* Touch targets — Apple HIG 44pt minimum */
+  .nav-tab, .nav-link, .mobile-bottom-nav a, .mobile-bottom-nav button {
+    min-height: 44px !important;
+  }
+
+  /* Sidebar */
+  #sidebar {
+    width: 280px !important;
+    max-width: 85vw !important;
+  }
+
+  /* Chat input — stays above nav */
+  .chat-input-area, #chat-form, .input-area {
+    bottom: 80px !important;
+    padding: 0 12px !important;
+  }
+
+  /* Cards */
+  .card, .panel, .view-card {
+    margin: 8px !important;
+    border-radius: 12px !important;
+  }
+
+  /* Typography */
+  h1 { font-size: 24px !important; }
+  h2 { font-size: 20px !important; }
+  h3 { font-size: 17px !important; }
+  p, li { font-size: 15px !important; }
+
+  /* Builder agent cards — stack on mobile */
+  #sal-card-grok, #sal-card-stitch, #sal-card-claude {
+    grid-column: span 3;
+  }
+
+  /* Ticker */
+  .ticker-text { font-size: 12px !important; }
+
+  /* More sheet */
+  #more-sheet, .more-sheet {
+    height: 70vh !important;
+    border-radius: 20px 20px 0 0 !important;
+  }
+
+  /* Frame-corner Stitch spinner */
+  @keyframes frameCorner {
+    0%,100% { width: 8px; height: 8px; }
+    50% { width: 14px; height: 14px; }
+  }
+
+  /* Kinetic grid — reduce opacity on mobile for performance */
+  .kinetic-grid {
+    background-size: 60px 60px !important;
+  }
+}
