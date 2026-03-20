@@ -7509,7 +7509,8 @@ async def builder_unified_chat(request: Request):
                         yield f"data: {json.dumps({'type': 'text', 'content': clean_desc})}\n\n"
                 else:
                     file_names = ', '.join(f.get('name', '?') for f in files_data['files'][:5])
-                    yield f"data: {json.dumps({'type': 'text', 'content': 'Built ' + str(file_count) + ' files (' + str(file_names) + ') via ' + str(result.get('model_used','AI')) + '. Preview it above — iterate, refine, or deploy.'})}\n\n" 
+                    _build_msg = 'Built ' + str(file_count) + ' files (' + file_names + ') via ' + str(result.get('model_used', 'AI')) + '. Preview it above — iterate, refine, or deploy.'
+                    yield f"data: {json.dumps({'type': 'text', 'content': _build_msg})}\n\n"
             else:
                 # v8.0 — Chat-first flow: if AI responded with questions/planning, show as natural conversation
                 fallback_text = result.get('text', '') if result.get('text') else ''
@@ -7527,7 +7528,8 @@ async def builder_unified_chat(request: Request):
         # ── DEPLOY ──
         if intent == 'deploy':
             yield f"data: {json.dumps({'type': 'deploy_ready', 'targets': ['vercel', 'render', 'github', 'download']})}\n\n"
-            yield f"data: {json.dumps({'type': 'text', 'content': 'Your project is ready to deploy. Where do you want to ship it?\n\n• **Vercel** — instant frontend, zero config\n• **Render** — full-stack with backends\n• **GitHub** — push to your repo\n• **Download** — get all files as ZIP'})}\n\n"
+            _deploy_msg = "Your project is ready to deploy. Where do you want to ship it?\n\n\u2022 **Vercel** \u2014 instant frontend, zero config\n\u2022 **Render** \u2014 full-stack with backends\n\u2022 **GitHub** \u2014 push to your repo\n\u2022 **Download** \u2014 get all files as ZIP"
+            yield f"data: {json.dumps({'type': 'text', 'content': _deploy_msg})}\n\n"
             yield f"data: {json.dumps({'type': 'done'})}\n\n"
             return
 
