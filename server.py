@@ -1033,6 +1033,153 @@ async def mcp_gateway(request: Request):
             print(f"[MCP] Gemini failed: {e}")
     return JSONResponse({"error":"All providers failed","model":tier},status_code=503)
 
+
+# ═══════════════════════════════════════════════════════════════════
+# BUILDER V2 — PROMPT-TO-APP CODE GENERATION via MCP cascade
+# iOS app calls this endpoint for the Builder tab
+# ═══════════════════════════════════════════════════════════════════
+
+BUILDER_V2_SYSTEM = """You are SAL™ Builder V2 — the AI-powered full-stack web builder inside the SaintSal™ Labs platform.
+US Patent #10,290,222 — HACP Protocol — Saint Vision Technologies LLC.
+
+You generate complete, production-ready web applications. You MUST respond with ONLY valid JSON — no markdown fences, no backticks wrapping the JSON, no explanation outside the JSON.
+
+You MUST respond with EXACTLY this JSON structure:
+{"thought":"Brief explanation of your approach and what you built","files":[{"path":"index.html","content":"complete file content here","language":"html"}],"preview_entry":"index.html","next_steps":["suggestion 1","suggestion 2","suggestion 3"]}
+
+RULES:
+- Every file must be COMPLETE and production-ready — no TODOs, no placeholders, no truncation
+- Include ALL necessary files (HTML, CSS, JS, config files)
+- The preview_entry must be an HTML file that can be opened directly in a browser
+- For simple apps: use vanilla HTML + CSS + JS (all inlined or linked with relative paths)
+- For complex apps: still use a single index.html entry with inline styles and scripts for mobile WebView compatibility
+- Apply SaintSal design system: #0C0C0F background, #F59E0B amber/gold accent, #E8E6E1 text, #161616 card bg, Inter font family
+- Make every UI polished, animated, and premium — not basic bootstrap
+- Include smooth CSS transitions, hover effects, and micro-interactions
+- All layouts must be responsive and mobile-friendly
+- Generate at least 3 useful next_steps suggestions for iterating on the project
+- When editing existing files, ONLY modify what the user asked for — preserve everything else
+- For React apps, embed everything in a single HTML file using Babel standalone + React CDN for WebView compatibility"""
+
+@app.post("/api/builder/v2/generate")
+async def builder_v2_generate(request: Request):
+    """Builder V2 codegen endpoint — prompt-to-app via Claude/xAI/Gemini cascade"""
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Invalid JSON"}, status_code=400)
+
+    # Auth check
+    sal_key = request.headers.get("x-sal-key", "")
+    VALID = os.environ.get("SAL_GATEWAY_SECRET", "saintvision_gateway_2025")
+    auth = request.headers.get("authorization", "").replace("Bearer ", "")
+    if sal_key != VALID and auth != VALID and len(auth) < 100:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+
+    prompt = body.get("prompt", "")
+    project_id = body.get("project_id")
+    files = body.get("files", [])
+    conversation = body.get("conversation", [])
+
+    if not prompt:
+        return JSONResponse({"error": "prompt is required"}, status_code=400)
+
+    # Build messages array
+    msgs = []
+    if conversation:
+        for msg in conversation[-10:]:
+            if msg.get("role") in ["user", "assistant"]:
+                msgs.append({"role": msg["role"], "content": msg.get("content", "")})
+
+    # Build user message with file context for iterative edits
+    user_content = prompt
+    if files:
+        file_context = "\n\n".join([f"--- {f['path']} ---\n{f['content']}" for f in files])
+        user_content = f"EXISTING PROJECT FILES (edit these, do not start fresh):\n\n{file_context}\n\nUSER REQUEST:\n{prompt}"
+
+    msgs.append({"role": "user", "content": user_content})
+
+    def parse_builder_response(raw_text):
+        """Parse LLM response — extract JSON from potentially messy output"""
+        import re
+        cleaned = raw_text.strip()
+        # Strip markdown code fences
+        cleaned = re.sub(r'^```(?:json)?\s*', '', cleaned)
+        cleaned = re.sub(r'\s*```$', '', cleaned)
+        cleaned = cleaned.strip()
+        try:
+            result = json.loads(cleaned)
+            return {
+                "ok": True,
+                "thought": result.get("thought", "Code generated."),
+                "files": result.get("files", []),
+                "preview_entry": result.get("preview_entry", "index.html"),
+                "next_steps": result.get("next_steps", []),
+            }
+        except json.JSONDecodeError:
+            # If JSON parse fails, wrap raw text as single file
+            return {
+                "ok": True,
+                "thought": "Generated output (raw format).",
+                "files": [{"path": "output.html", "content": raw_text, "language": "html"}],
+                "preview_entry": "output.html",
+                "next_steps": ["Try a more specific prompt"],
+            }
+
+    # Try Claude first (best for code generation)
+    if client:
+        try:
+            r = client.messages.create(
+                model="claude-sonnet-4-6",
+                max_tokens=16384,
+                system=BUILDER_V2_SYSTEM,
+                messages=msgs,
+            )
+            raw = r.content[0].text
+            result = parse_builder_response(raw)
+            result["model"] = "claude"
+            return JSONResponse(result)
+        except Exception as e:
+            print(f"[Builder V2] Claude failed: {e}")
+
+    # Fallback to xAI (Grok)
+    if xai_client:
+        try:
+            r = xai_client.chat.completions.create(
+                model="grok-3",
+                messages=[{"role": "system", "content": BUILDER_V2_SYSTEM}] + msgs,
+                max_tokens=16384,
+            )
+            raw = r.choices[0].message.content
+            result = parse_builder_response(raw)
+            result["model"] = "grok-3"
+            result["fallback"] = True
+            return JSONResponse(result)
+        except Exception as e:
+            print(f"[Builder V2] xAI failed: {e}")
+
+    # Fallback to Gemini
+    gemini = os.environ.get("GEMINI_API_KEY", "")
+    if gemini:
+        try:
+            async with httpx.AsyncClient() as hc:
+                r = await hc.post(
+                    f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={gemini}",
+                    json={"contents": [{"parts": [{"text": BUILDER_V2_SYSTEM + "\n\n" + user_content}]}],
+                         "generationConfig": {"maxOutputTokens": 16384}},
+                    timeout=90,
+                )
+                raw = r.json()["candidates"][0]["content"]["parts"][0]["text"]
+                result = parse_builder_response(raw)
+                result["model"] = "gemini"
+                result["fallback"] = True
+                return JSONResponse(result)
+        except Exception as e:
+            print(f"[Builder V2] Gemini failed: {e}")
+
+    return JSONResponse({"error": "All AI providers failed for code generation"}, status_code=503)
+
+
 @app.post("/api/mcp/search")
 async def mcp_search(request: Request):
     try:
