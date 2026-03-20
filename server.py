@@ -7509,7 +7509,7 @@ async def builder_unified_chat(request: Request):
                         yield f"data: {json.dumps({'type': 'text', 'content': clean_desc})}\n\n"
                 else:
                     file_names = ', '.join(f.get('name', '?') for f in files_data['files'][:5])
-                    yield f"data: {json.dumps({'type': 'text', 'content': f'Built {file_count} files ({file_names}) via {result["model_used"]}. Preview it above — iterate, refine, or deploy.'})}\n\n"
+                    yield f"data: {json.dumps({'type': 'text', 'content': 'Built ' + str(file_count) + ' files (' + str(file_names) + ') via ' + str(result.get('model_used','AI')) + '. Preview it above — iterate, refine, or deploy.'})}\n\n" 
             else:
                 # v8.0 — Chat-first flow: if AI responded with questions/planning, show as natural conversation
                 fallback_text = result.get('text', '') if result.get('text') else ''
