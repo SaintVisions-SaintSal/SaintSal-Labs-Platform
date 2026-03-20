@@ -536,18 +536,18 @@ async def chat(request: Request):
     # Step 3: Stream response with pipeline phases
     def generate():
         # Phase: intent detected
-        yield 'data: {"type": "text", "content": "Done. Preview above."}\n\n'
+        yield f"data: {json.dumps({'type': 'intent', 'intent': intent})}\n\n"
 
         # Phase: sources found
         if sources:
-            yield 'data: {"type": "text", "content": "Done. Preview above."}\n\n'
+            yield f"data: {json.dumps({'type': 'sources', 'sources': sources})}\n\n"
 
         # If Perplexity citations exist, send them
         if pplx_result and pplx_result.get("citations"):
-            yield 'data: {"type": "text", "content": "Done. Preview above."}\n\n'
+            yield f"data: {json.dumps({'type': 'citations', 'citations': pplx_result['citations'][:10]})}\n\n"
 
         # Phase: thinking
-        yield 'data: {"type": "text", "content": "Done. Preview above."}\n\n'
+        yield f"data: {json.dumps({'type': 'phase', 'phase': 'generating'})}\n\n"
 
         ai_responded = False
 
@@ -586,7 +586,7 @@ async def chat(request: Request):
                                             for part in parts:
                                                 text_chunk = part.get("text", "")
                                                 if text_chunk:
-                                                    yield 'data: {"type": "text", "content": "Done. Preview above."}\n\n'
+                                                    yield f"data: {json.dumps({'type': 'text', 'content': text_chunk})}\n\n"
                                                     ai_responded = True
                                     except json.JSONDecodeError:
                                         pass
@@ -605,7 +605,7 @@ async def chat(request: Request):
                     messages=messages,
                 ) as stream:
                     for text in stream.text_stream:
-                        yield 'data: {"type": "text", "content": "Done. Preview above."}\n\n'
+                        yield f"data: {json.dumps({'type': 'text', 'content': text})}\n\n"
                 ai_responded = True
             except Exception as e:
                 print(f"[Chat] Anthropic error: {e}")
@@ -624,7 +624,7 @@ async def chat(request: Request):
                 )
                 for chunk in stream:
                     if chunk.choices and chunk.choices[0].delta.content:
-                        yield 'data: {"type": "text", "content": "Done. Preview above."}\n\n'
+                        yield f"data: {json.dumps({'type': 'text', 'content': chunk.choices[0].delta.content})}\n\n"
                 ai_responded = True
             except Exception as e:
                 print(f"[Chat] xAI/Grok error: {e}")
@@ -655,7 +655,7 @@ async def chat(request: Request):
                                         delta = chunk_data.get("choices", [{}])[0].get("delta", {})
                                         text_chunk = delta.get("content", "")
                                         if text_chunk:
-                                            yield 'data: {"type": "text", "content": "Done. Preview above."}\n\n'
+                                            yield f"data: {json.dumps({'type': 'text', 'content': text_chunk})}\n\n"
                                             ai_responded = True
                                     except json.JSONDecodeError:
                                         pass
@@ -682,9 +682,9 @@ async def chat(request: Request):
                     fallback += f"**{s['title']}** — {s['content']}\n\n"
             else:
                 fallback = "I'm having trouble connecting to my AI models right now. Please try again in a moment."
-            yield 'data: {"type": "text", "content": "Done. Preview above."}\n\n'
+            yield f"data: {json.dumps({'type': 'text', 'content': fallback})}\n\n"
 
-        yield 'data: {"type": "text", "content": "Done. Preview above."}\n\n'
+        yield f"data: {json.dumps({'type': 'done'})}\n\n"
 
     # ═══ METERING POST-CALL: Record usage via BackgroundTask after stream ═══
     async def _chat_meter_callback():
@@ -7217,20 +7217,20 @@ async def builder_unified_chat(request: Request):
     model_routing = TIER_MODEL_ROUTING.get(compute_tier, TIER_MODEL_ROUTING["pro"])
 
     async def event_stream():
-        yield 'data: {"type": "text", "content": "Done. Preview above."}\n\n'
+        yield f"data: {json.dumps({'type': 'intent', 'intent': intent})}\n\n"
 
         # ── v8.8.0: IMAGE / VIDEO / AUDIO / SOCIAL → redirect to Social Studio ──
         if intent in ('image', 'video', 'audio', 'social'):
             media_labels = {'image': 'Image generation', 'video': 'Video creation', 'audio': 'Audio generation', 'social': 'Social media content'}
             label = media_labels.get(intent, 'Media creation')
             redirect_msg = f"**{label}** lives in **Social Studio** — head over to the Social Studio section in the sidebar to create images, videos, audio, and social posts. This Builder is focused on building apps, websites, and widgets with code. Need help building something? Just describe what you want to create!"
-            yield 'data: {"type": "text", "content": "Done. Preview above."}\n\n'
-            yield 'data: {"type": "text", "content": "Done. Preview above."}\n\n'
+            yield f"data: {json.dumps({'type': 'text', 'content': redirect_msg})}\n\n"
+            yield f"data: {json.dumps({'type': 'done'})}\n\n"
             return
 
         # ── CODE ── v7.36.0 — Full-stack multi-page builder with iteration
         if intent == 'code':
-            yield 'data: {"type": "text", "content": "Done. Preview above."}\n\n'
+            yield f"data: {json.dumps({'type': 'phase', 'phase': 'generating', 'message': 'Building your project...'})}\n\n"
             history_ctx = ""
             if history:
                 for h in history[-6:]:
@@ -7434,7 +7434,7 @@ async def builder_unified_chat(request: Request):
                     break
                 _ping_count += 1
                 _msg = _progress_msgs[min(_ping_count - 1, len(_progress_msgs) - 1)]
-                yield 'data: {"type": "text", "content": "Done. Preview above."}\n\n'
+                yield f"data: {json.dumps({'type': 'phase', 'phase': 'generating', 'message': _msg})}\n\n"
                 print(f"[Builder Code] Keepalive ping #{_ping_count}: {_msg}")
 
             await _code_task  # Ensure task is fully done
@@ -7445,7 +7445,7 @@ async def builder_unified_chat(request: Request):
             # Step 2: Auto-retry with FORCE CODE prompt if AI returned text instead of JSON
             if not files_data and result.get('text') and len(result['text']) > 100:
                 print(f"[Builder Code] No JSON found in primary response. Auto-retrying with force-code prompt...")
-                yield 'data: {"type": "text", "content": "Done. Preview above."}\n\n'
+                yield f"data: {json.dumps({'type': 'phase', 'phase': 'generating', 'message': 'Generating code files...'})}\n\n"
 
                 # Build the retry prompt: include the AI's response as context + the force-code instruction
                 retry_msg = BUILDER_CODE_RETRY + message
@@ -7468,7 +7468,7 @@ async def builder_unified_chat(request: Request):
                     if _retry_holder["done"]: break
                     _retry_pings += 1
                     _rmsg = ["Generating HTML...", "Adding styles...", "Building interactivity...", "Assembling files...", "Almost there..."][min(_retry_pings - 1, 4)]
-                    yield 'data: {"type": "text", "content": "Done. Preview above."}\n\n'
+                    yield f"data: {json.dumps({'type': 'phase', 'phase': 'generating', 'message': _rmsg})}\n\n"
                 await _retry_task
 
                 retry_result = _retry_holder["result"]
@@ -7501,39 +7501,39 @@ async def builder_unified_chat(request: Request):
                         print(f"[Builder Code] Constructed {len(constructed_files)} files from raw code blocks")
 
             if files_data and files_data.get('files'):
-                yield 'data: {"type": "text", "content": "Done. Preview above."}\n\n'
+                yield f"data: {json.dumps({'type': 'code_files', 'files': files_data['files'], 'model': result['model_used']})}\n\n"
                 file_count = len(files_data['files'])
                 if desc_text and len(desc_text) > 10:
                     clean_desc = desc_text.strip().strip('`').strip()
                     if clean_desc:
-                        yield 'data: {"type": "text", "content": "Done. Preview above."}\n\n'
+                        yield f"data: {json.dumps({'type': 'text', 'content': clean_desc})}\n\n"
                 else:
                     file_names = ', '.join(f.get('name', '?') for f in files_data['files'][:5])
-                    yield 'data: ' + json.dumps({'type': 'text', 'content': 'Built ' + str(file_count) + ' files. Preview above.'}) + '\n\n'
+                    yield f"data: {json.dumps({'type': 'text', 'content': f'Built {file_count} files ({file_names}) via {result["model_used"]}. Preview it above — iterate, refine, or deploy.'})}\n\n"
             else:
                 # v8.0 — Chat-first flow: if AI responded with questions/planning, show as natural conversation
                 fallback_text = result.get('text', '') if result.get('text') else ''
                 if fallback_text and len(fallback_text) > 50:
                     # This is likely a planning/clarification response — show it naturally
                     print(f"[Builder Code] Chat-first response (planning/clarifying): {len(fallback_text)} chars")
-                    yield 'data: {"type": "text", "content": "Done. Preview above."}\n\n'
+                    yield f"data: {json.dumps({'type': 'text', 'content': fallback_text})}\n\n"
                 elif fallback_text:
-                    yield 'data: {"type": "text", "content": "Done. Preview above."}\n\n'
+                    yield f"data: {json.dumps({'type': 'text', 'content': fallback_text})}\n\n"
                 else:
-                    yield 'data: {"type": "text", "content": "Done. Preview above."}\n\n'
-            yield 'data: {"type": "text", "content": "Done. Preview above."}\n\n'
+                    yield f"data: {json.dumps({'type': 'text', 'content': 'Tell me more about what you want to build — what pages, features, and style do you have in mind?'})}\n\n"
+            yield f"data: {json.dumps({'type': 'done'})}\n\n"
             return
 
         # ── DEPLOY ──
         if intent == 'deploy':
-            yield 'data: {"type": "text", "content": "Done. Preview above."}\n\n'
-            yield 'data: {"type": "text", "content": "Done. Preview above."}\n\n'
-            yield 'data: {"type": "text", "content": "Done. Preview above."}\n\n'
+            yield f"data: {json.dumps({'type': 'deploy_ready', 'targets': ['vercel', 'render', 'github', 'download']})}\n\n"
+            yield f"data: {json.dumps({'type': 'text', 'content': 'Your project is ready to deploy. Where do you want to ship it?\n\n• **Vercel** — instant frontend, zero config\n• **Render** — full-stack with backends\n• **GitHub** — push to your repo\n• **Download** — get all files as ZIP'})}\n\n"
+            yield f"data: {json.dumps({'type': 'done'})}\n\n"
             return
 
         # ── RESEARCH ──
         if intent == 'research':
-            yield 'data: {"type": "text", "content": "Done. Preview above."}\n\n'
+            yield f"data: {json.dumps({'type': 'phase', 'phase': 'searching', 'message': 'Researching...'})}\n\n"
             pplx_key = PPLX_API_KEY  # Module-level variable
             research_text = ""
             citations = []
@@ -7554,15 +7554,15 @@ async def builder_unified_chat(request: Request):
                 result = await _builder_ai_call(BUILDER_CHAT_SYSTEM, message, _fb_model, 8000)
                 research_text = result['text']
             if citations:
-                yield 'data: {"type": "text", "content": "Done. Preview above."}\n\n'
+                yield f"data: {json.dumps({'type': 'citations', 'citations': citations})}\n\n"
             for i in range(0, len(research_text), 80):
-                yield 'data: {"type": "text", "content": "Done. Preview above."}\n\n'
+                yield f"data: {json.dumps({'type': 'text', 'content': research_text[i:i+80]})}\n\n"
                 await asyncio.sleep(0.015)
-            yield 'data: {"type": "text", "content": "Done. Preview above."}\n\n'
+            yield f"data: {json.dumps({'type': 'done'})}\n\n"
             return
 
         # ── GENERAL CHAT / DOCUMENT — Stream with Claude ──
-        yield 'data: {"type": "text", "content": "Done. Preview above."}\n\n'
+        yield f"data: {json.dumps({'type': 'phase', 'phase': 'generating', 'message': 'SAL is thinking...'})}\n\n"
         msgs = []
         if history:
             for h in history[-8:]:
@@ -7588,7 +7588,7 @@ async def builder_unified_chat(request: Request):
                                     if evt.get("type") == "content_block_delta":
                                         delta = evt.get("delta", {}).get("text", "")
                                         if delta:
-                                            yield 'data: {"type": "text", "content": "Done. Preview above."}\n\n'
+                                            yield f"data: {json.dumps({'type': 'text', 'content': delta})}\n\n"
                                 except: continue
             except Exception as e:
                 print(f"[Builder] Claude stream error: {e}")
@@ -7597,9 +7597,9 @@ async def builder_unified_chat(request: Request):
             result = await _builder_ai_call(BUILDER_CHAT_SYSTEM, message, _fb_model, 8000)
             if result['text']:
                 for i in range(0, len(result['text']), 80):
-                    yield 'data: {"type": "text", "content": "Done. Preview above."}\n\n'
+                    yield f"data: {json.dumps({'type': 'text', 'content': result['text'][i:i+80]})}\n\n"
                     await asyncio.sleep(0.015)
-        yield 'data: {"type": "text", "content": "Done. Preview above."}\n\n'
+        yield f"data: {json.dumps({'type': 'done'})}\n\n"
 
     async def metered_event_stream():
         """Wrapper that yields all events from event_stream, then records metering."""
@@ -8831,7 +8831,7 @@ async def career_generate_signature(request: Request):
   <tr><td style="border-top:2px solid {accent};padding:10px 0 0 0"><table cellpadding="0" cellspacing="0" border="0"><tr>
     <td style="padding-right:20px;font-size:11px;color:#666">✉ <a href="mailto:{email}" style="color:{accent};text-decoration:none">{email}</a></td>
     <td style="font-size:11px;color:#666">📞 <a href="tel:{phone}" style="color:#333;text-decoration:none">{phone}</a></td>
-  ''
+  </tr>{f'<tr><td colspan="2" style="padding-top:4px;font-size:11px;color:#666">🌐 <a href="{website}" style="color:{accent};text-decoration:none">{website}</a>{f" | <a href='{linkedin}' style='color:{accent};text-decoration:none'>LinkedIn</a>" if linkedin else ""}</td></tr>' if website else ''}
   </table></td></tr>
   <tr><td style="padding-top:10px"><div style="background:linear-gradient(90deg,{dark},{accent}22);border-radius:4px;padding:6px 12px;display:inline-block">
     <span style="font-size:9px;color:#fff;letter-spacing:2px;text-transform:uppercase;font-weight:600">Powered by SaintSal™ AI</span></div></td></tr>
