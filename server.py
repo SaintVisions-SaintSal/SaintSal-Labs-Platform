@@ -7872,12 +7872,12 @@ async def agent_build(request: Request):
         grok_plan_parsed = None
         if XAI_API_KEY:
             try:
-                async with httpx.AsyncClient(timeout=30) as hc:
+                async with httpx.AsyncClient(timeout=60) as hc:
                     plan_resp = await hc.post(
                         "https://api.x.ai/v1/chat/completions",
                         headers={"Authorization": "Bearer " + XAI_API_KEY, "Content-Type": "application/json"},
                         json={
-                            "model": "grok-3-latest",
+                            "model": "grok-4",
                             "messages": [
                                 {"role": "system", "content": "You are SAL's Lead Architect Agent. Given a build request, output ONLY valid JSON with these keys: {\"title\": \"\", \"components\": [], \"apis\": [], \"steps\": [], \"complexity\": \"low|medium|high\", \"estimated_time\": \"\"}. No markdown, no explanation."},
                                 {"role": "user", "content": prompt}
@@ -7916,14 +7916,15 @@ async def agent_build(request: Request):
         gemini_key = os.environ.get("GEMINI_API_KEY", "") or os.environ.get("GOOGLE_AI_KEY", "")
         if gemini_key:
             try:
-                async with httpx.AsyncClient(timeout=30) as hc:
-                    stitch_prompt = ("You are a UI design AI (Stitch). Given this plan, describe key visual design decisions in 3 sentences max. "
-                                     "Focus on: color palette, layout approach, component hierarchy. "
+                async with httpx.AsyncClient(timeout=45) as hc:
+                    stitch_prompt = ("You are Stitch — an elite UI/UX design AI. Given this architectural plan, output a comprehensive design system: "
+                                     "color palette (hex codes), typography scale, spacing system, component hierarchy with layout specs, "
+                                     "animation/transition recommendations, and responsive breakpoints. Be specific — give actual CSS values. "
                                      "Plan: " + json.dumps(grok_plan_parsed) + "\nBuild request: " + prompt)
                     stitch_resp = await hc.post(
-                        "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=" + gemini_key,
+                        "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro-preview-05-06:generateContent?key=" + gemini_key,
                         headers={"Content-Type": "application/json"},
-                        json={"contents": [{"parts": [{"text": stitch_prompt}]}], "generationConfig": {"maxOutputTokens": 256}}
+                        json={"contents": [{"parts": [{"text": stitch_prompt}]}], "generationConfig": {"maxOutputTokens": 1024}}
                     )
                     if stitch_resp.status_code == 200:
                         stitch_design = stitch_resp.json().get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "")
