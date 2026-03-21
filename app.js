@@ -2953,6 +2953,8 @@ function authHeaders() {
 // Refresh profile data from server
 async function refreshProfile() {
   if (!sessionToken) return;
+  // Always show the local session immediately — don't wait for API
+  if (currentUser) updateAuthUI(true);
   try {
     const resp = await fetch(API + '/api/auth/profile', { headers: authHeaders() });
     if (resp.ok) {
@@ -2970,8 +2972,10 @@ async function refreshProfile() {
       // Token expired — try refresh
       await refreshSession();
     }
+    // 5xx / gateway down: local session stays, UI already updated above
   } catch (e) {
-    console.warn('Profile refresh failed:', e);
+    // Network error — don't clear session, local state is fine
+    console.warn('[Auth] Profile refresh failed (network), local session intact:', e.message);
   }
 }
 
@@ -2994,11 +2998,14 @@ async function refreshSession() {
           user: currentUser
         }));
       }
-    } else {
+    } else if (resp.status === 401 || resp.status === 403) {
+      // Only clear session on explicit auth rejection — not server errors or downtime
       clearSession();
     }
+    // 5xx / gateway down: keep local session, user stays logged in
   } catch (e) {
-    clearSession();
+    // Network error / API down — keep local session intact, don't log user out
+    console.warn('[Auth] Refresh failed (network), keeping local session:', e.message);
   }
 }
 
@@ -7721,16 +7728,20 @@ function toggleDNATile(el) {
 function saveDNA() {
   var selected = Array.from(document.querySelectorAll('.dna-tile.selected')).map(function(el){return el.dataset.id;});
   if (!selected.length) return;
-  // Persist DNA to both storages immediately
   localStorage.setItem('sal_dna', JSON.stringify(selected));
   localStorage.setItem('sal_dna_primary', selected[0]);
-  sessionStorage.setItem('sal_dna', JSON.stringify(selected));
-  var token = localStorage.getItem('sal_token') || sessionStorage.getItem('sal_token') || '';
-  fetch('/api/social-studio/brand-dna', {
-    method:'POST',
-    headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},
-    body:JSON.stringify({industry:selected[0],interests:selected,target_audience:selected.join(', ')})
-  }).then(function(){setView('my-sal');});
+  // Save to backend with real user session
+  fetch(API + '/api/user/dna', {
+    method: 'POST',
+    headers: Object.assign({'Content-Type': 'application/json'}, authHeaders()),
+    body: JSON.stringify({
+      pillars: selected,
+      industry: selected[0],
+      interests: selected,
+      user_id: currentUser && currentUser.id ? currentUser.id : undefined
+    })
+  }).catch(function(e) { console.warn('[DNA save]', e); });
+  setView('my-sal');
 }
 
 function getMySALDashboardHTML(dna) {
@@ -7924,20 +7935,18 @@ function getMySALDashboardHTML(dna) {
 }
 
 function mysalLoadGHL() {
-  var token = localStorage.getItem('sal_token') || sessionStorage.getItem('sal_token') || '';
-  fetch('/api/ghl/stats', {headers: token ? {'Authorization':'Bearer '+token} : {}})
+  fetch(API + '/api/ghl/stats', {headers: authHeaders()})
     .then(function(r){return r.json();})
     .then(function(d) {
       var t = document.getElementById('ghl-tasks'); if(t) t.textContent = d.tasks || '0';
       var c = document.getElementById('ghl-contacts'); if(c) c.textContent = d.contacts || '0';
-      var l = document.getElementById('ghl-leads'); if(l) l.textContent = '+' + (d.new_leads_24h || '12');
+      var l = document.getElementById('ghl-leads'); if(l) l.textContent = d.opportunities || d.new_leads_24h || '0';
       var cal = document.getElementById('ghl-calendar'); if(cal) cal.textContent = d.calendar_today || '0';
     }).catch(function(){});
 }
 
 function mysalLoadPortfolio() {
-  var token = localStorage.getItem('sal_token') || sessionStorage.getItem('sal_token') || '';
-  fetch('/api/alpaca/portfolio', {headers: token ? {'Authorization':'Bearer '+token} : {}})
+  fetch(API + '/api/alpaca/portfolio', {headers: authHeaders()})
     .then(function(r){return r.json();})
     .then(function(d) {
       var el = document.getElementById('mysal-portfolio-val');
@@ -7946,7 +7955,7 @@ function mysalLoadPortfolio() {
 }
 
 function mysalLoadRE() {
-  fetch('/api/realestate/portfolio')
+  fetch(API + '/api/realestate/portfolio', {headers: authHeaders()})
     .then(function(r){return r.json();})
     .then(function(d) {
       var p = document.getElementById('re-props'); if(p) p.textContent = d.investment_properties || '0';
