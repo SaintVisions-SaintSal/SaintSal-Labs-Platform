@@ -11972,12 +11972,6 @@ async def marketing_content_history(date: str = "", platform: str = ""):
         return JSONResponse({"content": [], "error": str(e)})
 
 
-if __name__ == "__main__":
-    import uvicorn
-    port = int(os.environ.get("PORT", 8000))
-    uvicorn.run(app, host="0.0.0.0", port=port)
-
-
 # ════════════════════════════════════════════════════════════════════════════════
 # ISSUE #3 FIX — Dashboard endpoints missing from backend (audit fix)
 # ════════════════════════════════════════════════════════════════════════════════
@@ -12051,3 +12045,8 @@ async def realestate_portfolio(request: Request):
         return JSONResponse({"properties": properties, "total_value": round(total, 2), "count": len(properties), "ok": True})
     except Exception as e:
         return JSONResponse({"properties": [], "total_value": 0, "ok": False, "error": str(e)})
+
+if __name__ == "__main__":
+    import uvicorn
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run(app, host="0.0.0.0", port=port)
