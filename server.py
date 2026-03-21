@@ -7922,8 +7922,7 @@ async def agent_build(request: Request):
                                      "animation/transition recommendations, and responsive breakpoints. Be specific — give actual CSS values. "
                                      "Plan: " + json.dumps(grok_plan_parsed) + "\nBuild request: " + prompt)
                     stitch_resp = await hc.post(
-                        "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro-preview-05-06:generateContent?key=" + gemini_key,
-                        headers={"Content-Type": "application/json"},
+                        "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro-preview-05-06:generateContent?key=" + gemini_key,                        headers={"Content-Type": "application/json"},
                         json={"contents": [{"parts": [{"text": stitch_prompt}]}], "generationConfig": {"maxOutputTokens": 1024}}
                     )
                     if stitch_resp.status_code == 200:
