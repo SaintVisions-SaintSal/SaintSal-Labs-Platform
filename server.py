@@ -11476,6 +11476,85 @@ async def cards_portfolio_add(request: Request):
         return JSONResponse({"error": str(e)}, status_code=400)
 
 
+# ─── eBay Card Search (Build #90) ───────────────────────────────────────
+EBAY_APP_ID = os.environ.get("EBAY_APP_ID", "")
+EBAY_OAUTH_TOKEN = os.environ.get("EBAY_OAUTH_TOKEN", "")
+
+@app.get("/api/cards/ebay")
+async def cards_ebay_search(query: str = "", limit: int = 8):
+    """Search eBay for card listings."""
+    if not query:
+        return JSONResponse({"error": "query required"}, status_code=400)
+    search_url = f"https://www.ebay.com/sch/i.html?_nkw={query.replace(' ', '+')}&_sacat=183454"
+    if not EBAY_OAUTH_TOKEN:
+        return JSONResponse({"listings": [], "search_url": search_url, "note": "eBay API not configured — use search URL"})
+    try:
+        async with httpx.AsyncClient() as hc:
+            r = await hc.get(
+                "https://api.ebay.com/buy/browse/v1/item_summary/search",
+                params={"q": query, "category_ids": "183454", "limit": limit, "sort": "price"},
+                headers={"Authorization": f"Bearer {EBAY_OAUTH_TOKEN}", "Content-Type": "application/json"},
+                timeout=15
+            )
+            if r.status_code != 200:
+                return JSONResponse({"listings": [], "search_url": search_url, "error": f"eBay API {r.status_code}"})
+            listings = []
+            for item in (r.json().get("itemSummaries") or [])[:limit]:
+                listings.append({
+                    "title": item.get("title", ""), "price": item.get("price", {}).get("value", ""),
+                    "image": item.get("image", {}).get("imageUrl", ""), "url": item.get("itemWebUrl", ""),
+                    "condition": item.get("condition", ""), "seller": item.get("seller", {}).get("username", ""),
+                })
+            return JSONResponse({"listings": listings, "search_url": search_url, "count": len(listings)})
+    except Exception as e:
+        return JSONResponse({"listings": [], "search_url": search_url, "error": str(e)})
+
+
+# ─── Card Scan via Google Vision (Build #90) ─────────────────────
+@app.post("/api/cards/scan")
+async def cards_scan(request: Request):
+    """Accept base64 card image → Google Vision → identify → search Pokemon TCG."""
+    body = await request.json()
+    image_b64 = body.get("image", "")
+    if not image_b64:
+        return JSONResponse({"error": "image (base64) required"}, status_code=400)
+    if "base64," in image_b64:
+        image_b64 = image_b64.split("base64,")[1]
+    try:
+        vision_key = os.environ.get("GOOGLE_MAPS_API", "")
+        if not vision_key:
+            return JSONResponse({"error": "Google Vision not configured", "matches": []})
+        async with httpx.AsyncClient() as hc:
+            r = await hc.post(
+                f"https://vision.googleapis.com/v1/images:annotate?key={vision_key}",
+                json={"requests": [{"image": {"content": image_b64}, "features": [
+                    {"type": "TEXT_DETECTION", "maxResults": 10},
+                    {"type": "WEB_DETECTION", "maxResults": 5}
+                ]}]}, timeout=20
+            )
+            if r.status_code != 200:
+                return JSONResponse({"error": f"Vision API error {r.status_code}", "matches": []})
+            result = r.json().get("responses", [{}])[0]
+            text = result.get("textAnnotations", [{}])[0].get("description", "") if result.get("textAnnotations") else ""
+            web_entities = [e.get("description", "") for e in result.get("webDetection", {}).get("webEntities", [])]
+            card_hints = " ".join(web_entities[:3]) if web_entities else text.split("\n")[0] if text else ""
+            matches = []
+            if card_hints and POKEMON_TCG_API_KEY:
+                headers = {"X-Api-Key": POKEMON_TCG_API_KEY}
+                sr = await hc.get(f"{POKEMON_TCG_BASE}/cards", params={"q": f"name:{card_hints.split()[0]}*", "pageSize": 5, "select": "id,name,set,images,tcgplayer,rarity"}, headers=headers, timeout=10)
+                if sr.status_code == 200:
+                    for card in (sr.json().get("data") or []):
+                        price_info = {}
+                        tcgp = card.get("tcgplayer", {}).get("prices", {})
+                        for grade in ["holofoil", "reverseHolofoil", "normal", "1stEditionHolofoil"]:
+                            if grade in tcgp:
+                                price_info = {"grade": grade, "market": tcgp[grade].get("market"), "low": tcgp[grade].get("low")}
+                                break
+                        matches.append({"id": card.get("id"), "name": card.get("name"), "set": card.get("set", {}).get("name"), "rarity": card.get("rarity"), "image": card.get("images", {}).get("small"), "price": price_info})
+            return JSONResponse({"detected_text": text[:200], "web_entities": web_entities[:5], "search_query": card_hints, "matches": matches, "count": len(matches)})
+    except Exception as e:
+        return JSONResponse({"error": str(e), "matches": []}, status_code=500)
+
 
 # ════════════════════════════════════════════════════════════════════════════════
 # MARKETING AUTOMATION ENGINE — Build #79
