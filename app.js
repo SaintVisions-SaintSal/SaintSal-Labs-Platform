@@ -6288,6 +6288,287 @@ async function agentBuild() {
 }
 // ─── END GROK AGENTIC BUILDER ──────────────────────────────────────────────
 
+// ════════════════════════════════════════════════════════
+// KINETIC BLUEPRINT BUILDER — v9.0
+// 4-State Machine: Input → Planning → Building → Complete
+// ════════════════════════════════════════════════════════
+
+var _kbCurrentState = 0;
+var _kbBuilding = false;
+var _kbFiles = [];
+
+function kbSetState(n) {
+  _kbCurrentState = n;
+  var states = ['kbStateInput', 'kbStatePlanning', 'kbStateBuilding', 'kbStateComplete'];
+  states.forEach(function(id, i) {
+    var el = document.getElementById(id);
+    if (el) el.style.display = i === n ? 'flex' : 'none';
+  });
+}
+
+function kbLog(text, color) {
+  var streams = [
+    document.getElementById('kbLogStream'),
+    document.getElementById('kbCodeStream')
+  ];
+  var ts = new Date().toLocaleTimeString('en-US', { hour12: false });
+  streams.forEach(function(el) {
+    if (!el) return;
+    var p = document.createElement('p');
+    p.style.color = color || '#a4ffb9';
+    p.style.margin = '0';
+    p.textContent = '[' + ts + '] ' + text;
+    el.appendChild(p);
+    el.scrollTop = el.scrollHeight;
+  });
+}
+
+function kbSetAgent(agent, state, msg) {
+  // agent: 'stitch' | 'sal'  state: 'active' | 'done' | 'standby'
+  var prefix = { stitch: 'kbBuildStitch', sal: 'kbBuildSal' }[agent];
+  if (!prefix) return;
+  var card = document.getElementById(prefix + 'Card');
+  var badge = document.getElementById(prefix + 'Badge');
+  var status = document.getElementById(prefix + 'Status');
+  var bar = document.getElementById(prefix + 'Bar');
+  var icon = document.getElementById(prefix + 'Icon');
+  var isActive = state === 'active';
+  var isDone = state === 'done';
+  if (card) {
+    card.style.borderColor = isActive ? 'var(--kb-neon)' : isDone ? 'rgba(255,215,0,0.3)' : 'var(--kb-border)';
+    card.style.boxShadow = isActive ? '0 0 20px rgba(0,255,136,0.15)' : isDone ? '0 0 12px rgba(255,215,0,0.08)' : 'none';
+  }
+  if (badge) {
+    badge.textContent = isActive ? 'ACTIVE' : isDone ? 'DONE' : 'STANDBY';
+    badge.style.background = isActive ? 'rgba(0,255,136,0.15)' : isDone ? 'rgba(255,215,0,0.15)' : 'rgba(255,255,255,0.05)';
+    badge.style.color = isActive ? 'var(--kb-neon)' : isDone ? 'var(--kb-gold)' : 'var(--kb-muted)';
+    badge.style.border = '1px solid ' + (isActive ? 'rgba(0,255,136,0.3)' : isDone ? 'rgba(255,215,0,0.3)' : 'var(--kb-border)');
+  }
+  if (status && msg) {
+    status.textContent = msg;
+    status.className = 'kb-card-status' + (isDone ? ' done' : '');
+  }
+  if (icon) {
+    icon.className = 'kb-card-icon' + (isDone ? ' done' : '');
+  }
+  if (bar) {
+    bar.style.width = isActive ? '60%' : isDone ? '100%' : '0%';
+    bar.style.background = isActive ? 'var(--kb-neon)' : isDone ? 'var(--kb-gold)' : 'var(--kb-border)';
+    bar.style.boxShadow = isActive ? '0 0 8px var(--kb-neon)' : isDone ? '0 0 6px var(--kb-gold)' : 'none';
+    bar.className = 'kb-card-bar' + (isDone ? ' done' : '');
+  }
+}
+
+function kbShowPlan(plan) {
+  var grid = document.getElementById('kbPlanGrid');
+  if (!grid) return;
+  grid.style.display = 'grid';
+  var comps = document.getElementById('kbPlanCompItems');
+  var apis = document.getElementById('kbPlanAPIItems');
+  var complexity = document.getElementById('kbPlanComplexity');
+  var time = document.getElementById('kbPlanTime');
+  if (comps && plan.components) comps.innerHTML = (plan.components || []).slice(0,5).map(function(c) { return '<div>· ' + escapeHtml(c) + '</div>'; }).join('');
+  if (apis && plan.apis) apis.innerHTML = (plan.apis || []).slice(0,3).map(function(a) { return '<div>· ' + escapeHtml(a) + '</div>'; }).join('');
+  if (complexity && plan.complexity) complexity.textContent = plan.complexity;
+  if (time && plan.estimated_time) time.textContent = plan.estimated_time;
+}
+
+function kbInjectPreview(html) {
+  // Inject into both build and complete iframes
+  ['kbBuildIframe', 'kbCompleteIframe'].forEach(function(id) {
+    var iframe = document.getElementById(id);
+    if (!iframe) return;
+    iframe.style.display = 'block';
+    try {
+      iframe.srcdoc = html;
+    } catch(e) {
+      var doc = iframe.contentDocument || iframe.contentWindow.document;
+      doc.open(); doc.write(html); doc.close();
+    }
+  });
+  // Also mirror to existing builderPreviewIframe for compat
+  var old = document.getElementById('builderPreviewIframe');
+  if (old) { try { old.srcdoc = html; } catch(e) {} }
+  // Hide building overlay
+  var bld = document.getElementById('kbPreviewBuilding');
+  if (bld) bld.style.display = 'none';
+}
+
+function kbSetDevice(device, btn) {
+  var vp = document.getElementById('kbPreviewViewport');
+  if (!vp) return;
+  var iframe = document.getElementById('kbBuildIframe');
+  if (device === 'mobile') {
+    if (iframe) { iframe.style.width = '375px'; iframe.style.margin = '0 auto'; }
+  } else {
+    if (iframe) { iframe.style.width = '100%'; iframe.style.margin = ''; }
+  }
+  document.querySelectorAll('.kb-device-btn').forEach(function(b) { b.classList.remove('active'); });
+  if (btn) btn.classList.add('active');
+}
+
+async function kbBuild() {
+  if (_kbBuilding) return;
+  var promptEl = document.getElementById('kbPrompt');
+  if (!promptEl || !promptEl.value.trim()) return;
+  var prompt = promptEl.value.trim();
+
+  _kbBuilding = true;
+  _kbFiles = [];
+
+  // Transition to planning state
+  kbSetState(1);
+
+  // Animate Grok progress bar
+  var grokBar = document.getElementById('kbGrokBar');
+  var grokStatus = document.getElementById('kbGrokStatus');
+  var grokProgress = 0;
+  var grokTick = setInterval(function() {
+    grokProgress = Math.min(grokProgress + 2, 85);
+    if (grokBar) grokBar.style.width = grokProgress + '%';
+  }, 600);
+
+  // Seed log with initializing messages
+  var initLogs = [
+    'Initializing Grok 4 Reasoning Engine...',
+    'Parsing prompt requirements...',
+    'Analyzing architecture topology...'
+  ];
+  initLogs.forEach(function(msg, i) {
+    setTimeout(function() { kbLog(msg); }, i * 700);
+  });
+
+  var abortCtl = new AbortController();
+  var timeoutId = setTimeout(function() { abortCtl.abort(); }, 180000);
+
+  try {
+    var resp = await fetch(API + '/api/builder/agent', {
+      method: 'POST',
+      headers: Object.assign({'Content-Type': 'application/json'}, authHeaders()),
+      signal: abortCtl.signal,
+      body: JSON.stringify({ prompt: prompt })
+    });
+
+    var reader = resp.body.getReader();
+    var decoder = new TextDecoder();
+    var buf = '';
+    var codeBuffer = '';
+
+    while (true) {
+      var chunk = await reader.read();
+      if (chunk.done) break;
+      buf += decoder.decode(chunk.value, { stream: true });
+      var lines = buf.split('\n');
+      buf = lines.pop();
+
+      for (var i = 0; i < lines.length; i++) {
+        var line = lines[i];
+        if (!line.startsWith('data: ')) continue;
+        try {
+          var data = JSON.parse(line.slice(6));
+          var phase = data.phase;
+
+          if (phase === 'planning') {
+            clearInterval(grokTick);
+            if (grokBar) { grokBar.style.width = '50%'; }
+            if (grokStatus) grokStatus.textContent = data.message || 'Planning architecture...';
+            kbLog(data.message || 'Analyzing request...');
+
+          } else if (phase === 'plan_ready') {
+            clearInterval(grokTick);
+            if (grokBar) { grokBar.style.width = '100%'; grokBar.className = 'kb-card-bar done'; grokBar.style.background = 'var(--kb-gold)'; grokBar.style.boxShadow = '0 0 6px var(--kb-gold)'; }
+            var grokBadge = document.getElementById('kbGrokBadge');
+            if (grokBadge) { grokBadge.textContent = 'DONE'; grokBadge.style.background = 'rgba(255,215,0,0.15)'; grokBadge.style.color = 'var(--kb-gold)'; grokBadge.style.border = '1px solid rgba(255,215,0,0.3)'; }
+            if (grokStatus) { grokStatus.textContent = 'Architecture ready'; grokStatus.className = 'kb-card-status done'; }
+            if (data.plan) kbShowPlan(data.plan);
+            kbLog('Architect plan complete — activating Stitch', '#FFD700');
+
+            // Transition to building state
+            kbSetState(2);
+            kbSetAgent('stitch', 'active', 'Generating UI components...');
+
+          } else if (phase === 'building') {
+            kbSetAgent('stitch', 'active', data.message || 'Building UI...');
+            kbLog(data.message || 'Stitch: building UI...', '#a4ffb9');
+
+          } else if (phase === 'stitch_ready') {
+            kbSetAgent('stitch', 'done', 'Visual engine — DONE');
+            kbSetAgent('sal', 'active', 'Wiring intelligence...');
+            kbLog('Stitch UI ready — activating SAL Executor', '#FFD700');
+
+          } else if (phase === 'wiring' || phase === 'coding') {
+            kbSetAgent('sal', 'active', data.message || 'Building from plan...');
+            kbLog(data.message || 'SAL: wiring components...', '#a4ffb9');
+            if (data.code) {
+              codeBuffer += data.code;
+              var stream = document.getElementById('kbCodeStream');
+              if (stream) {
+                var p = document.createElement('p');
+                p.style.color = '#a4ffb9';
+                p.style.margin = '0';
+                p.textContent = data.code.substring(0, 120);
+                stream.appendChild(p);
+                stream.scrollTop = stream.scrollHeight;
+              }
+            }
+
+          } else if (phase === 'files_ready') {
+            if (data.files && data.files.length) {
+              _kbFiles = data.files;
+              builderChatState.files = data.files; // compat
+              // Find main HTML file to preview
+              var htmlFile = data.files.find(function(f) { return f.name === 'index.html' || f.name.endsWith('.html'); });
+              if (htmlFile && htmlFile.content) kbInjectPreview(htmlFile.content);
+              kbSetAgent('sal', 'done', 'Built ' + data.files.length + ' files');
+              kbLog('COMPONENT GEN: ' + data.files.length + ' files — SUCCESS', '#00FF88');
+
+              // Update complete state metadata
+              var metaFiles = document.getElementById('kbMetaFiles');
+              if (metaFiles) metaFiles.textContent = data.files.length;
+              var metaModel = document.getElementById('kbMetaModel');
+              if (metaModel) metaModel.textContent = data.model || 'SAL';
+
+              // Update compat file tree
+              if (typeof builderRenderFiles === 'function') builderRenderFiles();
+              if (typeof builderUpdateIDEFileTree === 'function') builderUpdateIDEFileTree();
+              var fc = document.getElementById('builderFileCount');
+              if (fc) fc.textContent = data.files.length + ' files';
+            }
+
+          } else if (phase === 'complete') {
+            kbSetAgent('stitch', 'done', 'Visual engine — DONE');
+            kbSetAgent('sal', 'done', data.message || 'Deployment ready');
+            kbLog('ALL AGENTS COMPLETE ✓', '#FFD700');
+
+            // Transition to complete state
+            kbSetState(3);
+
+            // If we have a code buffer and no files, try to show it
+            if (!_kbFiles.length && codeBuffer && codeBuffer.indexOf('<html') > -1) {
+              kbInjectPreview(codeBuffer);
+              var metaFiles = document.getElementById('kbMetaFiles');
+              if (metaFiles) metaFiles.textContent = '1';
+            }
+          }
+        } catch(e) {}
+      }
+    }
+  } catch(e) {
+    kbLog('ERROR: ' + (e.message || 'Connection failed'), '#ff716c');
+    console.error('[kbBuild]', e);
+    // Fall back to input state on abort/timeout
+    if (e.name === 'AbortError') {
+      kbSetState(0);
+    }
+  }
+
+  clearInterval(grokTick);
+  clearTimeout(timeoutId);
+  _kbBuilding = false;
+}
+
+// ── END KINETIC BLUEPRINT BUILDER ──
+
 function builderViewFile(index) {
   var files = builderChatState.files;
   if (!files || !files[index]) return;

@@ -789,11 +789,204 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
       <div class="app-footer">SaintSal™ <span class="footer-labs-green">LABS</span> · Responsible Intelligence · Patent #10,290,222 · <a href="/privacy.html" target="_blank">Privacy</a> · <a href="/terms.html" target="_blank">Terms</a> · <a href="https://www.perplexity.ai/computer" target="_blank" rel="noopener noreferrer">Created with Perplexity Computer</a></div>
     </div>
 
-    <!-- Builder View — v8.8.0 Code-Only IDE + Top Nav -->
+    <!-- Builder View — v9.0 Kinetic Blueprint -->
     <div class="view studio-view" id="studioView">
 
+      <!-- ══ STATE 0: INPUT ══ -->
+      <div class="kb-state" id="kbStateInput">
+        <div class="kb-grid-bg"></div>
+        <header class="kb-header">
+          <div class="kb-header-brand">
+            <span class="kb-brand-text">SAINTSAL™ LABS</span>
+            <span class="kb-brand-badge">KINETIC LABORATORY</span>
+          </div>
+          <div class="kb-header-status"><span class="kb-status-dot"></span>SYSTEM ONLINE</div>
+        </header>
+        <main class="kb-input-main">
+          <div class="kb-hero">
+            <h1 class="kb-hero-title">ENGINEER<br>THE FUTURE</h1>
+            <p class="kb-hero-sub">Describe what you want to build. Grok architects. Stitch designs. SAL executes.</p>
+          </div>
+          <div class="kb-prompt-wrap">
+            <span class="kb-corner kb-tl"></span><span class="kb-corner kb-tr"></span>
+            <span class="kb-corner kb-bl"></span><span class="kb-corner kb-br"></span>
+            <textarea id="kbPrompt" class="kb-prompt-input" placeholder="What do you want to build?" rows="4" onkeydown="if(event.key==='Enter'&&(event.metaKey||event.ctrlKey)){event.preventDefault();kbBuild();}"></textarea>
+            <div class="kb-prompt-footer">
+              <span class="kb-prompt-hint">⌘ + Enter to build</span>
+              <button class="kb-build-btn" onclick="kbBuild()">BUILD WITH SAL →</button>
+            </div>
+          </div>
+          <div class="kb-suggestions">
+            <button class="kb-suggestion" onclick="document.getElementById('kbPrompt').value='Build a modern SaaS landing page for an AI analytics startup. Dark theme, hero section with animated gradient, pricing table with 3 tiers, testimonials, fully responsive.'">SaaS Landing Page</button>
+            <button class="kb-suggestion" onclick="document.getElementById('kbPrompt').value='Build an admin dashboard with sidebar nav, analytics charts, data table with sorting, dark theme, responsive design.'">Admin Dashboard</button>
+            <button class="kb-suggestion" onclick="document.getElementById('kbPrompt').value='Build a personal portfolio for a creative developer. Minimal dark design, project gallery, skills grid, animated contact form.'">Dev Portfolio</button>
+          </div>
+        </main>
+        <footer class="kb-input-footer">
+          <span class="kb-footer-badge"><span class="kb-footer-dot" style="background:#00FF88"></span>Grok 4</span>
+          <span class="kb-footer-badge"><span class="kb-footer-dot" style="background:#FFD700"></span>Gemini 2.5 Pro</span>
+          <span class="kb-footer-badge"><span class="kb-footer-dot" style="background:#a78bfa"></span>Claude Sonnet</span>
+          <span class="kb-footer-latency">≈ 45s avg</span>
+        </footer>
+      </div>
+
+      <!-- ══ STATE 1: PLANNING ══ -->
+      <div class="kb-state" id="kbStatePlanning" style="display:none">
+        <div class="kb-grid-bg"></div>
+        <header class="kb-header kb-header-compact">
+          <button class="kb-back-btn" onclick="kbSetState(0)">← NEW BUILD</button>
+          <span class="kb-phase-label">PHASE 01 — PLANNING</span>
+          <span class="kb-header-status"><span class="kb-status-dot pulse"></span>GROK ACTIVE</span>
+        </header>
+        <div class="kb-planning-body">
+          <div class="kb-agent-card" id="kbGrokCard">
+            <span class="kb-corner kb-tl"></span><span class="kb-corner kb-br"></span>
+            <div class="kb-card-header">
+              <div class="kb-card-icon" id="kbGrokIcon">
+                <svg viewBox="0 0 24 24" fill="none" width="18" height="18"><circle cx="12" cy="12" r="10" stroke="#00FF88" stroke-width="1.5"/><path d="M8 12l3 3 5-6" stroke="#00FF88" stroke-width="1.5" stroke-linecap="round"/></svg>
+              </div>
+              <div class="kb-card-info">
+                <div class="kb-card-name">GROK ARCHITECT</div>
+                <div class="kb-card-status" id="kbGrokStatus">Planning Logic...</div>
+              </div>
+              <div class="kb-card-badge" id="kbGrokBadge" style="background:#00FF88;color:#003d1f">ACTIVE</div>
+            </div>
+            <div class="kb-card-progress"><div class="kb-card-bar" id="kbGrokBar" style="width:40%;background:#00FF88;box-shadow:0 0 8px #00FF88"></div></div>
+          </div>
+          <div class="kb-plan-grid" id="kbPlanGrid" style="display:none">
+            <div class="kb-plan-cell"><div class="kb-plan-label">COMPONENTS</div><div class="kb-plan-items" id="kbPlanCompItems">—</div></div>
+            <div class="kb-plan-cell"><div class="kb-plan-label">APIs</div><div class="kb-plan-items" id="kbPlanAPIItems">—</div></div>
+            <div class="kb-plan-cell"><div class="kb-plan-label">COMPLEXITY</div><div class="kb-plan-value" id="kbPlanComplexity">—</div></div>
+            <div class="kb-plan-cell"><div class="kb-plan-label">EST. TIME</div><div class="kb-plan-value" id="kbPlanTime">—</div></div>
+          </div>
+          <div class="kb-log-terminal">
+            <div class="kb-log-header"><span class="kb-log-dot"></span>ARCHITECT LOGS</div>
+            <div class="kb-log-stream" id="kbLogStream"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══ STATE 2: BUILDING ══ -->
+      <div class="kb-state" id="kbStateBuilding" style="display:none">
+        <div class="kb-grid-bg"></div>
+        <header class="kb-header kb-header-compact">
+          <span class="kb-brand-text">SAINTSAL™ LABS</span>
+          <span class="kb-phase-label">PHASE 02 — BUILDING</span>
+          <span class="kb-header-status"><span class="kb-status-dot pulse"></span>SAL EXECUTING</span>
+        </header>
+        <div class="kb-building-body">
+          <div class="kb-agent-pipeline">
+            <div class="kb-agent-card done" id="kbBuildGrokCard">
+              <div class="kb-card-header">
+                <div class="kb-card-icon done"><svg viewBox="0 0 24 24" fill="none" width="16" height="16"><circle cx="12" cy="12" r="10" stroke="#FFD700" stroke-width="1.5"/><path d="M8 12l3 3 5-6" stroke="#FFD700" stroke-width="1.5" stroke-linecap="round"/></svg></div>
+                <div class="kb-card-info"><div class="kb-card-name">GROK</div><div class="kb-card-status done" id="kbBuildGrokStatus">Architecture ready</div></div>
+                <div class="kb-card-badge done" id="kbBuildGrokBadge">DONE</div>
+              </div>
+              <div class="kb-card-progress"><div class="kb-card-bar done" style="width:100%"></div></div>
+            </div>
+            <div class="kb-agent-card" id="kbBuildStitchCard">
+              <div class="kb-card-header">
+                <div class="kb-card-icon" id="kbBuildStitchIcon"><svg viewBox="0 0 24 24" fill="none" width="16" height="16"><rect x="3" y="3" width="18" height="18" rx="1" stroke="currentColor" stroke-width="1.5"/><path d="M3 9h18M9 21V9" stroke="currentColor" stroke-width="1.5"/></svg></div>
+                <div class="kb-card-info"><div class="kb-card-name">STITCH</div><div class="kb-card-status" id="kbBuildStitchStatus">Designing UI...</div></div>
+                <div class="kb-card-badge" id="kbBuildStitchBadge">STANDBY</div>
+              </div>
+              <div class="kb-card-progress"><div class="kb-card-bar" id="kbBuildStitchBar" style="width:0%"></div></div>
+            </div>
+            <div class="kb-agent-card" id="kbBuildSalCard">
+              <div class="kb-card-header">
+                <div class="kb-card-icon" id="kbBuildSalIcon"><svg viewBox="0 0 24 24" fill="none" width="16" height="16"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg></div>
+                <div class="kb-card-info"><div class="kb-card-name">SAL EXECUTOR</div><div class="kb-card-status" id="kbBuildSalStatus">Waiting...</div></div>
+                <div class="kb-card-badge" id="kbBuildSalBadge">STANDBY</div>
+              </div>
+              <div class="kb-card-progress"><div class="kb-card-bar" id="kbBuildSalBar" style="width:0%"></div></div>
+            </div>
+          </div>
+          <div class="kb-build-workspace">
+            <div class="kb-code-panel">
+              <div class="kb-panel-header">COMMAND CONSOLE <span class="kb-status-dot pulse" style="margin-left:8px"></span></div>
+              <div class="kb-code-stream" id="kbCodeStream"></div>
+            </div>
+            <div class="kb-preview-panel">
+              <div class="kb-panel-header">
+                LIVE PREVIEW
+                <div class="kb-device-toggle">
+                  <button class="kb-device-btn active" onclick="kbSetDevice('desktop',this)">DESKTOP</button>
+                  <button class="kb-device-btn" onclick="kbSetDevice('mobile',this)">MOBILE</button>
+                </div>
+              </div>
+              <div class="kb-preview-viewport" id="kbPreviewViewport">
+                <div class="kb-preview-building" id="kbPreviewBuilding">
+                  <div class="kb-spinner"></div>
+                  <span>Building...</span>
+                </div>
+                <iframe id="kbBuildIframe" style="display:none;width:100%;height:100%;border:none;background:#fff;"></iframe>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══ STATE 3: COMPLETE ══ -->
+      <div class="kb-state" id="kbStateComplete" style="display:none">
+        <div class="kb-grid-bg"></div>
+        <header class="kb-header kb-header-compact">
+          <span class="kb-brand-text">SAINTSAL™ LABS</span>
+          <div class="kb-complete-badge">✓ BUILD COMPLETE</div>
+          <div style="display:flex;gap:8px;align-items:center">
+            <button class="kb-action-btn" onclick="kbSetState(0)">NEW BUILD</button>
+            <button class="kb-deploy-btn" onclick="builderPublish('vercel')">DEPLOY TO MAIN →</button>
+          </div>
+        </header>
+        <div class="kb-complete-body">
+          <div class="kb-complete-agents">
+            <div class="kb-agent-chip"><span>GROK</span><span class="kb-chip-done">DONE</span></div>
+            <div class="kb-agent-chip"><span>STITCH</span><span class="kb-chip-done">DONE</span></div>
+            <div class="kb-agent-chip"><span>SAL</span><span class="kb-chip-done">DONE</span></div>
+          </div>
+          <div class="kb-complete-preview">
+            <div class="kb-browser-bar">
+              <div class="kb-browser-dots"><span></span><span></span><span></span></div>
+              <div class="kb-browser-url" id="kbCompleteURL">preview://build</div>
+              <button onclick="builderPublish('download')" class="kb-browser-btn">↓ ZIP</button>
+            </div>
+            <div class="kb-complete-frame">
+              <iframe id="kbCompleteIframe" style="width:100%;height:100%;border:none;background:#fff;"></iframe>
+            </div>
+          </div>
+          <div class="kb-complete-meta">
+            <div class="kb-meta-item"><span class="kb-meta-label">FILES</span><span class="kb-meta-value" id="kbMetaFiles">0</span></div>
+            <div class="kb-meta-item"><span class="kb-meta-label">MODEL</span><span class="kb-meta-value" id="kbMetaModel">—</span></div>
+            <div class="kb-meta-item"><span class="kb-meta-label">STATUS</span><span class="kb-meta-value" style="color:#00FF88">STABLE</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══ MOBILE BOTTOM NAV ══ -->
+      <nav class="kb-mobile-nav" id="kbMobileNav">
+        <button class="kb-nav-btn" onclick="navigate('searchView')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+          <span>Search</span>
+        </button>
+        <button class="kb-nav-btn active" onclick="navigate('studioView')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+          <span>Builder</span>
+        </button>
+        <button class="kb-nav-center" onclick="navigate('chatView')">
+          <div class="kb-helm-ring"></div>
+          <svg viewBox="0 0 24 24" fill="none" width="28" height="28"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" fill="#00FF88" stroke="#00FF88" stroke-width="0.5"/></svg>
+        </button>
+        <button class="kb-nav-btn" onclick="navigate('socialView')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20"><path d="M23 3a10.9 10.9 0 0 1-3.14 1.53 4.48 4.48 0 0 0-7.86 3v1A10.66 10.66 0 0 1 3 4s-4 9 5 13a11.64 11.64 0 0 1-7 2c9 5 20 0 20-11.5a4.5 4.5 0 0 0-.08-.83A7.72 7.72 0 0 0 23 3z"/></svg>
+          <span>Social</span>
+        </button>
+        <button class="kb-nav-btn" onclick="navigate('dashboardView')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+          <span>More</span>
+        </button>
+      </nav>
+
       <!-- ═══ TOP NAV BAR — Always visible ═══ -->
-      <div class="builder-topbar" id="builderTopbar">
+      <div class="builder-topbar" id="builderTopbar" style="display:none">
         <div class="builder-topbar-left">
           <span class="builder-topbar-title" style="font-size:11px;font-weight:900;color:#F59E0B;letter-spacing:0.5px;">THE KINETIC LABORATORY</span>
           <span class="builder-topbar-badge" style="font-size:9px;background:rgba(255,255,255,0.05);color:#444;border:1px solid rgba(255,255,255,0.08);">Project Genesis, Alpha</span>
@@ -809,8 +1002,8 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
         </div>
       </div>
 
-      <!-- ═══ MAIN IDE BODY ═══ -->
-      <div class="builder-ide" id="builderIDE">
+      <!-- ═══ MAIN IDE BODY — hidden, kept for JS compat ═══ -->
+      <div class="builder-ide" id="builderIDE" style="display:none">
 
         <!-- ═══ LEFT: Chat Panel ═══ -->
         <div class="builder-ide-chat">
@@ -1005,8 +1198,8 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
 
       </div><!-- end .builder-ide -->
 
-      <!-- v8.8.1 Mobile Builder Tab Bar — Chat / Preview / Code -->
-      <div class="builder-mobile-tabs" id="builderMobileTabs">
+      <!-- v8.8.1 Mobile Builder Tab Bar — hidden, replaced by kb-mobile-nav -->
+      <div class="builder-mobile-tabs" id="builderMobileTabs" style="display:none">
         <button class="builder-mobile-tab active" data-btab="chat" onclick="builderMobileTab('chat',this)">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
           Chat
