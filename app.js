@@ -965,6 +965,24 @@ function finalizeResponse(answerEl, rawText, typingEl, sources, intent) {
 
   answerEl.appendChild(toolbar);
 
+  // ── KB: Action chips + Initialize Mission ──
+  var chips = document.createElement('div');
+  chips.className = 'kb-chips';
+  chips.innerHTML =
+    '<button class="kb-chip" onclick="handleSend(\'Generate an image for this\')"><span>Generate Image</span><span class="kb-chip-icon">🖼</span></button>' +
+    '<button class="kb-chip" onclick="handleSend(\'Draft a social post about this\')"><span>Draft Social Post</span><span class="kb-chip-icon">📱</span></button>' +
+    '<button class="kb-chip" onclick="navigate(\'studioView\')"><span>Build with SAL</span><span class="kb-chip-icon">🏗</span></button>';
+  answerEl.appendChild(chips);
+  var mBtn = document.createElement('button');
+  mBtn.className = 'kb-mission-btn';
+  mBtn.textContent = 'INITIALIZE MISSION';
+  mBtn.onclick = function() { navigate('studioView'); };
+  answerEl.appendChild(mBtn);
+  var mSub = document.createElement('div');
+  mSub.className = 'kb-mission-sub';
+  mSub.textContent = 'Connect to Grok Architect';
+  answerEl.appendChild(mSub);
+
   // Scroll to bottom
   var threadArea = document.getElementById('chatThreadArea');
   threadArea.scrollTop = threadArea.scrollHeight;

@@ -8086,3 +8086,230 @@ body { padding-bottom: 64px !important; }
     display: none !important;
   }
 }
+
+/* ═══════════════════════════════════════════════════════
+   KINETIC BLUEPRINT — Intelligence Layer styles
+   Overrides for chat messages + input bar only.
+   No layout changes — app shell is untouched.
+   ═══════════════════════════════════════════════════════ */
+
+/* User message — right-aligned, green right border */
+.chat-msg-query {
+  align-self: flex-end !important;
+  max-width: 85% !important;
+  margin-left: auto !important;
+  background: #1a1919 !important;
+  border: none !important;
+  border-right: 2px solid #a4ffb9 !important;
+  border-bottom: none !important;
+  padding: 14px 16px !important;
+  font-family: 'Inter', sans-serif !important;
+  font-size: 13px !important;
+  font-weight: 400 !important;
+  color: rgba(255,255,255,0.8) !important;
+  line-height: 1.6 !important;
+  position: relative;
+}
+
+/* Green corner dot on user message */
+.chat-msg-query::after {
+  content: '';
+  position: absolute;
+  top: -1px;
+  right: -1px;
+  width: 7px;
+  height: 7px;
+  background: #a4ffb9;
+}
+
+/* AI answer — left green border, dark bg */
+.chat-msg-answer {
+  background: #000 !important;
+  border: none !important;
+  border-left: 2px solid #a4ffb9 !important;
+  padding: 16px !important;
+  font-family: 'Inter', sans-serif !important;
+  font-size: 13px !important;
+  line-height: 1.75 !important;
+  color: rgba(255,255,255,0.85) !important;
+  position: relative;
+}
+
+/* Gold square dot before AI answer */
+.chat-msg-answer::before {
+  content: '';
+  display: block;
+  width: 7px;
+  height: 7px;
+  background: #ffd709;
+  box-shadow: 0 0 8px #ffd709;
+  margin-bottom: 10px;
+}
+
+/* Keep markdown readable */
+.chat-msg-answer strong, .chat-msg-answer b {
+  color: #a4ffb9 !important;
+  font-weight: 700;
+}
+.chat-msg-answer h2, .chat-msg-answer h3 {
+  font-family: 'Space Grotesk', sans-serif !important;
+  color: #ffd709 !important;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin: 16px 0 8px !important;
+  font-size: 12px !important;
+}
+.chat-msg-answer code {
+  font-family: monospace !important;
+  font-size: 11px !important;
+  background: #131313 !important;
+  color: #a4ffb9 !important;
+  padding: 2px 5px !important;
+  border-radius: 0 !important;
+}
+
+/* Phase indicator */
+.chat-phase-indicator {
+  font-family: monospace !important;
+  font-size: 10px !important;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #a4ffb9 !important;
+}
+
+/* ── Action chips after AI response ── */
+.kb-chips {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 14px;
+}
+
+.kb-chip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 9px 14px;
+  background: #131313;
+  border: 1px solid #494847;
+  color: rgba(255,255,255,0.6);
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all 0.15s;
+  width: 100%;
+  text-align: left;
+}
+
+.kb-chip:hover {
+  border-color: #ffd709;
+  color: #ffd709;
+}
+
+.kb-chip-icon {
+  font-size: 12px;
+  opacity: 0.6;
+}
+
+/* INITIALIZE MISSION */
+.kb-mission-btn {
+  display: block;
+  width: 100%;
+  margin-top: 12px;
+  padding: 16px;
+  background: #00fd87;
+  color: #003d1f;
+  border: none;
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 13px;
+  font-weight: 900;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  cursor: pointer;
+  box-shadow: 0 0 24px rgba(0,253,135,0.25);
+  transition: box-shadow 0.15s;
+}
+
+.kb-mission-btn:hover {
+  box-shadow: 0 0 40px rgba(0,253,135,0.45);
+}
+
+.kb-mission-sub {
+  text-align: center;
+  font-family: monospace;
+  font-size: 9px;
+  color: rgba(164,255,185,0.5);
+  letter-spacing: 0.4em;
+  text-transform: uppercase;
+  margin-top: 6px;
+}
+
+/* ── Prompt bar — KB command style ── */
+.prompt-bar {
+  background: #1a1919 !important;
+  border: 1px solid rgba(73,72,71,0.5) !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  transition: border-color 0.15s, box-shadow 0.15s !important;
+}
+
+.prompt-bar:focus-within {
+  border-color: rgba(164,255,185,0.4) !important;
+  box-shadow: 0 0 16px rgba(0,255,136,0.12) !important;
+}
+
+.prompt-input {
+  font-family: ui-monospace, 'SF Mono', 'Fira Code', monospace !important;
+  font-size: 12px !important;
+  letter-spacing: 0.04em;
+  color: #fff !important;
+}
+
+.prompt-input::placeholder {
+  color: rgba(73,72,71,0.9) !important;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-size: 11px;
+}
+
+.prompt-send {
+  background: #a4ffb9 !important;
+  border-radius: 0 !important;
+  color: #003d1f !important;
+  box-shadow: 0 0 12px rgba(164,255,185,0.3) !important;
+}
+
+.prompt-send:hover {
+  background: #00fd87 !important;
+  box-shadow: 0 0 20px rgba(0,253,135,0.5) !important;
+}
+
+/* Encryption layer divider between turns */
+.kb-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 20px 0;
+  opacity: 0.25;
+}
+
+.kb-divider::before,
+.kb-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: #494847;
+}
+
+.kb-divider span {
+  font-family: monospace;
+  font-size: 8px;
+  color: #777575;
+  text-transform: uppercase;
+  letter-spacing: 0.3em;
+  white-space: nowrap;
+}
