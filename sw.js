@@ -1,5 +1,5 @@
 // SaintSal™ Labs — Service Worker (PWA Offline + Cache)
-const CACHE_NAME = 'sal-labs-v2';
+const CACHE_NAME = 'sal-labs-v3';
 const STATIC_ASSETS = [
   '/',
   '/app.js',
