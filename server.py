@@ -298,10 +298,10 @@ CRITICAL: EXECUTE, don't guide. Deliver actual medical research, drug data, and 
 
 TAVILY_API_KEY = os.environ.get("TAVILY_API_KEY", "")
 
-async def search_web(query: str, search_depth: str = "basic", max_results: int = 5, topic: str = "general", include_answer: bool = False):
+async def search_web(query: str, search_depth: str = "basic", max_results: int = 5, topic: str = "general", include_answer: bool = False, include_images: bool = False):
     """Search the web using Tavily API."""
     if not TAVILY_API_KEY:
-        return {"results": [], "query": query, "answer": ""}
+        return {"results": [], "query": query, "answer": "", "images": []}
     
     async with httpx.AsyncClient(timeout=15.0) as http:
         try:
@@ -313,6 +313,7 @@ async def search_web(query: str, search_depth: str = "basic", max_results: int =
                 "topic": topic,
                 "include_answer": include_answer,
                 "include_raw_content": False,
+                "include_images": include_images,
             })
             data = resp.json()
             return {
@@ -327,6 +328,7 @@ async def search_web(query: str, search_depth: str = "basic", max_results: int =
                 ],
                 "query": query,
                 "answer": data.get("answer", ""),
+                "images": data.get("images", [])[:max_results] if include_images else [],
             }
         except Exception as e:
             print(f"Tavily search error: {e}")
@@ -471,9 +473,10 @@ async def get_discover(category: str):
         }
         query = live_queries.get(category, live_queries["top"])
         try:
-            results = await search_web(query, search_depth="basic", max_results=6, topic="news")
+            results = await search_web(query, search_depth="basic", max_results=6, topic="news", include_images=True)
+            images = results.get("images", [])
             live_topics = []
-            for r in results.get("results", []):
+            for i, r in enumerate(results.get("results", [])):
                 live_topics.append({
                     "title": r.get("title", ""),
                     "category": category.capitalize(),
@@ -482,6 +485,7 @@ async def get_discover(category: str):
                     "summary": r.get("content", "")[:200],
                     "url": r.get("url", ""),
                     "domain": r.get("domain", ""),
+                    "image": images[i] if i < len(images) else None,
                 })
             if live_topics:
                 return {"category": category, "topics": live_topics, "updated_at": datetime.now().isoformat(), "live": True}
@@ -7951,7 +7955,29 @@ async def agent_build(request: Request):
             plan_ctx += "\n\n[UI DESIGN NOTES]\n" + stitch_design
         plan_ctx += "\n[END PLAN]\nBuild exactly what the plan specifies. Output complete working files as JSON."
 
-        build_result = await _builder_ai_call(BUILDER_CODE_SYSTEM, prompt + plan_ctx, "claude", 32000, timeout_seconds=90)
+        # Run AI call with keepalive pings so SSE connection stays alive
+        import asyncio as _aio
+        _code_result_holder = {"result": None, "done": False}
+        async def _run_code_gen():
+            _code_result_holder["result"] = await _builder_ai_call(BUILDER_CODE_SYSTEM, prompt + plan_ctx, "claude", 32000, timeout_seconds=180)
+            _code_result_holder["done"] = True
+        _task = _aio.create_task(_run_code_gen())
+
+        # Send keepalive pings every 8s while waiting for code generation
+        _ping_msgs = [
+            "Analyzing architecture...", "Generating components...", "Building UI layer...",
+            "Wiring logic...", "Optimizing code...", "Finalizing files...",
+            "Running quality checks...", "Preparing delivery...",
+        ]
+        _ping_i = 0
+        while not _code_result_holder["done"]:
+            await _aio.sleep(8)
+            if not _code_result_holder["done"]:
+                msg = _ping_msgs[_ping_i % len(_ping_msgs)]
+                yield "data: " + json.dumps({"phase": "wiring", "agent": "claude", "message": msg}) + "\n\n"
+                _ping_i += 1
+
+        build_result = _code_result_holder["result"] or {}
 
         files_data = None
         if build_result.get("text"):
