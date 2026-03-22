@@ -965,24 +965,6 @@ function finalizeResponse(answerEl, rawText, typingEl, sources, intent) {
 
   answerEl.appendChild(toolbar);
 
-  // ── KB: Action chips + Initialize Mission ──
-  var chips = document.createElement('div');
-  chips.className = 'kb-chips';
-  chips.innerHTML =
-    '<button class="kb-chip" onclick="handleSend(\'Generate an image for this\')"><span>Generate Image</span><span class="kb-chip-icon">🖼</span></button>' +
-    '<button class="kb-chip" onclick="handleSend(\'Draft a social post about this\')"><span>Draft Social Post</span><span class="kb-chip-icon">📱</span></button>' +
-    '<button class="kb-chip" onclick="navigate(\'studioView\')"><span>Build with SAL</span><span class="kb-chip-icon">🏗</span></button>';
-  answerEl.appendChild(chips);
-  var mBtn = document.createElement('button');
-  mBtn.className = 'kb-mission-btn';
-  mBtn.textContent = 'INITIALIZE MISSION';
-  mBtn.onclick = function() { navigate('studioView'); };
-  answerEl.appendChild(mBtn);
-  var mSub = document.createElement('div');
-  mSub.className = 'kb-mission-sub';
-  mSub.textContent = 'Connect to Grok Architect';
-  answerEl.appendChild(mSub);
-
   // Scroll to bottom
   var threadArea = document.getElementById('chatThreadArea');
   threadArea.scrollTop = threadArea.scrollHeight;
@@ -8056,7 +8038,7 @@ function getMySALDashboardHTML(dna) {
   // ── Hero Header ──
   var heroCard =
     '<div style="background:linear-gradient(180deg,#0a100a 0%,#080808 100%);padding:20px 16px 24px;border-bottom:1px solid rgba(255,255,255,0.06);">' +
-      '<div style="font-size:9px;color:#3a3a3a;letter-spacing:3px;font-weight:600;margin-bottom:16px;font-family:monospace;">KINETIC_LABS</div>' +
+      '<div style="font-size:9px;color:#3a3a3a;letter-spacing:3px;font-weight:600;margin-bottom:16px;font-family:monospace;">SAINTSALLABS</div>' +
       '<div style="display:flex;align-items:flex-start;gap:16px;margin-bottom:18px;">' +
         '<div style="flex:1;">' +
           '<div style="font-size:30px;font-weight:900;color:#fff;line-height:1.05;letter-spacing:-1px;">CLIENT:<br>UNIFIED<br>DASHBOARD</div>' +

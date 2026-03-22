@@ -1217,8 +1217,8 @@ async def mcp_crm(request: Request):
     try:
         body = await request.json()
         action = body.get("action","list_contacts")
-        GHL_TOKEN = os.environ.get("GHL_PRIVATE_TOKEN","pit-24654b55-6e44-49f5-8912-5632ab08c615")
-        GHL_LOC = os.environ.get("GHL_LOCATION_ID","oRA8vL3OSiCPjpwmEC0V")
+        GHL_TOKEN = os.environ.get("GHL_PRIVATE_TOKEN","")
+        GHL_LOC = os.environ.get("GHL_LOCATION_ID","")
         hdrs = {"Authorization":f"Bearer {GHL_TOKEN}","Content-Type":"application/json"}
         async with httpx.AsyncClient() as hc:
             if action == "list_contacts":
@@ -11321,10 +11321,6 @@ async def v2_list_projects(request: Request):
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
-# Serve static assets (CSS, JS, images, icons)
-app.mount("/", StaticFiles(directory=str(_static_dir), html=False), name="static")
-
-
 # ─── CookinCards™ — Pokemon TCG Routes ─────────────────────────────────────────
 
 POKEMON_TCG_API_KEY = os.environ.get("POKEMON_TCG_API_KEY", "")
@@ -12124,6 +12120,10 @@ async def realestate_portfolio(request: Request):
         return JSONResponse({"properties": properties, "total_value": round(total, 2), "count": len(properties), "ok": True})
     except Exception as e:
         return JSONResponse({"properties": [], "total_value": 0, "ok": False, "error": str(e)})
+
+# ─── Static file serving — MUST BE LAST (catch-all mount) ────────────────────
+# WARNING: Do NOT move this above any @app routes — it will block them (returns 404)
+app.mount("/", StaticFiles(directory=str(_static_dir), html=False), name="static")
 
 if __name__ == "__main__":
     import uvicorn
