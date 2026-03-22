@@ -23,23 +23,38 @@
 -- │  1. FIX PROFILES — reconcile plan_tier vs tier, add missing columns    │
 -- └─────────────────────────────────────────────────────────────────────────┘
 
--- profiles was created with 'plan_tier' in v2.0 schema but v7.36.1 meter_compute
--- reads 'tier' — add tier as alias column so both work
-ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS tier TEXT
-  GENERATED ALWAYS AS (plan_tier) STORED;
-
--- Add all missing columns that migrations assumed existed
+-- Add all missing columns (safe — IF NOT EXISTS on each)
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS plan_tier TEXT DEFAULT 'free';
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS request_limit INTEGER DEFAULT 100;
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS monthly_requests INTEGER DEFAULT 0;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS credits_remaining INTEGER DEFAULT 100;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS credits_monthly_limit INTEGER DEFAULT 100;
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS total_compute_minutes NUMERIC(10,2) DEFAULT 0;
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS current_month_spend NUMERIC(10,4) DEFAULT 0;
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS wallet_balance NUMERIC(10,4) DEFAULT 0;
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS compute_tier TEXT DEFAULT 'mini';
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS compute_minutes_used NUMERIC(10,2) DEFAULT 0;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS stripe_customer_id TEXT;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS stripe_subscription_id TEXT;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS onboarding_complete BOOLEAN DEFAULT false;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS metadata JSONB DEFAULT '{}';
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT now();
+
+-- Add tier as regular column (alias for plan_tier) — generated columns can't use IF NOT EXISTS
+DO $do_tier$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'profiles' AND column_name = 'tier'
+  ) THEN
+    ALTER TABLE public.profiles ADD COLUMN tier TEXT GENERATED ALWAYS AS (plan_tier) STORED;
+  END IF;
+END;
+$do_tier$;
 
 -- Keep request_limit in sync with plan_tier (trigger)
 CREATE OR REPLACE FUNCTION public.sync_request_limit()
-RETURNS TRIGGER AS $$
+RETURNS TRIGGER AS $sync_request_limit$
 BEGIN
   NEW.request_limit := CASE NEW.plan_tier
     WHEN 'free'       THEN 100
@@ -49,19 +64,33 @@ BEGIN
     WHEN 'enterprise' THEN 999999
     ELSE 100
   END;
-  -- Also sync credits_monthly_limit
   NEW.credits_monthly_limit := NEW.request_limit;
   RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;
+$sync_request_limit$ LANGUAGE plpgsql;
 
 DROP TRIGGER IF EXISTS sync_request_limit_on_tier_change ON public.profiles;
 CREATE TRIGGER sync_request_limit_on_tier_change
   BEFORE INSERT OR UPDATE OF plan_tier ON public.profiles
   FOR EACH ROW EXECUTE FUNCTION public.sync_request_limit();
 
--- Backfill existing rows
-UPDATE public.profiles SET plan_tier = plan_tier WHERE true;
+-- Backfill existing rows to set request_limit from plan_tier
+UPDATE public.profiles
+SET request_limit = CASE plan_tier
+  WHEN 'starter'    THEN 500
+  WHEN 'pro'        THEN 2000
+  WHEN 'teams'      THEN 10000
+  WHEN 'enterprise' THEN 999999
+  ELSE 100
+END,
+credits_monthly_limit = CASE plan_tier
+  WHEN 'starter'    THEN 500
+  WHEN 'pro'        THEN 2000
+  WHEN 'teams'      THEN 10000
+  WHEN 'enterprise' THEN 999999
+  ELSE 100
+END
+WHERE true;
 
 
 -- ┌─────────────────────────────────────────────────────────────────────────┐
@@ -216,7 +245,7 @@ CREATE OR REPLACE FUNCTION public.meter_compute(
   p_compute_tier TEXT DEFAULT 'mini'
 ) RETURNS JSONB
 LANGUAGE plpgsql SECURITY DEFINER
-AS $$
+AS $meter_compute$
 DECLARE
   v_profile RECORD;
   v_tier TEXT;
@@ -276,7 +305,7 @@ BEGIN
     'stripe_subscription_item_id', v_profile.stripe_subscription_id
   );
 END;
-$$;
+$meter_compute$;
 
 REVOKE ALL ON FUNCTION public.meter_compute(UUID, TEXT, TEXT, NUMERIC, INTEGER, INTEGER, TEXT, INTEGER, NUMERIC, NUMERIC, TEXT)
   FROM PUBLIC, anon, authenticated;
@@ -291,7 +320,7 @@ GRANT EXECUTE ON FUNCTION public.meter_compute(UUID, TEXT, TEXT, NUMERIC, INTEGE
 CREATE OR REPLACE FUNCTION public.reset_all_monthly_usage()
 RETURNS VOID
 LANGUAGE plpgsql SECURITY DEFINER
-AS $$
+AS $reset_monthly$
 BEGIN
   UPDATE public.profiles
   SET monthly_requests      = 0,
@@ -301,7 +330,7 @@ BEGIN
       updated_at            = now()
   WHERE plan_tier != 'enterprise';
 END;
-$$;
+$reset_monthly$;
 
 REVOKE ALL ON FUNCTION public.reset_all_monthly_usage() FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.reset_all_monthly_usage() TO service_role;
@@ -312,7 +341,7 @@ GRANT EXECUTE ON FUNCTION public.reset_all_monthly_usage() TO service_role;
 -- └─────────────────────────────────────────────────────────────────────────┘
 
 CREATE OR REPLACE FUNCTION public.handle_new_user()
-RETURNS TRIGGER AS $$
+RETURNS TRIGGER AS $handle_new_user$
 BEGIN
   INSERT INTO public.profiles (
     id, email, full_name, avatar_url,
@@ -325,10 +354,10 @@ BEGIN
     COALESCE(NEW.raw_user_meta_data->>'avatar_url', ''),
     'free', 100, 100, 100
   )
-  ON CONFLICT (id) DO NOTHING;  -- Safe for re-triggers
+  ON CONFLICT (id) DO NOTHING;
   RETURN NEW;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$handle_new_user$ LANGUAGE plpgsql SECURITY DEFINER;
 
 
 -- ┌─────────────────────────────────────────────────────────────────────────┐
@@ -340,10 +369,10 @@ CREATE OR REPLACE FUNCTION public.handle_stripe_subscription(
   p_customer_id TEXT,
   p_plan_tier TEXT,
   p_subscription_id TEXT,
-  p_status TEXT   -- 'active', 'canceled', 'past_due'
+  p_status TEXT
 ) RETURNS JSONB
 LANGUAGE plpgsql SECURITY DEFINER
-AS $$
+AS $handle_stripe_sub$
 DECLARE
   v_user_id UUID;
   v_new_limit INTEGER;
@@ -401,7 +430,7 @@ BEGIN
 
   RETURN jsonb_build_object('success', true, 'user_id', v_user_id, 'new_tier', p_plan_tier);
 END;
-$$;
+$handle_stripe_sub$;
 
 REVOKE ALL ON FUNCTION public.handle_stripe_subscription(TEXT, TEXT, TEXT, TEXT, TEXT)
   FROM PUBLIC, anon, authenticated;
