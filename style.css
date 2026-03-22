@@ -7129,11 +7129,14 @@ body { padding-bottom: 64px !important; }
 /* ── State containers ── */
 #studioView {
   background: var(--kb-bg) !important;
-  display: flex;
+  display: none;
   flex-direction: column;
   height: 100%;
   overflow: hidden;
   position: relative;
+}
+#studioView.active {
+  display: flex;
 }
 
 .kb-state {
