@@ -217,10 +217,10 @@ function switchVertical(vertical, el) {
   // Show discover, hide chat
   backToDiscover();
 
-  // Switch to chat view if not already
-  if (currentView !== 'chat') {
-    window.location.hash = 'chat';
-  }
+  // Switch to chat view — call setView directly (hash may already be #chat
+  // if dashboard was opened via setView, so hashchange won't fire)
+  setView('chat');
+  window.location.hash = 'chat';
 
   // Real Estate gets a dedicated panel instead of the generic discover feed
   var grid = document.getElementById('discoverGrid');
