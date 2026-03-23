@@ -7997,7 +7997,18 @@ async def agent_build(request: Request):
             if files_data and files_data.get("files"):
                 yield "data: " + json.dumps({"phase": "files_ready", "agent": "claude", "files": files_data["files"], "model": build_result.get("model_used", "claude")}) + "\n\n"
             else:
-                yield "data: " + json.dumps({"phase": "files_ready", "agent": "claude", "raw_text": text[:2000], "model": build_result.get("model_used", "claude")}) + "\n\n"
+                # Try to extract raw HTML from response and send as file
+                html_match = _are.search(r'<!DOCTYPE html>.*?</html>', text, _are.DOTALL | _are.IGNORECASE)
+                if html_match:
+                    yield "data: " + json.dumps({"phase": "files_ready", "agent": "claude", "files": [{"name": "index.html", "content": html_match.group(0)}], "model": build_result.get("model_used", "claude")}) + "\n\n"
+                else:
+                    # Last resort: wrap any code block in a minimal HTML page
+                    code_match = _are.search(r'```(?:html)?\s*([\s\S]+?)```', text)
+                    if code_match:
+                        wrapped = "<!DOCTYPE html><html><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width,initial-scale=1'></head><body>" + code_match.group(1) + "</body></html>"
+                        yield "data: " + json.dumps({"phase": "files_ready", "agent": "claude", "files": [{"name": "index.html", "content": wrapped}], "model": build_result.get("model_used", "claude")}) + "\n\n"
+                    else:
+                        yield "data: " + json.dumps({"phase": "files_ready", "agent": "claude", "raw_text": text[:2000], "model": build_result.get("model_used", "claude")}) + "\n\n"
 
         yield "data: " + json.dumps({"phase": "complete", "message": "Build complete!", "model": build_result.get("model_used", "AI")}) + "\n\n"
 

@@ -298,7 +298,8 @@ async function reLoadDistressed(category) {
   if (cityFilter && cityFilter.value) params.set('city', cityFilter.value);
 
   try {
-    var resp = await fetch(API + '/api/realestate/distressed/' + category + '?' + params.toString());
+    params.set('category', category);
+    var resp = await fetch(API + '/api/realestate/distressed-search?' + params.toString());
     var data = await resp.json();
     reState.distressedResults = data.properties || [];
     reRenderDistressed(data, category);
