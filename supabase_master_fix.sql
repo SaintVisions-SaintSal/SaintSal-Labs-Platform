@@ -443,8 +443,15 @@ GRANT EXECUTE ON FUNCTION public.handle_stripe_subscription(TEXT, TEXT, TEXT, TE
 -- │      Run this ONLY if pg_cron extension is enabled in Supabase         │
 -- └─────────────────────────────────────────────────────────────────────────┘
 
--- Enable pg_cron — Supabase Pro plan required
-SELECT cron.schedule('reset-monthly-usage', '0 0 1 * *', 'SELECT public.reset_all_monthly_usage()');
+-- Enable pg_cron — Supabase Pro plan required (safe-no-op on Free plan)
+DO $pg_cron_schedule$
+BEGIN
+  PERFORM cron.schedule('reset-monthly-usage', '0 0 1 * *', 'SELECT public.reset_all_monthly_usage()');
+  RAISE NOTICE 'pg_cron: monthly reset job scheduled';
+EXCEPTION WHEN others THEN
+  RAISE NOTICE 'pg_cron not available on this plan — skipping monthly reset job (add manually on Pro)';
+END;
+$pg_cron_schedule$;
 -- Runs at midnight on the 1st of every month — resets all users' monthly_requests to 0
 
 
@@ -464,35 +471,44 @@ CREATE INDEX IF NOT EXISTS idx_builder_projects_user ON public.builder_projects(
 -- │  14. MISSING RLS: service_role on all key tables                       │
 -- └─────────────────────────────────────────────────────────────────────────┘
 
--- media_gallery
-DROP POLICY IF EXISTS "Service role manage media_gallery" ON public.media_gallery;
-CREATE POLICY "Service role manage media_gallery"
-  ON public.media_gallery FOR ALL
-  USING (auth.role() = 'service_role');
-
--- business_formations
-DROP POLICY IF EXISTS "Service role manage formations" ON public.business_formations;
-CREATE POLICY "Service role manage formations"
-  ON public.business_formations FOR ALL
-  USING (auth.role() = 'service_role');
-
--- domain_orders
-DROP POLICY IF EXISTS "Service role manage domain_orders" ON public.domain_orders;
-CREATE POLICY "Service role manage domain_orders"
-  ON public.domain_orders FOR ALL
-  USING (auth.role() = 'service_role');
-
--- social_connections (v2.0 schema)
-DROP POLICY IF EXISTS "Service role manage social_connections" ON public.social_connections;
-CREATE POLICY "Service role manage social_connections"
-  ON public.social_connections FOR ALL
-  USING (auth.role() = 'service_role');
-
--- business_plans
-DROP POLICY IF EXISTS "Service role manage business_plans" ON public.business_plans;
-CREATE POLICY "Service role manage business_plans"
-  ON public.business_plans FOR ALL
-  USING (auth.role() = 'service_role');
+-- Safe RLS policies — only applied if the table actually exists
+DO $optional_rls$
+DECLARE
+  t TEXT;
+  tables TEXT[] := ARRAY[
+    'media_gallery',
+    'business_formations',
+    'domain_orders',
+    'social_connections',
+    'business_plans'
+  ];
+  policy_names TEXT[] := ARRAY[
+    'Service role manage media_gallery',
+    'Service role manage formations',
+    'Service role manage domain_orders',
+    'Service role manage social_connections',
+    'Service role manage business_plans'
+  ];
+  i INTEGER;
+BEGIN
+  FOR i IN 1..array_length(tables, 1) LOOP
+    t := tables[i];
+    IF EXISTS (
+      SELECT 1 FROM information_schema.tables
+      WHERE table_schema = 'public' AND table_name = t
+    ) THEN
+      EXECUTE format('DROP POLICY IF EXISTS %L ON public.%I', policy_names[i], t);
+      EXECUTE format(
+        'CREATE POLICY %L ON public.%I FOR ALL USING (auth.role() = ''service_role'')',
+        policy_names[i], t
+      );
+      RAISE NOTICE 'RLS applied to %', t;
+    ELSE
+      RAISE NOTICE 'Table % does not exist yet — skipping RLS (safe to run again after table is created)', t;
+    END IF;
+  END LOOP;
+END;
+$optional_rls$;
 
 
 -- ============================================================================
