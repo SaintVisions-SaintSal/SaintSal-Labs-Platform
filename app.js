@@ -851,7 +851,7 @@ function sendMessage(query) {
     if (currentVertical === 'sports') _chatPayload.model = 'grok';
     fetch(API + '/api/chat', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: Object.assign({ 'Content-Type': 'application/json' }, authHeaders()),
       body: JSON.stringify(_chatPayload)
     })
     .then(function(response) {
