@@ -1,7 +1,14 @@
 /* ============================================
    API & STATE
    ============================================ */
-var API = "";
+// BUG-002 fix: resolve backend base URL.
+// Production (Render monolith): same-origin, so "" works.
+// Local dev: server.py runs on :8000, frontend may be served differently.
+var API = (function () {
+  var h = window.location.hostname;
+  if (h === 'localhost' || h === '127.0.0.1') return 'http://localhost:8000';
+  return ''; // same-origin in production
+}());
 var currentVertical = 'search';
 var currentView = 'chat';
 var chatHistory = [];
@@ -1338,10 +1345,28 @@ function filterDomain(el, filter) {
   });
 }
 
-function openDomainModal(name, price) {
-  document.getElementById('modalDomainName').textContent = name;
-  document.getElementById('modalDomainPrice').textContent = price + '/yr';
-  document.getElementById('domainModal').classList.add('active');
+async function openDomainModal(name, price) {
+  var modal = document.getElementById('domainModal');
+  var nameEl = document.getElementById('modalDomainName');
+  var priceEl = document.getElementById('modalDomainPrice');
+  if (!modal || !nameEl || !priceEl) return;
+  // Show loading state in modal first
+  nameEl.textContent = name;
+  priceEl.textContent = 'Checking availability...';
+  modal.classList.add('active');
+  try {
+    var resp = await fetch(API + '/api/godaddy/available/' + encodeURIComponent(name));
+    var data = await resp.json();
+    if (data.available === false) {
+      modal.classList.remove('active');
+      if (typeof showToast === 'function') showToast('Domain "' + name + '" is already taken. Try another.', 'error');
+      return;
+    }
+    priceEl.textContent = price + '/yr';
+  } catch(e) {
+    // If check fails, still show modal with original price
+    priceEl.textContent = price + '/yr';
+  }
 }
 
 function closeDomainModal() {
@@ -6800,6 +6825,15 @@ function saveBrandDNA() {
   var status = document.getElementById('brandDNAStatus');
   if (status) status.innerHTML = '<span style="color:var(--text-muted);">Saving...</span>';
   var data = collectBrandDNA();
+  // Persist to localStorage + sessionStorage immediately so chat context picks it up
+  var dnaInterests = [data.industry, data.brand_name, data.voice].filter(Boolean);
+  if (dnaInterests.length) {
+    localStorage.setItem('sal_dna', JSON.stringify(dnaInterests));
+    localStorage.setItem('sal_dna_primary', dnaInterests[0]);
+    sessionStorage.setItem('sal_dna', JSON.stringify(dnaInterests));
+  }
+  if (data.brand_name) localStorage.setItem('sal_brand_name', data.brand_name);
+  if (data.industry)   localStorage.setItem('sal_industry', data.industry);
   fetch(API + '/api/social-studio/brand-dna', {
     method: 'POST',
     headers: Object.assign({ 'Content-Type': 'application/json' }, authHeaders()),
@@ -6808,7 +6842,7 @@ function saveBrandDNA() {
     .then(function(r) { return r.json(); })
     .then(function(res) {
       if (res.brand_dna) socialStudioState.brandDNA = res.brand_dna;
-      if (status) status.innerHTML = '<span style="color:var(--accent-gold);">Brand DNA saved.</span>';
+      if (status) status.innerHTML = '<span style="color:var(--accent-gold);">Brand DNA saved ✓</span>';
       setTimeout(function() { if (status) status.innerHTML = ''; }, 3000);
     })
     .catch(function() {
