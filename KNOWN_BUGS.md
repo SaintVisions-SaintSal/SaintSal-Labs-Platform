@@ -1,25 +1,31 @@
 # Known Bugs — SaintSal Labs Platform
 
 ## BUG-001 — Supabase RLS Not Enabled (SECURITY CRITICAL)
-- **Status:** Open
+- **Status:** Migration written — needs to be applied
 - **Severity:** Critical
-- **Description:** Row Level Security is not enabled on approximately 18 Supabase tables. Any authenticated user can read/write all rows.
-- **Fix:** Enable RLS on all tables and add appropriate policies per table.
+- **Fix:** Run `migrations/rls_phase1.sql` in Supabase SQL Editor (covers all 22 tables).
 
 ## BUG-002 — Frontend Empty Base URL
-- **Status:** Open
+- **Status:** Fixed — commit `c632649` on `launch-hardening`
 - **Severity:** High
-- **Description:** `var API = ""` in frontend — empty string base URL causes all API calls to hit the wrong endpoint in production.
-- **Fix:** Set `API` to the correct production API base URL (e.g. `https://api.saintsallabs.com`).
+- **Fix:** `var API` now auto-detects: `localhost:8000` in dev, same-origin in production.
 
 ## BUG-003 — CORS Wildcard in vercel.json
-- **Status:** Open
+- **Status:** Fixed — commit `c4f9e0e` on `launch-hardening` (saintsallabs-v2)
 - **Severity:** High
-- **Description:** Node.js API gateway `vercel.json` has `Access-Control-Allow-Origin: *` which allows any origin to call the API.
-- **Fix:** Lock CORS to specific origins: `https://saintsallabs.com`, `https://www.saintsallabs.com`, `https://saintsal.ai`, `https://www.saintsal.ai`.
+- **Fix:** Wildcard removed from `vercel.json`. Next.js middleware now dynamically sets
+  `Access-Control-Allow-Origin` only for allowed origins (saintsallabs.com, saintsal.ai).
 
 ## BUG-004 — Stripe Webhook Not Configured
-- **Status:** Open
+- **Status:** Handler exists — registration required
 - **Severity:** High
-- **Description:** Stripe webhook endpoint may not be configured — subscription events (payment success, cancellation, etc.) may not be processed.
-- **Fix:** Verify webhook endpoint is registered in Stripe dashboard and `STRIPE_WEBHOOK_SECRET` env var is set.
+- **Description:** Webhook route exists at `/api/webhooks/stripe` and handles all events.
+- **ACTION NEEDED:** Register `https://saintsallabs.com/api/webhooks/stripe` in Stripe Dashboard
+  → Developers → Webhooks. Set `STRIPE_WEBHOOK_SECRET` env var in Vercel.
+
+## BUG-005 — plan_tier Column Mismatch (NEW — FOUND DURING AUDIT)
+- **Status:** Fixed — commit `a96c660` on `launch-hardening` (saintsallabs-v2)
+- **Severity:** Critical
+- **Description:** `use-auth.ts` was reading `data.plan_tier` but DB column is `tier`.
+  All paying users showed as free tier — metering and model access were wrong.
+- **Fix:** Now reads `data.tier ?? data.plan_tier` with fallback for compatibility.
