@@ -1043,19 +1043,35 @@ async def mcp_gateway(request: Request):
     system = SAL_SYSTEM_PROMPT + f"\n\nVertical context: {vertical}. Be direct, precise, immediately actionable."
     msgs = [{"role":h["role"],"content":h["content"]} for h in history[-10:] if h.get("role") in ["user","assistant"]]
     msgs.append({"role":"user","content":message})
-    model_map = {"mini":"claude-haiku-4-5-20251001","pro":"claude-sonnet-4-6","max":"claude-opus-4-6","fast":"claude-haiku-4-5-20251001"}
+    model_map = {"mini":"gpt-5.4-mini","pro":"claude-sonnet-4-6","max":"claude-opus-4-6","fast":"gpt-5.4-mini"}
+    # ── TIER 0: GPT-5.4-mini (fastest, cheapest — front of line for mini/fast) ──
+    if tier in ("mini", "fast") and OPENAI_API_KEY:
+        try:
+            async with httpx.AsyncClient(timeout=20) as hc:
+                r = await hc.post("https://api.openai.com/v1/chat/completions",
+                    headers={"Authorization": f"Bearer {OPENAI_API_KEY}", "Content-Type": "application/json"},
+                    json={"model":"gpt-5.4-mini","max_tokens":2048,"messages":[{"role":"system","content":system}]+msgs})
+                if r.status_code == 200:
+                    text = r.json()["choices"][0]["message"]["content"]
+                    return JSONResponse({"ok":True,"response":text,"model":"gpt-5.4-mini"})
+                print(f"[MCP] GPT-5.4-mini HTTP {r.status_code}")
+        except Exception as e:
+            print(f"[MCP] GPT-5.4-mini failed: {e}")
+    # ── TIER 1: Claude (pro/max default) ──
     if client:
         try:
             r = client.messages.create(model=model_map.get(tier,"claude-sonnet-4-6"),max_tokens=2048,system=system,messages=msgs)
             return JSONResponse({"ok":True,"response":r.content[0].text,"model":"claude"})
         except Exception as e:
             print(f"[MCP] Claude failed: {e}")
+    # ── TIER 2: Grok ──
     if xai_client:
         try:
-            r = xai_client.chat.completions.create(model="grok-3",messages=[{"role":"system","content":system}]+msgs,max_tokens=2048)
-            return JSONResponse({"ok":True,"response":r.choices[0].message.content,"model":"grok-3","fallback":True})
+            r = xai_client.chat.completions.create(model="grok-4-latest",messages=[{"role":"system","content":system}]+msgs,max_tokens=2048)
+            return JSONResponse({"ok":True,"response":r.choices[0].message.content,"model":"grok-4","fallback":True})
         except Exception as e:
             print(f"[MCP] XAI failed: {e}")
+    # ── TIER 3: Gemini ──
     gemini = os.environ.get("GEMINI_API_KEY","")
     if gemini:
         try:
@@ -1065,6 +1081,18 @@ async def mcp_gateway(request: Request):
                 return JSONResponse({"ok":True,"response":text,"model":"gemini","fallback":True})
         except Exception as e:
             print(f"[MCP] Gemini failed: {e}")
+    # ── TIER 4: GPT-5.4-mini as last resort (if Claude/Grok/Gemini all failed for pro/max tier) ──
+    if OPENAI_API_KEY:
+        try:
+            async with httpx.AsyncClient(timeout=20) as hc:
+                r = await hc.post("https://api.openai.com/v1/chat/completions",
+                    headers={"Authorization": f"Bearer {OPENAI_API_KEY}", "Content-Type": "application/json"},
+                    json={"model":"gpt-5.4-mini","max_tokens":2048,"messages":[{"role":"system","content":system}]+msgs})
+                if r.status_code == 200:
+                    text = r.json()["choices"][0]["message"]["content"]
+                    return JSONResponse({"ok":True,"response":text,"model":"gpt-5.4-mini","fallback":True})
+        except Exception as e:
+            print(f"[MCP] GPT-5.4-mini last-resort failed: {e}")
     return JSONResponse({"error":"All providers failed","model":tier},status_code=503)
 
 
@@ -7743,11 +7771,11 @@ async def builder_unified_chat(request: Request):
 _BUILDER_CHAIN_CANDIDATES = [
     {"id": "claude", "name": "Claude Sonnet 4.6", "provider": "anthropic", "model": "claude-sonnet-4-20250514", "max_tokens": 64000,
      "available": bool(os.environ.get("ANTHROPIC_API_KEY", ""))},
-    {"id": "grok", "name": "Grok-3", "provider": "xai", "model": "grok-3-beta", "max_tokens": 32000,
+    {"id": "grok", "name": "Grok-4", "provider": "xai", "model": "grok-4", "max_tokens": 32000,
      "available": bool(os.environ.get("XAI_API_KEY", ""))},
     {"id": "gemini", "name": "Gemini 2.5 Pro", "provider": "google", "model": "gemini-2.5-pro", "max_tokens": 65536,
-     "available": bool(os.environ.get("GEMINI_API_KEY", ""))},  # Only a real Gemini key, not Stitch
-    {"id": "gpt", "name": "GPT-4.1", "provider": "openai", "model": "gpt-4.1", "max_tokens": 32768,
+     "available": bool(os.environ.get("GEMINI_API_KEY", ""))},
+    {"id": "gpt", "name": "GPT-5.4-mini", "provider": "openai", "model": "gpt-5.4-mini", "max_tokens": 32768,
      "available": bool(os.environ.get("OPENAI_API_KEY", ""))},
     # Perplexity — always available via PPLX_API_KEY
     {"id": "pplx", "name": "Perplexity Sonar Pro", "provider": "perplexity", "model": "sonar-pro", "max_tokens": 16000,
