@@ -1,0 +1,78 @@
+// NEXT.JS 14 APP ROUTER STARTER — SAL Builder Template
+// Framework: Next.js 14, App Router, Tailwind CSS, TypeScript
+// NOTE: This generates a COMPLETE Next.js project as multiple files.
+// The AI will output all files needed including package.json, tailwind.config, etc.
+
+// ── FILE: package.json ──────────────────────────────────────────────────────
+{
+  "name": "sal-nextjs-app",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "next": "14.2.29",
+    "react": "^18",
+    "react-dom": "^18"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "@types/react": "^18",
+    "@types/react-dom": "^18",
+    "autoprefixer": "^10.0.1",
+    "postcss": "^8",
+    "tailwindcss": "^3.4.1",
+    "typescript": "^5"
+  }
+}
+
+// ── FILE: tailwind.config.ts ─────────────────────────────────────────────────
+import type { Config } from 'tailwindcss'
+const config: Config = {
+  content: ['./src/**/*.{js,ts,jsx,tsx,mdx}'],
+  theme: {
+    extend: {
+      colors: {
+        sal: { bg: '#0C0C0F', surface: '#161616', gold: '#F59E0B', text: '#E8E6E1', muted: '#6b7280', border: 'rgba(255,255,255,0.08)' }
+      }
+    }
+  },
+  plugins: [],
+}
+export default config
+
+// ── FILE: src/app/layout.tsx ─────────────────────────────────────────────────
+import type { Metadata } from 'next'
+import { Inter } from 'next/font/google'
+import './globals.css'
+const inter = Inter({ subsets: ['latin'] })
+export const metadata: Metadata = { title: 'SAL App', description: 'Built with SAL™ Builder' }
+export default function RootLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <html lang="en">
+      <body className={`${inter.className} bg-sal-bg text-sal-text`}>{children}</body>
+    </html>
+  )
+}
+
+// ── FILE: src/app/globals.css ─────────────────────────────────────────────────
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+* { box-sizing: border-box; }
+
+// ── FILE: src/app/page.tsx ───────────────────────────────────────────────────
+export default function Home() {
+  return (
+    <main className="min-h-screen flex items-center justify-center p-4">
+      <div className="bg-sal-surface rounded-2xl p-8 max-w-lg w-full border border-sal-border">
+        <h1 className="text-3xl font-bold mb-2">Next.js App</h1>
+        <p className="text-sal-muted">Built with SAL™ Builder. Replace this with your content.</p>
+      </div>
+    </main>
+  )
+}

@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>React App</title>
+  <!-- React 18 + Babel standalone for WebView/iframe compatibility -->
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            sal: { bg: '#0C0C0F', surface: '#161616', gold: '#F59E0B', text: '#E8E6E1', muted: '#9ca3af' }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    body { background: #0C0C0F; color: #E8E6E1; font-family: 'Inter', system-ui, sans-serif; margin: 0; }
+    * { box-sizing: border-box; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="text/babel">
+    const { useState, useEffect, useCallback, useRef } = React;
+
+    // ── COMPONENTS ──────────────────────────────────────────────────────────────
+
+    function App() {
+      const [count, setCount] = useState(0);
+
+      return (
+        <div className="min-h-screen bg-sal-bg flex items-center justify-center p-4">
+          <div className="bg-sal-surface rounded-2xl p-8 shadow-2xl max-w-md w-full">
+            <h1 className="text-2xl font-bold text-sal-text mb-2">React App</h1>
+            <p className="text-sal-muted mb-6">Built with SAL™ Builder — replace this with your app.</p>
+            <button
+              onClick={() => setCount(c => c + 1)}
+              className="w-full bg-sal-gold text-black font-semibold py-3 px-6 rounded-xl hover:bg-amber-400 transition-colors"
+            >
+              Count: {count}
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+</html>

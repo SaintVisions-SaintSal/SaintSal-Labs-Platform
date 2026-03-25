@@ -1,0 +1,56 @@
+// EXPO REACT NATIVE STARTER — SAL Builder Template
+// Framework: Expo SDK 51, React Native, NativeWind (Tailwind for RN)
+// NOTE: AI generates all files. For WebView preview, a React web version is also included.
+
+// ── FILE: package.json ──────────────────────────────────────────────────────
+{
+  "name": "sal-react-native-app",
+  "version": "1.0.0",
+  "main": "expo-router/entry",
+  "scripts": {
+    "start": "expo start",
+    "android": "expo run:android",
+    "ios": "expo run:ios",
+    "web": "expo start --web"
+  },
+  "dependencies": {
+    "expo": "~51.0.0",
+    "expo-router": "~3.5.0",
+    "expo-status-bar": "~1.12.1",
+    "react": "18.2.0",
+    "react-native": "0.74.2",
+    "nativewind": "^4.0.1",
+    "tailwindcss": "^3.4.0"
+  }
+}
+
+// ── FILE: app/_layout.tsx ────────────────────────────────────────────────────
+import { Stack } from 'expo-router';
+export default function RootLayout() {
+  return <Stack screenOptions={{ headerStyle: { backgroundColor: '#0C0C0F' }, headerTintColor: '#E8E6E1' }} />;
+}
+
+// ── FILE: app/index.tsx ──────────────────────────────────────────────────────
+import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { StatusBar } from 'expo-status-bar';
+
+export default function HomeScreen() {
+  return (
+    <View style={styles.container}>
+      <StatusBar style="light" />
+      <Text style={styles.title}>SAL App</Text>
+      <Text style={styles.subtitle}>Built with SAL™ Builder + Expo</Text>
+      <TouchableOpacity style={styles.button}>
+        <Text style={styles.buttonText}>Get Started</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: '#0C0C0F', alignItems: 'center', justifyContent: 'center', padding: 24 },
+  title: { fontSize: 32, fontWeight: '800', color: '#E8E6E1', marginBottom: 8 },
+  subtitle: { fontSize: 16, color: '#6b7280', marginBottom: 32 },
+  button: { backgroundColor: '#F59E0B', paddingHorizontal: 32, paddingVertical: 16, borderRadius: 12 },
+  buttonText: { color: '#000', fontWeight: '700', fontSize: 16 },
+});

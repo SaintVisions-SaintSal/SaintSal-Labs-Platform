@@ -1,0 +1,59 @@
+# FASTAPI + SUPABASE STARTER — SAL Builder Template
+# Framework: Python 3.11, FastAPI, Supabase, uvicorn
+# The AI will generate all files needed for a complete FastAPI project.
+
+# ── FILE: requirements.txt ──────────────────────────────────────────────────
+fastapi==0.111.0
+uvicorn[standard]==0.29.0
+python-dotenv==1.0.1
+httpx==0.27.0
+supabase==2.4.6
+pydantic==2.7.1
+
+# ── FILE: main.py ────────────────────────────────────────────────────────────
+import os
+from fastapi import FastAPI, HTTPException, Depends
+from fastapi.middleware.cors import CORSMiddleware
+from contextlib import asynccontextmanager
+from dotenv import load_dotenv
+
+load_dotenv()
+
+ALLOWED_ORIGINS = [
+    "https://saintsallabs.com",
+    "https://www.saintsallabs.com",
+    "https://saintsal.ai",
+    "http://localhost:3000",
+    "http://localhost:5173",
+]
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    print("Starting up...")
+    yield
+    print("Shutting down...")
+
+app = FastAPI(title="SAL API", version="1.0.0", lifespan=lifespan)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=ALLOWED_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+@app.get("/")
+async def root():
+    return {"status": "ok", "message": "SAL API running"}
+
+@app.get("/api/health")
+async def health():
+    return {"status": "healthy"}
+
+# ── FILE: .env.example ──────────────────────────────────────────────────────
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_SERVICE_KEY=your-service-role-key
+
+# ── FILE: Procfile (for Render) ──────────────────────────────────────────────
+web: uvicorn main:app --host 0.0.0.0 --port $PORT
