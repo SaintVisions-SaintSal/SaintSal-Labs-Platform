@@ -538,3 +538,188 @@
   .re-distressed-stats { grid-template-columns: 1fr 1fr; }
   .calc-metrics { grid-template-columns: 1fr 1fr; }
 }
+
+/* ═══ v8.0 — New 4-Tab Components ═══════════════════════════════════ */
+
+/* Hero */
+.re-hero {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 20px 0 24px; gap: 16px;
+}
+.re-hero-title { font-size: 22px; font-weight: 800; color: var(--text-primary); margin-bottom: 4px; }
+.re-hero-sub { font-size: 13px; color: var(--text-secondary); max-width: 440px; }
+.re-hero-stats { display: flex; gap: 20px; flex-shrink: 0; }
+.re-hero-stat { text-align: center; }
+.re-hero-stat-val { font-size: 20px; font-weight: 800; color: var(--accent-gold); }
+.re-hero-stat-label { font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; }
+
+/* Mode toggle (Sale / Distressed) */
+.re-mode-bar {
+  display: flex; gap: 8px; margin-bottom: 16px;
+}
+.re-mode-btn {
+  padding: 8px 20px; border-radius: 8px; border: 1px solid var(--border-color);
+  background: var(--bg-surface-2); color: var(--text-secondary);
+  font-size: 13px; font-weight: 600; cursor: pointer; transition: all 0.15s;
+}
+.re-mode-btn:hover { border-color: var(--accent-gold); color: var(--text-primary); }
+.re-mode-btn.active { background: var(--accent-gold); color: #000; border-color: var(--accent-gold); }
+
+/* Source badge */
+.re-src-badge, .re-source-badge {
+  display: inline-block; font-size: 9px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.06em; padding: 2px 6px; border-radius: 4px;
+  background: rgba(245,158,11,0.12); color: var(--accent-gold);
+  margin-left: 6px; vertical-align: middle;
+}
+
+/* Back button */
+.re-back-btn {
+  background: none; border: 1px solid var(--border-color); color: var(--text-secondary);
+  padding: 6px 14px; border-radius: 8px; font-size: 12px; cursor: pointer;
+  margin-bottom: 16px; transition: all 0.15s;
+}
+.re-back-btn:hover { border-color: var(--accent-gold); color: var(--text-primary); }
+
+/* Zillow second opinion */
+.re-zillow-opinion {
+  margin-top: 10px; padding: 8px 12px; border-radius: 8px;
+  background: rgba(59,130,246,0.08); font-size: 12px; color: var(--text-secondary);
+}
+
+/* Portfolio */
+.re-portfolio-header {
+  font-size: 13px; color: var(--text-muted); margin-bottom: 16px;
+}
+.re-portfolio-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px;
+}
+.re-portfolio-card {
+  background: var(--bg-surface); border-radius: 14px; padding: 16px;
+  border: 1px solid var(--border-color); transition: border-color 0.15s;
+}
+.re-portfolio-card:hover { border-color: rgba(245,158,11,0.3); }
+.re-portfolio-card-header {
+  display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;
+}
+.re-btn-delete {
+  background: none; border: none; color: var(--text-faint); font-size: 14px;
+  cursor: pointer; padding: 2px 6px; border-radius: 4px; transition: color 0.15s;
+}
+.re-btn-delete:hover { color: var(--accent-red, #ef4444); }
+.re-portfolio-notes {
+  font-size: 11px; color: var(--text-muted); font-style: italic;
+  margin: 8px 0; padding: 8px; background: var(--bg-surface-2); border-radius: 6px;
+}
+
+/* Deal Analyzer */
+.calc-save-btn {
+  margin-top: 16px; width: 100%; padding: 12px; border: none; border-radius: 10px;
+  background: rgba(245,158,11,0.12); color: var(--accent-gold);
+  font-size: 13px; font-weight: 700; cursor: pointer; transition: background 0.15s;
+}
+.calc-save-btn:hover { background: rgba(245,158,11,0.2); }
+.calc-verdict {
+  text-align: center; padding: 20px; border-radius: 12px;
+  border: 2px solid; margin-bottom: 20px;
+}
+.calc-verdict-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-muted); }
+.calc-verdict-value { font-size: 28px; font-weight: 800; margin-top: 4px; }
+.calc-metrics-grid {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 20px;
+}
+.calc-metric-card {
+  background: var(--bg-surface-2); border-radius: 10px; padding: 14px; text-align: center;
+}
+.calc-metric-val { font-size: 20px; font-weight: 800; }
+.calc-metric-label { font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; margin-top: 4px; }
+.calc-breakdown {
+  background: var(--bg-surface-2); border-radius: 12px; padding: 16px; margin-bottom: 16px;
+}
+.calc-breakdown-title { font-size: 12px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 12px; }
+.calc-breakdown-row {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 6px 0; font-size: 13px; border-bottom: 1px solid var(--border-color);
+}
+.calc-breakdown-row:last-child { border-bottom: none; }
+.calc-breakdown-row.total { font-weight: 700; margin-top: 4px; }
+.calc-breakdown-row .green { color: var(--accent-green); }
+.calc-breakdown-row .red { color: var(--accent-red, #ef4444); }
+.calc-summary-row { display: flex; gap: 12px; }
+.calc-summary-item {
+  flex: 1; background: var(--bg-surface-2); border-radius: 10px; padding: 12px;
+  text-align: center; font-size: 11px; color: var(--text-muted);
+}
+.calc-summary-item strong { display: block; font-size: 14px; color: var(--text-primary); margin-top: 4px; }
+
+/* Chat */
+.re-chat-container {
+  display: flex; flex-direction: column; height: 500px;
+}
+.re-chat-header { padding-bottom: 12px; border-bottom: 1px solid var(--border-color); margin-bottom: 12px; }
+.re-chat-title { font-size: 16px; font-weight: 700; color: var(--text-primary); }
+.re-chat-subtitle { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+.re-chat-suggestions { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+.re-chat-suggestion {
+  padding: 6px 12px; border-radius: 8px; border: 1px solid var(--border-color);
+  background: var(--bg-surface-2); color: var(--text-secondary);
+  font-size: 11px; cursor: pointer; transition: all 0.15s;
+}
+.re-chat-suggestion:hover { border-color: var(--accent-gold); color: var(--text-primary); }
+.re-chat-messages {
+  flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 10px;
+  padding: 4px 0; margin-bottom: 12px;
+}
+.re-chat-bubble {
+  max-width: 82%; padding: 10px 14px; border-radius: 12px;
+  font-size: 13px; line-height: 1.55; white-space: pre-wrap; word-break: break-word;
+}
+.re-chat-bubble.user {
+  background: var(--accent-gold); color: #000; align-self: flex-end; border-radius: 12px 12px 2px 12px;
+}
+.re-chat-bubble.assistant {
+  background: var(--bg-surface-2); color: var(--text-primary); align-self: flex-start; border-radius: 12px 12px 12px 2px;
+}
+.re-chat-bubble.loading { padding: 14px 20px; }
+.re-spinner-sm {
+  width: 16px; height: 16px; border: 2px solid var(--border-color);
+  border-top-color: var(--accent-gold); border-radius: 50%; animation: spin 0.6s linear infinite;
+}
+.re-chat-input-bar {
+  display: flex; gap: 8px; padding: 10px; border-radius: 12px;
+  background: var(--bg-surface-2); border: 1px solid var(--border-color); transition: border-color 0.15s;
+}
+.re-chat-input-bar:focus-within { border-color: var(--accent-gold); }
+.re-chat-input {
+  flex: 1; background: none; border: none; color: var(--text-primary);
+  font-size: 13px; outline: none;
+}
+.re-chat-send-btn {
+  background: var(--accent-gold); color: #000; border: none;
+  width: 36px; height: 36px; border-radius: 8px; display: flex; align-items: center;
+  justify-content: center; cursor: pointer; flex-shrink: 0; transition: opacity 0.15s;
+}
+.re-chat-send-btn:hover { opacity: 0.85; }
+
+/* Toast */
+.re-toast {
+  position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%) translateY(20px);
+  background: var(--bg-surface); color: var(--text-primary); border: 1px solid var(--border-color);
+  padding: 10px 20px; border-radius: 10px; font-size: 13px; font-weight: 500;
+  opacity: 0; transition: all 0.25s; z-index: 9999; white-space: nowrap;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+}
+.re-toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+/* Responsive v8 */
+@media (max-width: 768px) {
+  .re-hero { flex-direction: column; align-items: flex-start; }
+  .re-hero-stats { gap: 12px; }
+  .calc-metrics-grid { grid-template-columns: repeat(2, 1fr); }
+  .calc-summary-row { flex-direction: column; }
+  .re-portfolio-grid { grid-template-columns: 1fr; }
+  .re-chat-container { height: 420px; }
+}
+@media (max-width: 480px) {
+  .calc-metrics-grid { grid-template-columns: 1fr 1fr; }
+}

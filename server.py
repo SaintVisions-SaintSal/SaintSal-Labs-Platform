@@ -186,11 +186,25 @@ CORPNET_BASE_URL = os.environ.get("CORPNET_API_BASE_STAGING", "https://api.stagi
 RENTCAST_API_KEY = os.environ.get("RENTCAST_API_KEY", "")
 RENTCAST_BASE = "https://api.rentcast.io/v1"
 
-# PropertyAPI for parcel/property data
+# PropertyAPI for parcel/property data (primary for distressed)
 PROPERTY_API_KEY = os.environ.get("PROPERTY_API_KEY", "")
-PROPERTY_API_BASE = "https://propertyapi.co/api/v1"
-PROPERTY_API_HEADERS = {"X-Api-Key": PROPERTY_API_KEY}
+PROPERTY_API_BASE = "https://api.propertyapi.co/v1"
 GOOGLE_MAPS_KEY = os.environ.get("GOOGLE_MAPS_KEY", "")
+
+# Zillow via RapidAPI (supplementary for Zestimate)
+ZILLOW_API_KEY = os.environ.get("ZILLOW_API_KEY", "")
+ZILLOW_RAPIDAPI_HOST = "zillow-com1.p.rapidapi.com"
+
+
+def _property_api_headers() -> dict:
+    """Return PropertyAPI headers using current env key (read at request time)."""
+    key = os.environ.get("PROPERTY_API_KEY", PROPERTY_API_KEY)
+    return {"X-Api-Key": key, "Accept": "application/json"}
+
+
+def _zillow_headers() -> dict:
+    key = os.environ.get("ZILLOW_API_KEY", ZILLOW_API_KEY)
+    return {"X-RapidAPI-Key": key, "X-RapidAPI-Host": ZILLOW_RAPIDAPI_HOST}
 
 
 # ─── System Prompts by Vertical ───────────────────────────────────────────────
@@ -2673,16 +2687,49 @@ async def realestate_search(address: str = "", city: str = "", state: str = "", 
 
 @app.get("/api/realestate/value")
 async def realestate_value(address: str):
-    """Get property value estimate with comparable sales from RentCast."""
+    """Get property value estimate (RentCast primary, Zillow Zestimate as second opinion)."""
+    rentcast_data = None
+    zillow_data = None
+
     async with httpx.AsyncClient(timeout=15.0) as http:
+        # Primary: RentCast AVM
         try:
-            resp = await http.get(f"{RENTCAST_BASE}/avm/value", params={"address": address, "compCount": 10}, headers=RENTCAST_HEADERS)
+            resp = await http.get(
+                f"{RENTCAST_BASE}/avm/value",
+                params={"address": address, "compCount": 10},
+                headers=RENTCAST_HEADERS
+            )
             if resp.status_code == 200:
-                return {"data": resp.json(), "api_live": True}
-            else:
-                return {"data": None, "api_live": False, "error": f"RentCast API returned {resp.status_code}"}
-        except Exception as e:
-            return {"data": None, "api_live": False, "error": str(e)}
+                rentcast_data = resp.json()
+        except Exception:
+            pass
+
+        # Supplementary: Zillow Zestimate (if key available)
+        zkey = os.environ.get("ZILLOW_API_KEY", ZILLOW_API_KEY)
+        if zkey:
+            try:
+                resp_z = await http.get(
+                    f"https://{ZILLOW_RAPIDAPI_HOST}/propertyExtendedSearch",
+                    params={"address": address},
+                    headers=_zillow_headers(),
+                    timeout=10.0
+                )
+                if resp_z.status_code == 200:
+                    zd = resp_z.json()
+                    props = zd.get("props", [])
+                    if props:
+                        p = props[0]
+                        zillow_data = {
+                            "zestimate": p.get("zestimate"),
+                            "zpid": p.get("zpid"),
+                            "address": p.get("address"),
+                        }
+            except Exception:
+                pass
+
+    if rentcast_data:
+        return {"data": rentcast_data, "zillow": zillow_data, "api_live": True, "source": "rentcast"}
+    return {"data": None, "zillow": zillow_data, "api_live": False, "source": "unavailable"}
 
 
 @app.get("/api/realestate/rent")
@@ -2701,7 +2748,7 @@ async def realestate_rent(address: str):
 
 @app.get("/api/realestate/listings/sale")
 async def realestate_sale_listings(city: str = "", state: str = "", zipcode: str = "", status: str = "Active"):
-    """Get active sale listings from RentCast."""
+    """Get active sale listings. RentCast primary → PropertyAPI fallback."""
     params = {"status": status, "limit": 20}
     if city:
         params["city"] = city
@@ -2711,14 +2758,46 @@ async def realestate_sale_listings(city: str = "", state: str = "", zipcode: str
         params["zipCode"] = zipcode
 
     async with httpx.AsyncClient(timeout=15.0) as http:
-        try:
-            resp = await http.get(f"{RENTCAST_BASE}/listings/sale", params=params, headers=RENTCAST_HEADERS)
-            if resp.status_code == 200:
-                return {"listings": resp.json(), "api_live": True}
-            else:
-                return {"listings": [], "api_live": False, "error": f"Status {resp.status_code}"}
-        except Exception as e:
-            return {"listings": [], "api_live": False, "error": str(e)}
+        # Try RentCast first
+        if RENTCAST_API_KEY:
+            try:
+                resp = await http.get(f"{RENTCAST_BASE}/listings/sale", params=params, headers=RENTCAST_HEADERS)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    if data:
+                        listings = data if isinstance(data, list) else data.get("listings", [])
+                        for l in listings:
+                            l["_source"] = "RentCast"
+                        return {"listings": listings, "api_live": True, "source": "rentcast"}
+            except Exception:
+                pass
+
+        # Fallback: PropertyAPI.co
+        pkey = os.environ.get("PROPERTY_API_KEY", PROPERTY_API_KEY)
+        if pkey:
+            try:
+                pparams = {"limit": 20}
+                if city:
+                    pparams["city"] = city
+                if state:
+                    pparams["state"] = state
+                if zipcode:
+                    pparams["zip"] = zipcode
+                resp_p = await http.get(
+                    f"{PROPERTY_API_BASE}/listings",
+                    params=pparams,
+                    headers=_property_api_headers()
+                )
+                if resp_p.status_code == 200:
+                    pd = resp_p.json()
+                    listings = pd if isinstance(pd, list) else pd.get("listings", pd.get("results", []))
+                    for l in listings:
+                        l["_source"] = "PropertyAPI"
+                    return {"listings": listings, "api_live": True, "source": "propertyapi"}
+            except Exception:
+                pass
+
+    return {"listings": [], "api_live": False, "source": "unavailable"}
 
 
 @app.get("/api/realestate/listings/rental")
@@ -2851,55 +2930,101 @@ async def get_distressed_summary():
 
 @app.get("/api/realestate/distressed/{category}")
 async def get_distressed(category: str, state: str = "", city: str = ""):
-    """Get distressed properties by category — ALL live from RentCast.
-    Categories: foreclosure, pre_foreclosure, tax_lien, nod, bankruptcy, off_market, cash_buyer, notes_due"""
-    RENTCAST_KEY = os.environ.get("RENTCAST_API_KEY", "")
-    
-    # Map category to RentCast query strategy
-    status_map = {
+    """Get distressed properties. PropertyAPI.co PRIMARY → RentCast fallback → cached demo.
+    Categories: foreclosure, pre_foreclosure, tax_lien, nod, bankruptcy, off_market"""
+
+    label_map = {
         "foreclosure": "Foreclosure",
         "pre_foreclosure": "Pre-Foreclosure",
-        "nod": "Foreclosure",  # NODs are early-stage foreclosures
+        "nod": "Notice of Default",
+        "tax_lien": "Tax Lien",
+        "bankruptcy": "Bankruptcy/REO",
+        "off_market": "Off-Market",
+        "cash_buyer": "Cash Buyer Opportunity",
+        "notes_due": "Note Coming Due",
     }
-    
-    # Categories that use listings/sale endpoint
-    listing_cats = ["foreclosure", "pre_foreclosure", "nod", "bankruptcy", "cash_buyer"]
-    # Categories that use properties endpoint (off-market = not currently listed)
-    property_cats = ["tax_lien", "off_market", "notes_due"]
-    
-    if RENTCAST_KEY:
-        try:
-            params = {"limit": 20}
-            if state:
-                params["state"] = state.upper()
-            if city:
-                params["city"] = city
-            
-            if category in status_map:
-                params["status"] = status_map[category]
-            
-            async with httpx.AsyncClient(timeout=15) as http:
-                if category in listing_cats:
-                    endpoint = f"{RENTCAST_BASE}/listings/sale"
-                else:
-                    endpoint = f"{RENTCAST_BASE}/properties"
-                
-                resp = await http.get(endpoint, params=params, headers=RENTCAST_HEADERS)
-                
-                if resp.status_code == 200:
-                    live_data = resp.json()
-                    if isinstance(live_data, list) and len(live_data) > 0:
-                        # Normalize label
-                        label_map = {
-                            "foreclosure": "Foreclosure",
-                            "pre_foreclosure": "Pre-Foreclosure",
-                            "nod": "Notice of Default",
-                            "tax_lien": "Tax Lien",
-                            "bankruptcy": "Bankruptcy/REO",
-                            "off_market": "Off-Market",
-                            "cash_buyer": "Cash Buyer Opportunity",
-                            "notes_due": "Note Coming Due",
-                        }
+
+    # PropertyAPI.co category → their endpoint slug
+    papi_slug_map = {
+        "foreclosure": "foreclosures",
+        "pre_foreclosure": "pre-foreclosures",
+        "nod": "notices-of-default",
+        "tax_lien": "tax-liens",
+        "bankruptcy": "bankruptcies",
+        "off_market": "off-market",
+    }
+
+    async with httpx.AsyncClient(timeout=15) as http:
+        # ── PRIMARY: PropertyAPI.co (specializes in distressed) ────────────────
+        pkey = os.environ.get("PROPERTY_API_KEY", PROPERTY_API_KEY)
+        if pkey and category in papi_slug_map:
+            try:
+                pparams: dict = {"limit": 20}
+                if state:
+                    pparams["state"] = state.upper()
+                if city:
+                    pparams["city"] = city
+                resp_p = await http.get(
+                    f"{PROPERTY_API_BASE}/{papi_slug_map[category]}",
+                    params=pparams,
+                    headers=_property_api_headers()
+                )
+                if resp_p.status_code == 200:
+                    pd = resp_p.json()
+                    raw = pd if isinstance(pd, list) else pd.get("results", pd.get("properties", []))
+                    if raw:
+                        properties = [
+                            {
+                                "address": p.get("address", p.get("formattedAddress", p.get("street", ""))),
+                                "city": p.get("city", ""),
+                                "state": p.get("state", ""),
+                                "zip": p.get("zip", p.get("zipCode", "")),
+                                "beds": p.get("bedrooms", p.get("beds", 0)),
+                                "baths": p.get("bathrooms", p.get("baths", 0)),
+                                "sqft": p.get("squareFootage", p.get("sqft", 0)),
+                                "year_built": p.get("yearBuilt", p.get("year_built", 0)),
+                                "estimated_value": p.get("estimatedValue", p.get("price", p.get("assessedValue", 0))),
+                                "status": label_map.get(category, category),
+                                "property_type": p.get("propertyType", "Single Family"),
+                                "lat": p.get("latitude", p.get("lat")),
+                                "lng": p.get("longitude", p.get("lng")),
+                                "_source": "PropertyAPI",
+                                **{k: v for k, v in p.items() if k in (
+                                    "auction_date", "opening_bid", "lender", "owed_amount",
+                                    "equity_estimate", "default_date", "tax_owed",
+                                    "years_delinquent", "notice_date", "cure_deadline"
+                                )}
+                            }
+                            for p in raw
+                        ]
+                        return {"category": category, "properties": properties, "total": len(properties), "source": "propertyapi_live"}
+            except Exception as e:
+                print(f"[RE Distressed] PropertyAPI error for {category}: {e}")
+
+        # ── FALLBACK: RentCast ─────────────────────────────────────────────────
+        rentcast_key = os.environ.get("RENTCAST_API_KEY", "")
+        status_map = {
+            "foreclosure": "Foreclosure",
+            "pre_foreclosure": "Pre-Foreclosure",
+            "nod": "Foreclosure",
+        }
+        listing_cats = ["foreclosure", "pre_foreclosure", "nod", "bankruptcy", "cash_buyer"]
+
+        if rentcast_key:
+            try:
+                rparams: dict = {"limit": 20}
+                if state:
+                    rparams["state"] = state.upper()
+                if city:
+                    rparams["city"] = city
+                if category in status_map:
+                    rparams["status"] = status_map[category]
+
+                endpoint = f"{RENTCAST_BASE}/listings/sale" if category in listing_cats else f"{RENTCAST_BASE}/properties"
+                resp_r = await http.get(endpoint, params=rparams, headers=RENTCAST_HEADERS)
+                if resp_r.status_code == 200:
+                    live_data = resp_r.json()
+                    if isinstance(live_data, list) and live_data:
                         properties = [
                             {
                                 "address": p.get("formattedAddress", p.get("addressLine1", "")),
@@ -2910,20 +3035,21 @@ async def get_distressed(category: str, state: str = "", city: str = ""):
                                 "baths": p.get("bathrooms", 0),
                                 "sqft": p.get("squareFootage", 0),
                                 "year_built": p.get("yearBuilt", 0),
-                                "estimated_value": p.get("price", p.get("assessorValues", {}).get("totalValue", 0) if isinstance(p.get("assessorValues"), dict) else 0),
+                                "estimated_value": p.get("price", 0),
                                 "status": label_map.get(category, category),
                                 "property_type": p.get("propertyType", "Single Family"),
                                 "lat": p.get("latitude"),
                                 "lng": p.get("longitude"),
+                                "_source": "RentCast",
                             }
                             for p in live_data
                         ]
                         return {"category": category, "properties": properties, "total": len(properties), "source": "rentcast_live"}
-        except Exception as e:
-            print(f"[RE Distressed] RentCast API error for {category}: {e}")
-    
-    # Fallback: cached data
-    properties = DISTRESSED_PROPERTIES.get(category, [])
+            except Exception as e:
+                print(f"[RE Distressed] RentCast fallback error for {category}: {e}")
+
+    # ── FINAL FALLBACK: cached demo data ──────────────────────────────────────
+    properties = [dict(p, _source="Demo") for p in DISTRESSED_PROPERTIES.get(category, [])]
     if state:
         properties = [p for p in properties if p.get("state", "").upper() == state.upper()]
     if city:
@@ -3008,6 +3134,100 @@ async def deal_analysis(purchase_price: float, monthly_rent: float, down_payment
     }
 
 
+# ── Portfolio: saved properties + deal analyses (Supabase) ───────────────────
+
+@app.get("/api/realestate/portfolio")
+async def get_portfolio(request: Request):
+    """Get user's saved properties."""
+    user = await _get_current_user(request)
+    if not user:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    try:
+        rows = supabase_admin.table("saved_properties").select("*").eq("user_id", user["id"]).order("saved_at", desc=True).execute()
+        return {"properties": rows.data or []}
+    except Exception as e:
+        return {"properties": [], "error": str(e)}
+
+
+@app.post("/api/realestate/portfolio")
+async def save_property(request: Request):
+    """Save a property to user's portfolio."""
+    user = await _get_current_user(request)
+    if not user:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    body = await request.json()
+    try:
+        row = {
+            "user_id": user["id"],
+            "address": body.get("address", ""),
+            "city": body.get("city", ""),
+            "state": body.get("state", ""),
+            "zip": body.get("zip", ""),
+            "price": body.get("price"),
+            "beds": body.get("beds"),
+            "baths": body.get("baths"),
+            "sqft": body.get("sqft"),
+            "property_type": body.get("property_type", ""),
+            "source": body.get("_source", ""),
+            "notes": body.get("notes", ""),
+            "data_snapshot": body,
+        }
+        result = supabase_admin.table("saved_properties").insert(row).execute()
+        return {"saved": True, "id": result.data[0]["id"] if result.data else None}
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.delete("/api/realestate/portfolio/{property_id}")
+async def delete_portfolio_property(property_id: str, request: Request):
+    """Remove a property from user's portfolio."""
+    user = await _get_current_user(request)
+    if not user:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    try:
+        supabase_admin.table("saved_properties").delete().eq("id", property_id).eq("user_id", user["id"]).execute()
+        return {"deleted": True}
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.post("/api/realestate/deal-analyses")
+async def save_deal_analysis(request: Request):
+    """Save a deal analysis result."""
+    user = await _get_current_user(request)
+    if not user:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    body = await request.json()
+    try:
+        row = {
+            "user_id": user["id"],
+            "address": body.get("address", ""),
+            "purchase_price": body.get("purchase_price"),
+            "monthly_rent": body.get("monthly_rent"),
+            "cap_rate": body.get("cap_rate"),
+            "cash_on_cash": body.get("cash_on_cash"),
+            "cash_flow_monthly": body.get("cash_flow_monthly"),
+            "verdict": body.get("verdict", ""),
+            "params": body.get("params", {}),
+            "result": body.get("result", {}),
+        }
+        result = supabase_admin.table("deal_analyses").insert(row).execute()
+        return {"saved": True, "id": result.data[0]["id"] if result.data else None}
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.get("/api/realestate/deal-analyses")
+async def get_deal_analyses(request: Request):
+    """Get user's saved deal analyses."""
+    user = await _get_current_user(request)
+    if not user:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    try:
+        rows = supabase_admin.table("deal_analyses").select("*").eq("user_id", user["id"]).order("created_at", desc=True).limit(20).execute()
+        return {"analyses": rows.data or []}
+    except Exception as e:
+        return {"analyses": [], "error": str(e)}
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
