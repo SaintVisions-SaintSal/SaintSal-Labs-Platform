@@ -1123,124 +1123,353 @@ RULES:
 - When editing existing files, ONLY modify what the user asked for — preserve everything else
 - For React apps, embed everything in a single HTML file using Babel standalone + React CDN for WebView compatibility"""
 
+BUILDER_REVIEW_SYSTEM = """You are a senior code reviewer for SAL™ Builder. You will receive AI-generated code and must review and fix it.
+
+Review the code for:
+1. Bugs — logic errors, off-by-one errors, undefined variables, missing returns
+2. Missing imports — CDN links, script tags, require/import statements
+3. Security issues — XSS, exposed secrets, unsafe innerHTML without sanitization
+4. Broken references — links to files or functions that don't exist in the project
+5. Edge cases — empty states, loading states, error states missing
+6. Mobile responsiveness — missing viewport meta, fixed widths that break on mobile
+
+You MUST respond with ONLY valid JSON in EXACTLY this structure:
+{"thought":"What you found and fixed — be specific","files":[{"path":"index.html","content":"complete fixed file content","language":"html"}],"preview_entry":"index.html","next_steps":["suggestion 1","suggestion 2","suggestion 3"],"review_notes":["list of specific bugs found and fixed"]}
+
+RULES:
+- Return ALL files from the original, not just changed ones
+- If a file has no bugs, include it unchanged
+- If nothing needs fixing, still return the full JSON with review_notes: ["No issues found — code is production-ready"]
+- NEVER truncate file content — every file must be complete"""
+
+# ── FRAMEWORK DETECTION + TEMPLATE INJECTION ─────────────────────────────────
+
+_TEMPLATES_DIR = Path(__file__).parent / "templates"
+
+_FRAMEWORK_KEYWORDS = {
+    "react-app":     ["react", "jsx", "useState", "useEffect", "component", "shadcn"],
+    "nextjs-app":    ["next.js", "nextjs", "next js", "app router", "server component", "next 14", "next14"],
+    "python-api":    ["fastapi", "python api", "flask", "django", "python backend", "uvicorn"],
+    "node-api":      ["express", "node api", "nodejs api", "node.js api", "node backend"],
+    "react-native":  ["react native", "expo", "mobile app", "ios app", "android app", "rn app"],
+    "html-site":     ["landing page", "website", "html site", "static site", "vanilla js", "plain html"],
+}
+
+def _detect_framework(prompt: str) -> str | None:
+    """Return framework key if prompt mentions one, else None."""
+    lower = prompt.lower()
+    for framework, keywords in _FRAMEWORK_KEYWORDS.items():
+        if any(kw in lower for kw in keywords):
+            return framework
+    return None
+
+def _load_template(framework: str) -> str:
+    """Load template file contents as a string."""
+    for ext in [".html", ".txt"]:
+        path = _TEMPLATES_DIR / f"{framework}{ext}"
+        if path.exists():
+            try:
+                return path.read_text(encoding="utf-8")
+            except Exception:
+                pass
+    return ""
+
+def _build_user_content(prompt: str, files: list, framework: str | None) -> str:
+    """Assemble the user content block with optional template + file context."""
+    parts = []
+
+    if framework:
+        template = _load_template(framework)
+        if template:
+            parts.append(
+                f"FRAMEWORK TEMPLATE — build ON this foundation, do not start from scratch:\n"
+                f"Framework: {framework}\n\n{template}"
+            )
+
+    if files:
+        file_context = "\n\n".join([f"--- {f.get('path','file')} ---\n{f.get('content','')}" for f in files])
+        parts.append(f"EXISTING PROJECT FILES (edit these, preserve what works):\n\n{file_context}")
+
+    parts.append(f"USER REQUEST:\n{prompt}")
+    return "\n\n".join(parts)
+
+# ── RESPONSE PARSING ──────────────────────────────────────────────────────────
+
+def _parse_builder_response(raw_text: str) -> dict:
+    """Parse LLM response — extract JSON from potentially messy output."""
+    import re
+    cleaned = raw_text.strip()
+    cleaned = re.sub(r'^```(?:json)?\s*', '', cleaned, flags=re.MULTILINE)
+    cleaned = re.sub(r'\s*```\s*$', '', cleaned, flags=re.MULTILINE)
+    # Try to find JSON object if model added prose before/after
+    json_match = re.search(r'\{[\s\S]*\}', cleaned)
+    if json_match:
+        cleaned = json_match.group(0)
+    cleaned = cleaned.strip()
+    try:
+        result = json.loads(cleaned)
+        return {
+            "ok": True,
+            "thought": result.get("thought", "Code generated."),
+            "files": result.get("files", []),
+            "preview_entry": result.get("preview_entry", "index.html"),
+            "next_steps": result.get("next_steps", []),
+            "review_notes": result.get("review_notes", []),
+        }
+    except json.JSONDecodeError:
+        return {
+            "ok": True,
+            "thought": "Generated output (raw format).",
+            "files": [{"path": "output.html", "content": raw_text, "language": "html"}],
+            "preview_entry": "output.html",
+            "next_steps": ["Try a more specific prompt"],
+            "review_notes": [],
+        }
+
+# ── SUPABASE PERSISTENCE HELPERS ─────────────────────────────────────────────
+
+async def _builder_save_run(project_id: str | None, user_id: str | None, prompt: str,
+                             result_v1: dict, result_v2: dict | None, model_used: str) -> str | None:
+    """Log a builder run to the builder_runs table. Returns run id or None."""
+    if not supabase_admin:
+        return None
+    try:
+        row = {
+            "project_id": project_id,
+            "user_id": user_id,
+            "prompt": prompt[:2000],
+            "result_v1": result_v1,
+            "result_v2_reviewed": result_v2,
+            "model_used": model_used,
+        }
+        resp = supabase_admin.table("builder_runs").insert(row).execute()
+        return resp.data[0].get("id") if resp.data else None
+    except Exception as e:
+        print(f"[Builder] Failed to log run: {e}")
+        return None
+
+async def _builder_upsert_project(project_id: str | None, user_id: str | None,
+                                   name: str, files: list, framework: str | None,
+                                   prompt: str) -> str | None:
+    """Create or update a project in builder_projects. Returns project id."""
+    if not supabase_admin:
+        return project_id
+    try:
+        if project_id:
+            resp = supabase_admin.table("builder_projects").update({
+                "files": files,
+                "updated_at": "now()",
+            }).eq("id", project_id).execute()
+            return project_id
+        else:
+            slug = re.sub(r'[^a-z0-9]+', '-', prompt[:40].lower()).strip('-') or "project"
+            row = {
+                "user_id": user_id,
+                "name": slug,
+                "description": prompt[:200],
+                "framework": framework or "html-site",
+                "files": files,
+                "status": "active",
+            }
+            resp = supabase_admin.table("builder_projects").insert(row).execute()
+            return resp.data[0].get("id") if resp.data else None
+    except Exception as e:
+        print(f"[Builder] Failed to upsert project: {e}")
+        return project_id
+
+# ── LAYER 1+2: GENERATE ENDPOINT ─────────────────────────────────────────────
+
 @limiter.limit("10/minute")
 @app.post("/api/builder/v2/generate")
 async def builder_v2_generate(request: Request):
-    """Builder V2 codegen endpoint — prompt-to-app via Claude/xAI/Gemini cascade"""
+    """Builder V2 — multi-model fallback + agentic review loop + Supabase persistence."""
     try:
         body = await request.json()
     except Exception:
         return JSONResponse({"error": "Invalid JSON"}, status_code=400)
 
-    # Auth check
+    # Auth — accept SAL gateway key OR valid Supabase JWT (len > 100)
     sal_key = request.headers.get("x-sal-key", "")
-    VALID = os.environ.get("SAL_GATEWAY_SECRET", "")
-    auth = request.headers.get("authorization", "").replace("Bearer ", "")
+    VALID   = os.environ.get("SAL_GATEWAY_SECRET", "")
+    auth    = request.headers.get("authorization", "").replace("Bearer ", "")
     if sal_key != VALID and auth != VALID and len(auth) < 100:
         return JSONResponse({"error": "Unauthorized"}, status_code=401)
 
-    prompt = body.get("prompt", "")
+    prompt     = (body.get("prompt") or "").strip()
     project_id = body.get("project_id")
-    files = body.get("files", [])
+    files      = body.get("files", [])
     conversation = body.get("conversation", [])
+    user_id    = body.get("user_id")
 
     if not prompt:
         return JSONResponse({"error": "prompt is required"}, status_code=400)
 
-    # Build messages array
+    # ── LAYER 3: Framework detection + template injection ─────────────────────
+    framework    = _detect_framework(prompt)
+    user_content = _build_user_content(prompt, files, framework)
+
+    # Build conversation history (last 10 turns)
     msgs = []
-    if conversation:
-        for msg in conversation[-10:]:
-            if msg.get("role") in ["user", "assistant"]:
-                msgs.append({"role": msg["role"], "content": msg.get("content", "")})
-
-    # Build user message with file context for iterative edits
-    user_content = prompt
-    if files:
-        file_context = "\n\n".join([f"--- {f['path']} ---\n{f['content']}" for f in files])
-        user_content = f"EXISTING PROJECT FILES (edit these, do not start fresh):\n\n{file_context}\n\nUSER REQUEST:\n{prompt}"
-
+    for msg in conversation[-10:]:
+        if msg.get("role") in ["user", "assistant"]:
+            msgs.append({"role": msg["role"], "content": msg.get("content", "")})
     msgs.append({"role": "user", "content": user_content})
 
-    def parse_builder_response(raw_text):
-        """Parse LLM response — extract JSON from potentially messy output"""
-        import re
-        cleaned = raw_text.strip()
-        # Strip markdown code fences
-        cleaned = re.sub(r'^```(?:json)?\s*', '', cleaned)
-        cleaned = re.sub(r'\s*```$', '', cleaned)
-        cleaned = cleaned.strip()
-        try:
-            result = json.loads(cleaned)
-            return {
-                "ok": True,
-                "thought": result.get("thought", "Code generated."),
-                "files": result.get("files", []),
-                "preview_entry": result.get("preview_entry", "index.html"),
-                "next_steps": result.get("next_steps", []),
-            }
-        except json.JSONDecodeError:
-            # If JSON parse fails, wrap raw text as single file
-            return {
-                "ok": True,
-                "thought": "Generated output (raw format).",
-                "files": [{"path": "output.html", "content": raw_text, "language": "html"}],
-                "preview_entry": "output.html",
-                "next_steps": ["Try a more specific prompt"],
-            }
+    # ── LAYER 1: Multi-model fallback chain (never fail) ─────────────────────
+    # Order: Claude (best) → OpenAI (GPT) → Gemini → Grok
+    # Each model gets 30s before we move to the next
+    model_order = ["claude", "openai", "google", "xai"]
+    result_v1   = None
+    model_used  = "none"
 
-    # Try Claude first (best for code generation)
-    if client:
-        try:
-            r = client.messages.create(
-                model="claude-sonnet-4-6",
-                max_tokens=16384,
-                system=BUILDER_V2_SYSTEM,
-                messages=msgs,
-            )
-            raw = r.content[0].text
-            result = parse_builder_response(raw)
-            result["model"] = "claude"
-            return JSONResponse(result)
-        except Exception as e:
-            print(f"[Builder V2] Claude failed: {e}")
+    for preferred in model_order:
+        ai_resp = await _builder_ai_call(
+            system=BUILDER_V2_SYSTEM,
+            user_msg=user_content,
+            preferred_model=preferred,
+            max_tokens=16384,
+            timeout_seconds=30,
+        )
+        if ai_resp.get("text"):
+            result_v1  = _parse_builder_response(ai_resp["text"])
+            model_used = ai_resp.get("model_used", preferred)
+            print(f"[Builder V2] Generation succeeded via {model_used}")
+            break
 
-    # Fallback to xAI (Grok)
-    if xai_client:
-        try:
-            r = xai_client.chat.completions.create(
-                model="grok-3",
-                messages=[{"role": "system", "content": BUILDER_V2_SYSTEM}] + msgs,
-                max_tokens=16384,
-            )
-            raw = r.choices[0].message.content
-            result = parse_builder_response(raw)
-            result["model"] = "grok-3"
-            result["fallback"] = True
-            return JSONResponse(result)
-        except Exception as e:
-            print(f"[Builder V2] xAI failed: {e}")
+    if not result_v1 or not result_v1.get("files"):
+        # Absolute last resort — never return a 503
+        result_v1 = {
+            "ok": True,
+            "thought": "All AI providers were unreachable. Here is a starter template.",
+            "files": [{"path": "index.html", "content": _load_template("html-site") or "<h1>SAL Builder</h1>", "language": "html"}],
+            "preview_entry": "index.html",
+            "next_steps": ["Try again in a moment", "Check your API key configuration"],
+            "review_notes": [],
+        }
+        model_used = "fallback-template"
 
-    # Fallback to Gemini
-    gemini = os.environ.get("GEMINI_API_KEY", "")
-    if gemini:
-        try:
-            async with httpx.AsyncClient() as hc:
-                r = await hc.post(
-                    f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={gemini}",
-                    json={"contents": [{"parts": [{"text": BUILDER_V2_SYSTEM + "\n\n" + user_content}]}],
-                         "generationConfig": {"maxOutputTokens": 16384}},
-                    timeout=90,
-                )
-                raw = r.json()["candidates"][0]["content"]["parts"][0]["text"]
-                result = parse_builder_response(raw)
-                result["model"] = "gemini"
-                result["fallback"] = True
-                return JSONResponse(result)
-        except Exception as e:
-            print(f"[Builder V2] Gemini failed: {e}")
+    # ── LAYER 2: Agentic review loop ──────────────────────────────────────────
+    # Second AI pass reviews generated code for bugs, fixes them, delivers reviewed version
+    result_v2 = None
+    try:
+        files_for_review = json.dumps(result_v1.get("files", []), ensure_ascii=False)
+        review_prompt = (
+            f"ORIGINAL USER REQUEST: {prompt}\n\n"
+            f"AI-GENERATED FILES TO REVIEW:\n{files_for_review}\n\n"
+            "Review every file. Fix bugs, missing imports, broken references, security issues, "
+            "and missing edge cases. Return the complete fixed project in the required JSON format."
+        )
+        review_resp = await _builder_ai_call(
+            system=BUILDER_REVIEW_SYSTEM,
+            user_msg=review_prompt,
+            preferred_model="claude",   # Best reviewer
+            max_tokens=16384,
+            timeout_seconds=30,
+        )
+        if review_resp.get("text"):
+            parsed_review = _parse_builder_response(review_resp["text"])
+            if parsed_review.get("files"):
+                result_v2 = parsed_review
+                print(f"[Builder V2] Review pass succeeded — delivering reviewed version")
+    except Exception as e:
+        print(f"[Builder V2] Review pass failed (delivering original): {e}")
 
-    return JSONResponse({"error": "All AI providers failed for code generation"}, status_code=503)
+    # Deliver reviewed version if available, else original — never lose work
+    final_result = result_v2 if (result_v2 and result_v2.get("files")) else result_v1
+
+    # ── LAYER 4: Persist to Supabase ─────────────────────────────────────────
+    new_project_id = await _builder_upsert_project(
+        project_id=project_id,
+        user_id=user_id,
+        name=prompt[:40],
+        files=final_result.get("files", []),
+        framework=framework,
+        prompt=prompt,
+    )
+    run_id = await _builder_save_run(
+        project_id=new_project_id or project_id,
+        user_id=user_id,
+        prompt=prompt,
+        result_v1=result_v1,
+        result_v2=result_v2,
+        model_used=model_used,
+    )
+
+    return JSONResponse({
+        **final_result,
+        "model": model_used,
+        "reviewed": result_v2 is not None,
+        "framework_detected": framework,
+        "project_id": new_project_id or project_id,
+        "run_id": run_id,
+    })
+
+
+# ── LAYER 4: Project CRUD endpoints ──────────────────────────────────────────
+
+@app.get("/api/builder/v2/projects")
+async def builder_list_projects(request: Request):
+    """List all projects for the authenticated user."""
+    auth = request.headers.get("authorization", "").replace("Bearer ", "")
+    user_id = request.query_params.get("user_id")
+    if not user_id and len(auth) < 100:
+        return JSONResponse({"error": "user_id required"}, status_code=400)
+    if not supabase_admin:
+        return JSONResponse({"projects": [], "source": "db-unavailable"})
+    try:
+        query = supabase_admin.table("builder_projects").select(
+            "id, name, description, framework, status, created_at, updated_at"
+        ).order("updated_at", desc=True)
+        if user_id:
+            query = query.eq("user_id", user_id)
+        resp = query.execute()
+        return JSONResponse({"projects": resp.data or [], "source": "supabase"})
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.get("/api/builder/v2/projects/{project_id}")
+async def builder_get_project(project_id: str):
+    """Load a specific project with all files."""
+    if not supabase_admin:
+        # Fall back to in-memory / disk
+        if project_id in _builder_projects:
+            return JSONResponse({"success": True, **_builder_projects[project_id]})
+        return JSONResponse({"error": "Project not found"}, status_code=404)
+    try:
+        resp = supabase_admin.table("builder_projects").select("*").eq("id", project_id).single().execute()
+        if not resp.data:
+            return JSONResponse({"error": "Project not found"}, status_code=404)
+        return JSONResponse({"success": True, **resp.data})
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.delete("/api/builder/v2/projects/{project_id}")
+async def builder_delete_project(project_id: str):
+    """Delete a project."""
+    if not supabase_admin:
+        _builder_projects.pop(project_id, None)
+        return JSONResponse({"success": True})
+    try:
+        supabase_admin.table("builder_projects").delete().eq("id", project_id).execute()
+        return JSONResponse({"success": True})
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.get("/api/builder/v2/runs/{project_id}")
+async def builder_get_runs(project_id: str):
+    """Get all runs for a project (for version history)."""
+    if not supabase_admin:
+        return JSONResponse({"runs": []})
+    try:
+        resp = supabase_admin.table("builder_runs").select(
+            "id, prompt, model_used, created_at, result_v2_reviewed"
+        ).eq("project_id", project_id).order("created_at", desc=True).limit(20).execute()
+        return JSONResponse({"runs": resp.data or []})
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
 
 
 @app.post("/api/mcp/search")
@@ -8127,35 +8356,42 @@ Return the complete self-contained HTML design as JSON."""
 
 @app.post("/api/builder/save-project")
 async def builder_save_project(request: Request):
-    """Save project files to disk under /tmp/sal_projects/{name}/."""
+    """Save project — Supabase primary, disk fallback."""
     try:
-        body = await request.json()
-        name = (body.get("name") or "unnamed-project").lower().replace(" ", "-")
-        files = body.get("files", [])
+        body     = await request.json()
+        name     = (body.get("name") or "unnamed-project").lower().replace(" ", "-")
+        files    = body.get("files", [])
+        user_id  = body.get("user_id")
+        proj_id  = body.get("project_id")
+        framework = body.get("framework")
 
         if not files:
             return JSONResponse({"error": "files array is required and must not be empty"}, status_code=400)
 
+        # Primary: Supabase
+        new_id = await _builder_upsert_project(
+            project_id=proj_id, user_id=user_id,
+            name=name, files=files, framework=framework, prompt=name,
+        )
+
+        # Fallback: disk + in-memory (Render ephemeral /tmp)
         project_dir = Path("/tmp/sal_projects") / name
         project_dir.mkdir(parents=True, exist_ok=True)
-
         saved = []
         for f in files:
-            fname = f.get("name") or "file.txt"
+            fname = (f.get("path") or f.get("name") or "file.txt")
             content = f.get("content") or ""
-            file_path = (project_dir / fname).resolve()
-            if not str(file_path).startswith(str(project_dir.resolve())):
-                continue
-            file_path.parent.mkdir(parents=True, exist_ok=True)
-            file_path.write_text(content, encoding="utf-8")
-            saved.append(fname)
-
-        _builder_projects[name] = {"name": name, "files": files}
+            fpath = (project_dir / fname).resolve()
+            if str(fpath).startswith(str(project_dir.resolve())):
+                fpath.parent.mkdir(parents=True, exist_ok=True)
+                fpath.write_text(content, encoding="utf-8")
+                saved.append(fname)
+        _builder_projects[name] = {"name": name, "files": files, "project_id": new_id}
 
         return JSONResponse({
-            "success": True, "name": name, "path": str(project_dir),
+            "success": True, "name": name, "project_id": new_id,
             "saved_files": saved, "file_count": len(saved),
-            "message": f"Saved {len(saved)} files to /tmp/sal_projects/{name}/"
+            "source": "supabase" if new_id else "disk",
         })
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
@@ -8163,12 +8399,31 @@ async def builder_save_project(request: Request):
 
 @app.get("/api/builder/load-project/{name}")
 async def builder_load_project(name: str):
-    """Load project files from disk at /tmp/sal_projects/{name}/."""
+    """Load project — Supabase primary, disk/memory fallback."""
     try:
+        # Primary: Supabase (search by name)
+        if supabase_admin:
+            try:
+                resp = supabase_admin.table("builder_projects").select("*") \
+                    .eq("name", name).order("updated_at", desc=True).limit(1).execute()
+                if resp.data:
+                    p = resp.data[0]
+                    return JSONResponse({
+                        "success": True, "name": p["name"],
+                        "files": p.get("files", []),
+                        "project_id": p["id"], "framework": p.get("framework"),
+                        "source": "supabase",
+                    })
+            except Exception as e:
+                print(f"[Builder] Supabase load failed, trying disk: {e}")
+
+        # Fallback: in-memory
+        if name in _builder_projects:
+            return JSONResponse({"success": True, "source": "memory", **_builder_projects[name]})
+
+        # Fallback: disk
         project_dir = Path("/tmp/sal_projects") / name
         if not project_dir.exists():
-            if name in _builder_projects:
-                return JSONResponse({"success": True, "name": name, "files": _builder_projects[name].get("files", [])})
             return JSONResponse({"error": f"Project '{name}' not found"}, status_code=404)
 
         files = []
@@ -8179,9 +8434,9 @@ async def builder_load_project(name: str):
                     content = fpath.read_text(encoding="utf-8")
                 except Exception:
                     content = "[Binary file]"
-                files.append({"name": rel, "content": content, "size": fpath.stat().st_size})
+                files.append({"path": rel, "name": rel, "content": content})
 
-        return JSONResponse({"success": True, "name": name, "files": files, "file_count": len(files)})
+        return JSONResponse({"success": True, "name": name, "files": files, "source": "disk"})
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
 
