@@ -7289,6 +7289,43 @@ async def social_publish(request: Request):
                             else:
                                 api_error = f"Facebook API {resp.status_code}: {resp.text[:200]}"
 
+                    elif platform == "instagram":
+                        # Instagram Business — two-step: create container → publish
+                        ig_token = user_token["access_token"] if user_token else os.environ.get("INSTAGRAM_ACCESS_TOKEN", "")
+                        ig_user_id = (user_token or {}).get("platform_user_id") or os.environ.get("INSTAGRAM_BUSINESS_ID", "")
+                        if not ig_token or not ig_user_id:
+                            api_error = "Instagram publish requires Business account connection. Please connect Instagram in Social settings."
+                        elif not media_url:
+                            api_error = "Instagram requires an image or video URL. Add a media_url to your post."
+                        else:
+                            # Step 1: Create media container
+                            container_resp = await hc.post(
+                                f"https://graph.facebook.com/v18.0/{ig_user_id}/media",
+                                data={
+                                    "image_url": media_url,
+                                    "caption": formatted,
+                                    "access_token": ig_token,
+                                }
+                            )
+                            if container_resp.status_code == 200:
+                                container_id = container_resp.json().get("id", "")
+                                if container_id:
+                                    # Step 2: Publish the container
+                                    pub_resp = await hc.post(
+                                        f"https://graph.facebook.com/v18.0/{ig_user_id}/media_publish",
+                                        data={"creation_id": container_id, "access_token": ig_token}
+                                    )
+                                    if pub_resp.status_code == 200:
+                                        post_id = pub_resp.json().get("id", "")
+                                        post_url = f"https://www.instagram.com/p/{post_id}" if post_id else ""
+                                        published = True
+                                    else:
+                                        api_error = f"Instagram publish step 2 failed: {pub_resp.status_code}: {pub_resp.text[:200]}"
+                                else:
+                                    api_error = "Instagram container creation returned no ID."
+                            else:
+                                api_error = f"Instagram container creation failed: {container_resp.status_code}: {container_resp.text[:200]}"
+
             except Exception as pub_err:
                 api_error = str(pub_err)
                 print(f"[Social Publish] {platform} error: {pub_err}")
@@ -8840,6 +8877,111 @@ SOCIAL_PLATFORM_SPECS = {
         "content_types": ["story", "spotlight"],
     },
 }
+
+
+@app.post("/api/social/meta/post")
+async def meta_post(request: Request):
+    """Publish to Facebook AND Instagram in one call.
+    Requires: content (str), media_url (str, required for Instagram), platforms (list, default ['facebook','instagram'])"""
+    user = await _get_current_user(request)
+    if not user:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    body = await request.json()
+    content = body.get("content", "")
+    media_url = body.get("media_url", "")
+    platforms = body.get("platforms", ["facebook", "instagram"])
+
+    results = {}
+    async with httpx.AsyncClient(timeout=30) as hc:
+        for plat in platforms:
+            try:
+                token_result = supabase_admin.table("social_tokens").select("*").eq(
+                    "user_id", user["id"]).eq("platform", plat).eq("is_active", True).single().execute()
+                token_row = token_result.data if token_result.data else {}
+            except Exception:
+                token_row = {}
+
+            access_token = token_row.get("access_token") or os.environ.get("FACEBOOK_PAGE_TOKEN", "") if plat == "facebook" else token_row.get("access_token") or os.environ.get("INSTAGRAM_ACCESS_TOKEN", "")
+            entity_id = token_row.get("platform_user_id") or (os.environ.get("FACEBOOK_PAGE_ID", "") if plat == "facebook" else os.environ.get("INSTAGRAM_BUSINESS_ID", ""))
+
+            if not access_token or not entity_id:
+                results[plat] = {"published": False, "error": f"{plat.capitalize()} not connected. Connect in Social settings."}
+                continue
+
+            try:
+                if plat == "facebook":
+                    resp = await hc.post(f"https://graph.facebook.com/v18.0/{entity_id}/feed",
+                        data={"message": content[:63206], "access_token": access_token})
+                    if resp.status_code == 200:
+                        pid = resp.json().get("id", "")
+                        results[plat] = {"published": True, "post_id": pid, "url": f"https://www.facebook.com/{pid}"}
+                    else:
+                        results[plat] = {"published": False, "error": f"Facebook API {resp.status_code}: {resp.text[:150]}"}
+
+                elif plat == "instagram":
+                    if not media_url:
+                        results[plat] = {"published": False, "error": "Instagram requires a media_url (image or video)."}
+                        continue
+                    # Step 1: container
+                    c_resp = await hc.post(f"https://graph.facebook.com/v18.0/{entity_id}/media",
+                        data={"image_url": media_url, "caption": content[:2200], "access_token": access_token})
+                    if c_resp.status_code != 200:
+                        results[plat] = {"published": False, "error": f"IG container failed: {c_resp.status_code}"}
+                        continue
+                    cid = c_resp.json().get("id")
+                    if not cid:
+                        results[plat] = {"published": False, "error": "IG container returned no ID"}
+                        continue
+                    # Step 2: publish
+                    p_resp = await hc.post(f"https://graph.facebook.com/v18.0/{entity_id}/media_publish",
+                        data={"creation_id": cid, "access_token": access_token})
+                    if p_resp.status_code == 200:
+                        pid = p_resp.json().get("id", "")
+                        results[plat] = {"published": True, "post_id": pid, "url": f"https://www.instagram.com/p/{pid}"}
+                    else:
+                        results[plat] = {"published": False, "error": f"IG publish failed: {p_resp.status_code}"}
+            except Exception as e:
+                results[plat] = {"published": False, "error": str(e)}
+
+    all_published = all(r.get("published") for r in results.values())
+    return {"success": True, "results": results, "all_published": all_published}
+
+
+@app.get("/api/social/meta/pages")
+async def meta_pages(request: Request):
+    """Get connected Facebook pages and Instagram accounts for the current user."""
+    user = await _get_current_user(request)
+    if not user:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    fb_token = ""
+    try:
+        tr = supabase_admin.table("social_tokens").select("access_token").eq(
+            "user_id", user["id"]).eq("platform", "facebook").eq("is_active", True).single().execute()
+        fb_token = (tr.data or {}).get("access_token", "")
+    except Exception:
+        pass
+    if not fb_token:
+        fb_token = os.environ.get("FACEBOOK_PAGE_TOKEN", "")
+    if not fb_token:
+        return {"pages": [], "instagram_accounts": [], "error": "Facebook not connected"}
+
+    pages = []
+    instagram_accounts = []
+    async with httpx.AsyncClient(timeout=15) as hc:
+        try:
+            pr = await hc.get(f"https://graph.facebook.com/v18.0/me/accounts?access_token={fb_token}")
+            if pr.status_code == 200:
+                pages = [{"id": p["id"], "name": p["name"], "category": p.get("category", "")} for p in pr.json().get("data", [])]
+                for page in pages:
+                    ig_r = await hc.get(f"https://graph.facebook.com/v18.0/{page['id']}?fields=instagram_business_account&access_token={fb_token}")
+                    if ig_r.status_code == 200:
+                        ig_id = ig_r.json().get("instagram_business_account", {}).get("id")
+                        if ig_id:
+                            instagram_accounts.append({"id": ig_id, "linked_page": page["id"], "page_name": page["name"]})
+        except Exception as e:
+            return {"pages": pages, "instagram_accounts": instagram_accounts, "error": str(e)}
+
+    return {"pages": pages, "instagram_accounts": instagram_accounts}
 
 
 @app.post("/api/social/generate")
