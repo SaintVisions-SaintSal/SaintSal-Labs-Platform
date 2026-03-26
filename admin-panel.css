@@ -93,3 +93,18 @@
   .adm-tabs { overflow-x: auto; }
   .adm-users-table, .adm-orders-table { font-size: 12px; }
 }
+
+/* ─── Modal ─── */
+.adm-modal-overlay { position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.7); z-index:10000; display:flex; align-items:center; justify-content:center; backdrop-filter:blur(4px); }
+.adm-modal { background:var(--bg-surface, #1a1a1f); border:1px solid var(--border, #2a2a35); border-radius:12px; padding:24px; max-width:520px; width:90%; max-height:85vh; overflow-y:auto; }
+.adm-modal-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; }
+.adm-modal-header h3 { margin:0; font-size:18px; color:var(--accent-gold, #f59e0b); }
+.adm-modal-section { background:var(--bg-card, #111115); border-radius:8px; padding:12px; margin-bottom:12px; }
+.adm-modal-label { font-size:11px; color:var(--text-muted, #888); text-transform:uppercase; letter-spacing:0.5px; margin-top:8px; }
+.adm-modal-label:first-child { margin-top:0; }
+.adm-modal-value { font-size:14px; color:var(--text-primary, #eee); margin-top:2px; word-break:break-all; }
+.adm-modal-actions { display:flex; gap:8px; flex-wrap:wrap; margin-top:16px; }
+.adm-usage-bar-wrap { width:100%; height:8px; background:var(--bg-card, #111115); border-radius:4px; margin-top:6px; overflow:hidden; }
+.adm-usage-bar { height:100%; border-radius:4px; transition:width 0.5s; }
+.adm-btn-sm.gold { background:rgba(245,158,11,0.15); color:var(--accent-gold, #f59e0b); border:1px solid rgba(245,158,11,0.3); }
+.adm-btn-sm.gold:hover { background:rgba(245,158,11,0.25); }

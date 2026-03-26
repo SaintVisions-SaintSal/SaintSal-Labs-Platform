@@ -200,10 +200,11 @@ function admRenderUsers(filter) {
     html += '<td style="color:var(--text-muted);font-size:12px">' + lastSeen + '</td>';
     html += '<td><div class="adm-user-actions">';
     html += '<select class="adm-tier-select" onchange="admSetTier(\'' + u.id + '\',this.value)">';
-    ['free','pro','elite','enterprise'].forEach(function(t) {
+    ['free','starter','pro','teams','enterprise'].forEach(function(t) {
       html += '<option value="' + t + '"' + (u.plan_tier === t ? ' selected' : '') + '>' + t + '</option>';
     });
     html += '</select>';
+    html += '<button class="adm-btn-sm gold" onclick="admAddCredits(\'' + u.id + '\',\'' + escapeAttr(u.email) + '\')">+ Credits</button>';
     if (!u.email_confirmed) {
       html += '<button class="adm-btn-sm green" onclick="admConfirmUser(\'' + u.id + '\',\'' + escapeAttr(u.email) + '\')">Confirm</button>';
     }
@@ -344,7 +345,9 @@ function admRenderHealth() {
     supabase: '🗄️ Supabase DB', anthropic: '🤖 Claude (Anthropic)', openai: '🤖 OpenAI',
     gemini: '🤖 Gemini', grok: '🤖 Grok / xAI', replicate: '🎨 Replicate',
     runway: '🎬 Runway', stripe: '💳 Stripe', resend: '📧 Resend',
-    rentcast: '🏠 RentCast', propertyapi: '🏚️ PropertyAPI', render_live: '🚀 Render (Live)'
+    rentcast: '🏠 RentCast', propertyapi: '🏚️ PropertyAPI', render_live: '🚀 Render (Live)',
+    elevenlabs: '🎙️ ElevenLabs', gohighlevel: '📱 GoHighLevel', tavily: '🔍 Tavily Search',
+    exa: '🔎 Exa Search', twilio: '📞 Twilio', deepgram: '🎤 Deepgram'
   };
   Object.entries(checks).forEach(function(e) {
     var key = e[0]; var val = e[1];
@@ -459,4 +462,118 @@ function admShowToast(msg) {
 /* ─── Init (called when admin tab is opened) ───────────────── */
 function initAdminPanel() {
   admLoadOverview();
+}
+
+/* ─── CREDITS MANAGEMENT ─────────────────────────────────── */
+async function admAddCredits(userId, email) {
+  var amount = prompt('Add bonus credits for ' + email + '\n\nEnter amount (positive to add, negative to deduct):', '100');
+  if (!amount || isNaN(parseInt(amount))) return;
+  var reason = prompt('Reason for credit adjustment:', 'Admin override');
+  if (!reason) return;
+
+  try {
+    var resp = await fetch(API + '/api/admin/users/credits', {
+      method: 'POST',
+      headers: Object.assign({'Content-Type': 'application/json'}, authHeaders()),
+      body: JSON.stringify({ user_id: userId, credits: parseInt(amount), reason: reason })
+    });
+    var data = await resp.json();
+    if (data.success) {
+      admShowToast('✅ ' + amount + ' credits added to ' + email);
+      admLoadUsers();
+    } else {
+      admShowToast('❌ ' + (data.error || 'Failed'));
+    }
+  } catch(e) {
+    admShowToast('❌ ' + e.message);
+  }
+}
+
+/* ─── USER DETAIL VIEW WITH METERING ────────────────────── */
+async function admViewUser(userId) {
+  var user = adminState.users.find(function(u) { return u.id === userId; });
+  if (!user) return;
+
+  var tierConfig = {
+    free: { credits: 100, price: '$0', access: 'Mini' },
+    starter: { credits: 500, price: '$27/mo', access: 'Mini + Pro' },
+    pro: { credits: 2000, price: '$97/mo', access: 'Mini + Pro + Max' },
+    teams: { credits: 5000, price: '$297/mo', access: 'All tiers' },
+    enterprise: { credits: 'Unlimited', price: '$497/mo', access: 'All tiers + Priority' },
+  };
+
+  var tier = user.plan_tier || 'free';
+  var tc = tierConfig[tier] || tierConfig.free;
+  var creditsUsed = user.monthly_requests || 0;
+  var creditsLimit = user.request_limit || tc.credits;
+  var creditsRemaining = typeof creditsLimit === 'number' ? Math.max(0, creditsLimit - creditsUsed) : 'Unlimited';
+  var usagePercent = typeof creditsLimit === 'number' && creditsLimit > 0 ? Math.round((creditsUsed / creditsLimit) * 100) : 0;
+
+  var html = '<div class="adm-modal-overlay" onclick="this.remove()">';
+  html += '<div class="adm-modal" onclick="event.stopPropagation()">';
+  html += '<div class="adm-modal-header">';
+  html += '<h3>' + escapeHtml(user.full_name || user.email) + '</h3>';
+  html += '<button onclick="this.closest(\'.adm-modal-overlay\').remove()" style="background:none;border:none;color:var(--text-muted);font-size:20px;cursor:pointer">✕</button>';
+  html += '</div>';
+
+  // User info
+  html += '<div class="adm-modal-section">';
+  html += '<div class="adm-modal-label">Email</div><div class="adm-modal-value">' + escapeHtml(user.email || '') + '</div>';
+  html += '<div class="adm-modal-label">User ID</div><div class="adm-modal-value" style="font-size:11px;font-family:monospace">' + userId + '</div>';
+  html += '<div class="adm-modal-label">Plan</div><div class="adm-modal-value" style="color:var(--accent-gold);font-weight:700;text-transform:uppercase">' + tier + ' — ' + tc.price + '</div>';
+  html += '<div class="adm-modal-label">Compute Access</div><div class="adm-modal-value">' + tc.access + '</div>';
+  html += '</div>';
+
+  // Usage metering
+  html += '<div class="adm-modal-section">';
+  html += '<div class="adm-modal-label">Credits Used This Month</div>';
+  html += '<div class="adm-usage-bar-wrap"><div class="adm-usage-bar" style="width:' + Math.min(usagePercent, 100) + '%;background:' + (usagePercent > 80 ? 'var(--accent-red,#ef4444)' : usagePercent > 50 ? 'var(--accent-gold)' : 'var(--accent-green)') + '"></div></div>';
+  html += '<div class="adm-modal-value">' + creditsUsed + ' / ' + creditsLimit + ' (' + usagePercent + '%)</div>';
+  html += '<div class="adm-modal-label">Credits Remaining</div><div class="adm-modal-value" style="font-size:18px;font-weight:700;color:var(--accent-green)">' + creditsRemaining + '</div>';
+  html += '</div>';
+
+  // Stripe status
+  html += '<div class="adm-modal-section">';
+  html += '<div class="adm-modal-label">Stripe Customer</div><div class="adm-modal-value">' + (user.stripe_customer_id ? '✅ ' + user.stripe_customer_id : '❌ No card on file') + '</div>';
+  html += '<div class="adm-modal-label">Email Confirmed</div><div class="adm-modal-value">' + (user.email_confirmed ? '✅ Yes' : '❌ No') + '</div>';
+  html += '<div class="adm-modal-label">Last Sign In</div><div class="adm-modal-value">' + (user.last_sign_in ? new Date(user.last_sign_in).toLocaleString() : 'Never') + '</div>';
+  html += '<div class="adm-modal-label">Created</div><div class="adm-modal-value">' + (user.created_at ? new Date(user.created_at).toLocaleString() : '—') + '</div>';
+  html += '</div>';
+
+  // Quick actions
+  html += '<div class="adm-modal-actions">';
+  html += '<button class="adm-action-btn" onclick="admAddCredits(\'' + userId + '\',\'' + escapeAttr(user.email) + '\')">+ Add Credits</button>';
+  html += '<select class="adm-tier-select" style="padding:8px 12px" onchange="admSetTier(\'' + userId + '\',this.value);this.closest(\'.adm-modal-overlay\').remove()">';
+  ['free','starter','pro','teams','enterprise'].forEach(function(t) {
+    html += '<option value="' + t + '"' + (tier === t ? ' selected' : '') + '>' + t.toUpperCase() + '</option>';
+  });
+  html += '</select>';
+  if (!user.email_confirmed) {
+    html += '<button class="adm-action-btn" style="background:var(--accent-green);color:#000" onclick="admConfirmUser(\'' + userId + '\',\'' + escapeAttr(user.email) + '\');this.closest(\'.adm-modal-overlay\').remove()">Confirm Email</button>';
+  }
+  html += '<button class="adm-action-btn" style="background:var(--accent-red,#ef4444)" onclick="admDeleteUser(\'' + userId + '\');this.closest(\'.adm-modal-overlay\').remove()">Delete User</button>';
+  html += '</div>';
+
+  html += '</div></div>';
+  document.body.insertAdjacentHTML('beforeend', html);
+}
+
+async function admDeleteUser(userId) {
+  if (!confirm('Are you SURE you want to delete this user? This cannot be undone.')) return;
+  try {
+    var resp = await fetch(API + '/api/admin/users/' + userId, {
+      method: 'DELETE',
+      headers: Object.assign({}, authHeaders())
+    });
+    var data = await resp.json();
+    if (data.success) {
+      admShowToast('✅ User deleted');
+      adminState.users = adminState.users.filter(function(u) { return u.id !== userId; });
+      admRenderUsers('');
+    } else {
+      admShowToast('❌ ' + (data.error || 'Delete failed'));
+    }
+  } catch(e) {
+    admShowToast('❌ ' + e.message);
+  }
 }
