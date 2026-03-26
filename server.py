@@ -199,6 +199,12 @@ async def get_current_user(authorization: Optional[str] = Header(None)):
     return None
 
 
+async def _get_current_user(request: Request):
+    """Wrapper: extract Authorization header from Request and delegate to get_current_user."""
+    auth = request.headers.get("authorization", "")
+    return await get_current_user(auth if auth else None)
+
+
 # ─── Media Storage ────────────────────────────────────────────────────────────
 MEDIA_DIR = Path("media_uploads")
 MEDIA_DIR.mkdir(exist_ok=True)
@@ -6573,15 +6579,63 @@ async def stripe_webhook(request: Request):
             customer_id = data.get("customer")
             subscription_id = data.get("subscription")
             customer_email = data.get("customer_details", {}).get("email", "")
-            print(f"[Stripe Webhook] Checkout completed for {customer_email} (customer: {customer_id})")
-            
+            customer_name = data.get("customer_details", {}).get("name", customer_email.split("@")[0] if customer_email else "User")
+            metadata = data.get("metadata", {})
+            vertical = metadata.get("vertical", "general")
+            company_name = metadata.get("company_name", "")
+            phone = data.get("customer_details", {}).get("phone", "")
+            print(f"[Stripe Webhook] Checkout completed for {customer_email} (customer: {customer_id}, vertical: {vertical})")
+
+            # Resolve plan tier from the subscription's price ID
+            _checkout_price_to_tier = {
+                "price_1T5bkAL47U80vDLAslOm3HoX": "free",
+                "price_1T5bkAL47U80vDLAaChP4Hqg": "starter",
+                "price_1T5bkBL47U80vDLALiVDkOgb": "pro",
+                "price_1T5bkCL47U80vDLANsCa647K": "teams",
+                "price_1T5bkDL47U80vDLANXWF33A7": "enterprise",
+                "price_1T7p1tL47U80vDLAnxtkrGV4": "free",
+                "price_1T6dHNL47U80vDLAPgfsUmtO": "starter",
+                "price_1T6dHNL47U80vDLAHYxorUNk": "pro",
+                "price_1T84uZL47U80vDLARDZK46qE": "pro",
+                "price_1T6dHNL47U80vDLAqTTV84lL": "teams",
+                "price_1T6dHOL47U80vDLARSODO7b1": "enterprise",
+                "price_1T7p1sL47U80vDLAgU2shcQO": "starter",
+                "price_1T7p1tL47U80vDLAVC0N4N4J": "pro",
+                "price_1T7p1uL47U80vDLA9QF62BKS": "teams",
+                "price_1T7p1uL47U80vDLAR4Wk6uW0": "enterprise",
+                "price_1T7p1sL47U80vDLAYEEv8Kmg": "starter",
+                "price_1T7p1tL47U80vDLAk5HK8YcR": "pro",
+                "price_1T7p1uL47U80vDLAjlnLTuul": "teams",
+                "price_1T7p1uL47U80vDLAk9UA0lnr": "enterprise",
+            }
+            # Extract price ID from line items or subscription
+            _line_items = data.get("line_items", {}).get("data", []) if data.get("line_items") else []
+            _checkout_price_id = _line_items[0].get("price", {}).get("id", "") if _line_items else ""
+            plan_tier = _checkout_price_to_tier.get(_checkout_price_id, "starter")
+
             if supabase_admin and customer_id:
-                # Update profile with Stripe customer ID
+                # Update profile with Stripe customer ID + resolved tier
                 supabase_admin.table("profiles").update({
                     "stripe_customer_id": customer_id,
-                    "plan_tier": "starter",
+                    "plan_tier": plan_tier,
                     "updated_at": "now()"
                 }).eq("email", customer_email).execute()
+
+            # GHL Provisioning — create sub-account + deploy snapshot + welcome email
+            if plan_tier != "free" and customer_email:
+                try:
+                    provision_result = await provision_ghl_subaccount(
+                        customer_email=customer_email,
+                        customer_name=customer_name,
+                        plan_tier=plan_tier,
+                        vertical=vertical,
+                        phone=phone,
+                        company_name=company_name,
+                    )
+                    print(f"[Stripe Webhook] GHL Provisioning: {provision_result.get('step')} — success={provision_result.get('success')}")
+                except Exception as prov_err:
+                    print(f"[Stripe Webhook] GHL Provisioning FAILED (non-fatal): {prov_err}")
+                    # Non-fatal: payment succeeded, CRM provisioning failed — user can be provisioned manually via admin endpoint
         
         elif event_type == "customer.subscription.updated":
             customer_id = data.get("customer")
@@ -13146,28 +13200,6 @@ async def alpaca_portfolio(request: Request):
     return JSONResponse({"equity": 0, "cash": 0, "positions": [], "ok": False})
 
 
-@app.get("/api/realestate/portfolio")
-async def realestate_portfolio(request: Request):
-    """Real estate portfolio summary for dashboard (from Supabase card_portfolio + user properties)."""
-    user = await get_current_user(request)
-    if not user or not supabase_admin:
-        return JSONResponse({"properties": [], "total_value": 0, "ok": False})
-    try:
-        result = supabase_admin.table("card_portfolio").select("*").eq("user_id", user["id"]).execute()
-        items = result.data or []
-        # Also try a real-estate specific table if it exists
-        re_result = None
-        try:
-            re_result = supabase_admin.table("re_portfolio").select("*").eq("user_id", user["id"]).execute()
-        except Exception:
-            pass
-        properties = re_result.data if re_result and re_result.data else []
-        total = sum(float(p.get("estimated_value") or p.get("purchase_price") or 0) for p in properties)
-        return JSONResponse({"properties": properties, "total_value": round(total, 2), "count": len(properties), "ok": True})
-    except Exception as e:
-        return JSONResponse({"properties": [], "total_value": 0, "ok": False, "error": str(e)})
-
-
 # ═══════════════════════════════════════════════════════════════════════════════
 # GHL SUB-ACCOUNT PROVISIONING ENGINE — SaintSal™ Labs
 # Stripe webhook → GHL sub-account → snapshot deploy → welcome email
@@ -13175,6 +13207,7 @@ async def realestate_portfolio(request: Request):
 
 GHL_COMPANY_KEY = _env("GHL_COMPANY_KEY")
 GHL_AGENCY_BASE = "https://services.leadconnectorhq.com"
+CAP_EMAIL = _env("CAP_EMAIL", "ryan@cookin.io")
 
 # Tier + Vertical → Snapshot mapping
 SNAPSHOT_MAP = {
@@ -13429,7 +13462,7 @@ REWARDFUL_API_SECRET = _env("REWARDFUL_API_SECRET")
 REWARDFUL_PARTNER_CAMPAIGN = _env("REWARDFUL_LABS_PARTNER_CAMPAIGN_ID", "e73aeb4c-34f3-4e9c-8910-c0f6c16456aa")
 REWARDFUL_VP_CAMPAIGN = _env("REWARDFUL_VP_CAMPAIGN_ID")
 NOTIFICATION_EMAIL = _env("NOTIFICATION_EMAIL", "support@cookin.io")
-CAP_EMAIL = _env("CAP_EMAIL", "ryan@cookin.io")
+# CAP_EMAIL already defined above in GHL provisioning section
 
 
 async def _rewardful_api(method: str, path: str, body: dict = None) -> dict:
