@@ -13172,7 +13172,7 @@ async def realestate_portfolio(request: Request):
 
 # ─── Static file serving — MUST BE LAST (catch-all mount) ────────────────────
 # WARNING: Do NOT move this above any @app routes — it will block them (returns 404)
-app.mount("/", StaticFiles(directory=str(_static_dir), html=False), name="static")
+app.mount("/", StaticFiles(directory=str(_static_dir), html=True), name="static")
 
 if __name__ == "__main__":
     import uvicorn
