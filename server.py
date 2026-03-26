@@ -13149,27 +13149,6 @@ async def alpaca_portfolio(request: Request):
     return JSONResponse({"equity": 0, "cash": 0, "positions": [], "ok": False})
 
 
-@app.get("/api/realestate/portfolio")
-async def realestate_portfolio(request: Request):
-    """Real estate portfolio summary for dashboard (from Supabase card_portfolio + user properties)."""
-    user = await get_current_user(request)
-    if not user or not supabase_admin:
-        return JSONResponse({"properties": [], "total_value": 0, "ok": False})
-    try:
-        result = supabase_admin.table("card_portfolio").select("*").eq("user_id", user["id"]).execute()
-        items = result.data or []
-        # Also try a real-estate specific table if it exists
-        re_result = None
-        try:
-            re_result = supabase_admin.table("re_portfolio").select("*").eq("user_id", user["id"]).execute()
-        except Exception:
-            pass
-        properties = re_result.data if re_result and re_result.data else []
-        total = sum(float(p.get("estimated_value") or p.get("purchase_price") or 0) for p in properties)
-        return JSONResponse({"properties": properties, "total_value": round(total, 2), "count": len(properties), "ok": True})
-    except Exception as e:
-        return JSONResponse({"properties": [], "total_value": 0, "ok": False, "error": str(e)})
-
 # ─── Static file serving — MUST BE LAST (catch-all mount) ────────────────────
 # WARNING: Do NOT move this above any @app routes — it will block them (returns 404)
 app.mount("/", StaticFiles(directory=str(_static_dir), html=True), name="static")
