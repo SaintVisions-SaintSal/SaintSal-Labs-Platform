@@ -6229,7 +6229,7 @@ async function agentBuild() {
   }, 900);
 
   var abortCtl = new AbortController();
-  var timeoutId = setTimeout(function() { abortCtl.abort(); }, 180000);
+  var timeoutId = setTimeout(function() { abortCtl.abort(); }, 600000);
 
   try {
     var resp = await fetch(API + '/api/builder/agent', {
@@ -6464,7 +6464,7 @@ async function kbBuild() {
   });
 
   var abortCtl = new AbortController();
-  var timeoutId = setTimeout(function() { abortCtl.abort(); }, 180000);
+  var timeoutId = setTimeout(function() { abortCtl.abort(); }, 600000);
 
   try {
     var resp = await fetch(API + '/api/builder/agent', {

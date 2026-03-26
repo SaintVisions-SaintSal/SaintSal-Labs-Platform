@@ -472,7 +472,7 @@ function reRenderPortfolioCard(p) {
   html += '</div>';
   if (p.notes) html += '<div class="re-portfolio-notes">' + escapeHtml(p.notes) + '</div>';
   html += '<div class="re-card-actions">';
-  html += '<button class="re-btn-sm" onclick="reGetComps(\'' + escapeAttr(addr + (city ? \', \' + city : \'\') + (state ? \', \' + state : \'\')) + '\')">Comps</button>';
+  html += '<button class="re-btn-sm" onclick="reGetComps(\'' + escapeAttr(addr + (city ? ', ' + city : '') + (state ? ', ' + state : '')) + '\')">Comps</button>';
   html += '<button class="re-btn-sm accent-green" onclick="reQuickDeal(\'' + escapeAttr(addr) + '\',' + (p.price || 0) + ')">Analyze</button>';
   html += '</div>';
   html += '</div>';
