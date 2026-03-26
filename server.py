@@ -809,9 +809,7 @@ async def chat(request: Request):
     return StreamingResponse(generate(), media_type="text/event-stream", background=BackgroundTask(_chat_meter_callback))
 
 
-# ============================================================================
 # CONVERSATIONS — v7.40.0: Supabase-persistent (survives Render restarts)
-# ============================================================================
 import hashlib
 
 CONVERSATIONS_DIR = Path("conversations_data")
@@ -3822,15 +3820,12 @@ def detect_intent(query: str) -> str:
     return "chat"
 
 
-# ============================================================================
 # METERING & BILLING — Mini/Pro/Max/MaxPro Per-Minute Compute Tiers
-# ============================================================================
 # Stripe Metered Price IDs:
 #   Mini ($0.05/min):     price_1T5bkVL47U80vDLAHHAjXmJh
 #   Pro ($0.25/min):      price_1T5bkWL47U80vDLA4EI3dylp
 #   Max ($0.75/min):      price_1T5bkXL47U80vDLAh6DLuS0j
 #   Max Pro ($1.00/min):  price_1T5bkYL47U80vDLAVOs5fj75
-# ============================================================================
 
 STRIPE_SECRET = os.environ.get("STRIPE_SECRET_KEY", "")
 
@@ -5332,9 +5327,7 @@ async def get_post_history():
     return {"posts": demo_posts}
 
 
-# ============================================================================
 # AUTH — Supabase Authentication (signup, login, logout, profile)
-# ============================================================================
 
 class AuthSignup(BaseModel):
     email: str
@@ -6657,9 +6650,7 @@ async def stripe_webhook(request: Request):
     return JSONResponse({"received": True})
 
 
-# ============================================
 # MEDICAL SUITE API ENDPOINTS
-# ============================================
 
 @app.get("/api/medical/icd10")
 async def medical_icd10(q: str = "", request: Request = None):
