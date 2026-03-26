@@ -20,6 +20,12 @@ import traceback
 from datetime import datetime
 from typing import Optional
 
+
+# ─── Environment Helper ──────────────────────────────────────────────────────
+def _env(key: str, default: str = "") -> str:
+    """Read env var with NEXT_PUBLIC_ fallback for Render compatibility."""
+    return os.environ.get(key, "") or os.environ.get(f"NEXT_PUBLIC_{key}", "") or default
+
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect, File, UploadFile, Form, Depends, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, JSONResponse, Response, FileResponse, HTMLResponse, RedirectResponse
@@ -70,9 +76,10 @@ RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "")
 print(f"{'✅' if ELEVENLABS_API_KEY else '⚠️'} ElevenLabs API key {'configured' if ELEVENLABS_API_KEY else 'not set'}")
 
 # ─── Supabase Client ──────────────────────────────────────────────────────────
-SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
-SUPABASE_ANON_KEY = os.environ.get("SUPABASE_ANON_KEY", "")
-SUPABASE_SERVICE_KEY = os.environ.get("SUPABASE_SERVICE_KEY", "")
+# Reads both SUPABASE_URL and NEXT_PUBLIC_SUPABASE_URL (Render has NEXT_PUBLIC_ prefix)
+SUPABASE_URL = _env("SUPABASE_URL")
+SUPABASE_ANON_KEY = _env("SUPABASE_ANON_KEY")
+SUPABASE_SERVICE_KEY = _env("SUPABASE_SERVICE_KEY")
 
 # Public client (for user-scoped operations)
 supabase: Optional[SupabaseClient] = None
@@ -85,6 +92,8 @@ if SUPABASE_URL and SUPABASE_ANON_KEY:
         print(f"✅ Supabase public client initialized: {SUPABASE_URL}")
     except Exception as e:
         print(f"⚠️ Supabase public client failed: {e}")
+else:
+    print(f"⚠️ Supabase NOT configured (URL={'set' if SUPABASE_URL else 'MISSING'}, ANON_KEY={'set' if SUPABASE_ANON_KEY else 'MISSING'})")
 
 if SUPABASE_URL and SUPABASE_SERVICE_KEY:
     try:
@@ -92,6 +101,42 @@ if SUPABASE_URL and SUPABASE_SERVICE_KEY:
         print(f"✅ Supabase admin client initialized")
     except Exception as e:
         print(f"⚠️ Supabase admin client failed: {e}")
+else:
+    print(f"⚠️ Supabase admin NOT configured (SERVICE_KEY={'set' if SUPABASE_SERVICE_KEY else 'MISSING'})")
+
+OPENAI_API_KEY = _env("OPENAI_API_KEY")
+
+
+# ─── Startup Validation ─────────────────────────────────────────────────────────
+@app.on_event("startup")
+async def _validate_environment():
+    """Log environment status on startup for debugging."""
+    print("\n" + "=" * 60)
+    print("SaintSal Labs Platform — Environment Check")
+    print("=" * 60)
+    _critical = {
+        "SUPABASE_URL": bool(SUPABASE_URL),
+        "SUPABASE_ANON_KEY": bool(SUPABASE_ANON_KEY),
+        "SUPABASE_SERVICE_KEY": bool(SUPABASE_SERVICE_KEY),
+        "ANTHROPIC_API_KEY": bool(os.environ.get("ANTHROPIC_API_KEY")),
+    }
+    _optional = {
+        "OPENAI_API_KEY": bool(OPENAI_API_KEY),
+        "TAVILY_API_KEY": bool(TAVILY_API_KEY),
+        "ELEVENLABS_API_KEY": bool(ELEVENLABS_API_KEY),
+        "STRIPE_SECRET_KEY": bool(_env("STRIPE_SECRET_KEY")),
+        "GOOGLE_MAPS_KEY": bool(GOOGLE_MAPS_KEY),
+        "RENTCAST_API_KEY": bool(RENTCAST_API_KEY),
+    }
+    for name, ok in _critical.items():
+        print(f"  {'✅' if ok else '❌'} {name}: {'configured' if ok else 'MISSING — CRITICAL'}")
+    for name, ok in _optional.items():
+        print(f"  {'✅' if ok else '⚠️'} {name}: {'configured' if ok else 'not set'}")
+    missing = [k for k, v in _critical.items() if not v]
+    if missing:
+        print(f"\n⚠️  CRITICAL: {len(missing)} required env vars missing: {', '.join(missing)}")
+        print("   Auth, billing, and data persistence will NOT work.")
+    print("=" * 60 + "\n")
 
 
 # v7.40.0 — Auto-create conversations table on startup
@@ -315,7 +360,7 @@ You're knowledgeable, clear, and warm — like a brilliant friend who happens to
 
 # ─── Tavily Web Search ────────────────────────────────────────────────────────
 
-TAVILY_API_KEY = os.environ.get("TAVILY_API_KEY", "")
+TAVILY_API_KEY = _env("TAVILY_API_KEY")
 
 async def search_web(query: str, search_depth: str = "basic", max_results: int = 5, topic: str = "general", include_answer: bool = False, include_images: bool = False):
     """Search the web using Tavily API."""
@@ -8570,13 +8615,25 @@ async def agent_build(request: Request):
 
         # Run AI call with keepalive pings so SSE connection stays alive
         import asyncio as _aio
-        _code_result_holder = {"result": None, "done": False}
+        _code_result_holder = {"result": None, "done": False, "error": None}
         async def _run_code_gen():
-            _code_result_holder["result"] = await _builder_ai_call(BUILDER_CODE_SYSTEM, prompt + plan_ctx, "claude", 32000, timeout_seconds=180)
-            _code_result_holder["done"] = True
+            try:
+                # Try Claude first (90s), then fallback to OpenAI (60s)
+                res = await _builder_ai_call(BUILDER_CODE_SYSTEM, prompt + plan_ctx, "claude", 32000, timeout_seconds=90)
+                if res and res.get("text"):
+                    _code_result_holder["result"] = res
+                else:
+                    # Claude failed or empty — try OpenAI fallback
+                    res = await _builder_ai_call(BUILDER_CODE_SYSTEM, prompt + plan_ctx, "openai", 32000, timeout_seconds=60)
+                    _code_result_holder["result"] = res
+            except Exception as _cge:
+                print(f"[Agent Builder] Code gen error: {_cge}")
+                _code_result_holder["error"] = str(_cge)
+            finally:
+                _code_result_holder["done"] = True
         _task = _aio.create_task(_run_code_gen())
 
-        # Send keepalive pings every 8s while waiting for code generation
+        # Send keepalive pings every 5s while waiting for code generation
         _ping_msgs = [
             "Analyzing architecture...", "Generating components...", "Building UI layer...",
             "Wiring logic...", "Optimizing code...", "Finalizing files...",
@@ -8584,7 +8641,7 @@ async def agent_build(request: Request):
         ]
         _ping_i = 0
         while not _code_result_holder["done"]:
-            await _aio.sleep(8)
+            await _aio.sleep(5)
             if not _code_result_holder["done"]:
                 msg = _ping_msgs[_ping_i % len(_ping_msgs)]
                 yield "data: " + json.dumps({"phase": "wiring", "agent": "claude", "message": msg}) + "\n\n"
