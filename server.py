@@ -195,6 +195,10 @@ GOOGLE_MAPS_KEY = os.environ.get("GOOGLE_MAPS_KEY", "")
 ZILLOW_API_KEY = os.environ.get("ZILLOW_API_KEY", "")
 ZILLOW_RAPIDAPI_HOST = "zillow-com1.p.rapidapi.com"
 
+# ─── Replicate + Runway ───────────────────────────────────────────────────────
+REPLICATE_API_TOKEN = os.environ.get("REPLICATE_API_TOKEN", "")
+RUNWAY_API_KEY = os.environ.get("RUNWAY_API_KEY", "")
+
 
 def _property_api_headers() -> dict:
     """Return PropertyAPI headers using current env key (read at request time)."""
@@ -3658,15 +3662,53 @@ OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
 
 @app.post("/api/generate/image")
 async def generate_image(request: Request):
-    """Generate an image from a text prompt."""
+    """Generate an image. Priority: Replicate FLUX → DALL-E 3 → Gemini description."""
     body = await request.json()
     prompt = body.get("prompt", "")
     size = body.get("size", "1024x1024")
+    model_hint = body.get("model", "auto")  # "flux", "dalle", "auto"
 
     if not prompt:
         return JSONResponse({"error": "Prompt is required"}, status_code=400)
 
-    # Try OpenAI DALL-E
+    # ── PRIMARY: Replicate FLUX Schnell (fast, high quality) ──────────────────
+    _replicate_token = os.environ.get("REPLICATE_API_TOKEN", REPLICATE_API_TOKEN)
+    if _replicate_token and model_hint != "dalle":
+        async with httpx.AsyncClient(timeout=120.0) as http:
+            try:
+                # Start prediction
+                start_resp = await http.post(
+                    "https://api.replicate.com/v1/models/black-forest-labs/flux-schnell/predictions",
+                    headers={"Authorization": f"Token {_replicate_token}", "Content-Type": "application/json", "Prefer": "wait"},
+                    json={"input": {"prompt": prompt, "num_outputs": 1, "output_format": "webp", "output_quality": 90}},
+                )
+                if start_resp.status_code in (200, 201):
+                    pred = start_resp.json()
+                    # "Prefer: wait" makes Replicate wait up to 60s synchronously
+                    if pred.get("status") == "succeeded" and pred.get("output"):
+                        return {"url": pred["output"][0], "provider": "replicate-flux-schnell", "model": "FLUX Schnell"}
+                    # Fallback: poll
+                    pred_id = pred.get("id")
+                    if pred_id:
+                        for _ in range(45):
+                            await asyncio.sleep(2)
+                            poll = await http.get(
+                                f"https://api.replicate.com/v1/predictions/{pred_id}",
+                                headers={"Authorization": f"Token {_replicate_token}"}
+                            )
+                            pd2 = poll.json()
+                            if pd2.get("status") == "succeeded":
+                                out = pd2.get("output", [])
+                                if out:
+                                    return {"url": out[0], "provider": "replicate-flux-schnell", "model": "FLUX Schnell"}
+                                break
+                            elif pd2.get("status") in ("failed", "canceled"):
+                                print(f"[Replicate] Prediction {pred_id} failed: {pd2.get('error')}")
+                                break
+            except Exception as e:
+                print(f"[Replicate] Image gen error: {e}")
+
+    # ── FALLBACK: OpenAI DALL-E 3 ─────────────────────────────────────────────
     if OPENAI_API_KEY:
         async with httpx.AsyncClient(timeout=60.0) as http:
             try:
@@ -3678,31 +3720,25 @@ async def generate_image(request: Request):
                 data = resp.json()
                 if resp.status_code == 200 and data.get("data"):
                     img = data["data"][0]
-                    return {"url": img.get("url", ""), "revised_prompt": img.get("revised_prompt", ""), "provider": "dall-e-3"}
-                return JSONResponse({"error": data.get("error", {}).get("message", "Image generation failed")}, status_code=500)
+                    return {"url": img.get("url", ""), "revised_prompt": img.get("revised_prompt", ""), "provider": "dall-e-3", "model": "DALL-E 3"}
             except Exception as e:
-                return JSONResponse({"error": str(e)}, status_code=500)
+                print(f"[DALL-E] Image gen error: {e}")
 
-    # Fallback: use Gemini image generation
+    # ── LAST RESORT: Gemini description ───────────────────────────────────────
     if GEMINI_API_KEY:
-        async with httpx.AsyncClient(timeout=60.0) as http:
+        async with httpx.AsyncClient(timeout=30.0) as http:
             try:
                 resp = await http.post(
                     f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={GEMINI_API_KEY}",
-                    json={
-                        "contents": [{"parts": [{"text": f"Generate a detailed image description for: {prompt}"}]}],
-                        "generationConfig": {"maxOutputTokens": 1024},
-                    },
+                    json={"contents": [{"parts": [{"text": f"Describe in vivid visual detail: {prompt}"}]}], "generationConfig": {"maxOutputTokens": 512}},
                     headers={"Content-Type": "application/json"},
                 )
-                data = resp.json()
-                desc = data.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "")
-                # Return text description as fallback when no image API available
-                return {"description": desc, "provider": "gemini-description", "note": "Image description generated — add OpenAI API key for actual image generation"}
-            except Exception as e:
-                return JSONResponse({"error": str(e)}, status_code=500)
+                desc = resp.json().get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "")
+                return {"description": desc, "provider": "gemini-description", "note": "Add REPLICATE_API_TOKEN for actual image generation"}
+            except Exception:
+                pass
 
-    return JSONResponse({"error": "No image generation API configured. Add OPENAI_API_KEY for DALL-E."}, status_code=503)
+    return JSONResponse({"error": "No image generation API configured. Add REPLICATE_API_TOKEN."}, status_code=503)
 
 
 @app.get("/api/generate/status")
@@ -5340,49 +5376,97 @@ async def auth_signup(request: Request, data: AuthSignup):
         return JSONResponse({"error": error_msg}, status_code=400)
 
 
+async def _build_login_response(user_obj, session_obj) -> dict:
+    """Build the standard login response with profile data."""
+    profile = None
+    if supabase_admin:
+        try:
+            p = supabase_admin.table("profiles").select("*").eq("id", str(user_obj.id)).single().execute()
+            profile = p.data
+        except Exception:
+            pass
+    _admin_list = json.loads(os.environ.get("ADMIN_EMAILS", '["ryan@cookin.io","ryan@hacpglobal.ai","cap@hacpglobal.ai"]'))
+    _is_admin = user_obj.email in _admin_list
+    return {
+        "success": True,
+        "user": {
+            "id": str(user_obj.id),
+            "email": user_obj.email,
+            "full_name": profile.get("full_name", "") if profile else "",
+            "plan_tier": "enterprise" if _is_admin else (profile.get("tier", "free") if profile else "free"),
+            "compute_tier": "maxpro" if _is_admin else (profile.get("compute_tier", "mini") if profile else "mini"),
+            "credits_remaining": 999999 if _is_admin else max(0, (profile.get("request_limit", 100) - profile.get("monthly_requests", 0))) if profile else 100,
+            "credits_limit": 999999 if _is_admin else (profile.get("request_limit", 100) if profile else 100),
+            "wallet_balance": float(profile.get("wallet_balance", 0)) if profile else 0,
+            "total_compute_minutes": float(profile.get("total_compute_minutes", 0)) if profile else 0,
+            "avatar_url": profile.get("avatar_url", "") if profile else "",
+            "is_admin": _is_admin,
+        },
+        "session": {
+            "access_token": session_obj.access_token,
+            "refresh_token": session_obj.refresh_token,
+            "expires_at": session_obj.expires_at,
+        }
+    }
+
+
 @app.post("/api/auth/login")
 async def auth_login(data: AuthLogin):
-    """Login with email and password."""
+    """Login with email and password. Admin emails are auto-confirmed if needed."""
     if not supabase:
         return JSONResponse({"error": "Auth service not configured"}, status_code=503)
+
+    _admin_list = json.loads(os.environ.get("ADMIN_EMAILS", '["ryan@cookin.io","ryan@hacpglobal.ai","cap@hacpglobal.ai","laliecapatosto86@gmail.com","laliecapatosto96@gmail.com"]'))
+    is_admin_email = data.email.lower() in [e.lower() for e in _admin_list]
+
     try:
         result = supabase.auth.sign_in_with_password({
             "email": data.email,
             "password": data.password,
         })
         if result.user and result.session:
-            # Fetch profile data
-            profile = None
-            if supabase_admin:
-                try:
-                    p = supabase_admin.table("profiles").select("*").eq("id", str(result.user.id)).single().execute()
-                    profile = p.data
-                except Exception:
-                    pass
-            return {
-                "success": True,
-                "user": {
-                    "id": str(result.user.id),
-                    "email": result.user.email,
-                    "full_name": profile.get("full_name", "") if profile else "",
-                    "plan_tier": profile.get("tier", "free") if profile else "free",
-                    "compute_tier": profile.get("compute_tier", "mini") if profile else "mini",
-                    "credits_remaining": max(0, (profile.get("request_limit", 100) - profile.get("monthly_requests", 0))) if profile else 100,
-                    "credits_limit": profile.get("request_limit", 100) if profile else 100,
-                    "wallet_balance": float(profile.get("wallet_balance", 0)) if profile else 0,
-                    "total_compute_minutes": float(profile.get("total_compute_minutes", 0)) if profile else 0,
-                    "avatar_url": profile.get("avatar_url", "") if profile else "",
-                },
-                "session": {
-                    "access_token": result.session.access_token,
-                    "refresh_token": result.session.refresh_token,
-                    "expires_at": result.session.expires_at,
-                }
-            }
+            return await _build_login_response(result.user, result.session)
         return JSONResponse({"error": "Invalid credentials"}, status_code=401)
+
     except Exception as e:
         error_msg = str(e)
-        if "invalid" in error_msg.lower() or "credentials" in error_msg.lower():
+        error_lower = error_msg.lower()
+
+        # ── Auto-confirm admin emails ──────────────────────────────────────────
+        # If admin email fails with "not confirmed", confirm via service role and retry
+        if is_admin_email and ("not confirmed" in error_lower or "email" in error_lower):
+            try:
+                async with httpx.AsyncClient(timeout=15) as hc:
+                    # Find the user in Supabase
+                    search_resp = await hc.get(
+                        f"{SUPABASE_URL}/auth/v1/admin/users",
+                        headers={"apikey": SUPABASE_SERVICE_KEY, "Authorization": f"Bearer {SUPABASE_SERVICE_KEY}"},
+                        params={"email": data.email, "per_page": 1}
+                    )
+                    if search_resp.status_code == 200:
+                        users_data = search_resp.json().get("users", [])
+                        if users_data:
+                            uid = users_data[0]["id"]
+                            # Force confirm the email
+                            await hc.put(
+                                f"{SUPABASE_URL}/auth/v1/admin/users/{uid}",
+                                headers={"apikey": SUPABASE_SERVICE_KEY, "Authorization": f"Bearer {SUPABASE_SERVICE_KEY}", "Content-Type": "application/json"},
+                                json={"email_confirm": True}
+                            )
+                            # Retry sign in
+                            result2 = supabase.auth.sign_in_with_password({"email": data.email, "password": data.password})
+                            if result2.user and result2.session:
+                                print(f"[Auth] Admin email auto-confirmed and signed in: {data.email}")
+                                return await _build_login_response(result2.user, result2.session)
+            except Exception as confirm_err:
+                print(f"[Auth] Admin auto-confirm failed: {confirm_err}")
+        # ── End auto-confirm ───────────────────────────────────────────────────
+
+        if "not confirmed" in error_lower or "email_not_confirmed" in error_lower:
+            return JSONResponse({
+                "error": "Your email isn't verified yet. Check your inbox or use the Magic Link option to sign in instantly."
+            }, status_code=401)
+        if "invalid" in error_lower or "credentials" in error_lower or "wrong" in error_lower:
             return JSONResponse({"error": "Invalid email or password"}, status_code=401)
         return JSONResponse({"error": error_msg}, status_code=400)
 
@@ -10249,6 +10333,206 @@ async def require_super_admin(authorization: Optional[str] = Header(None)):
     if not user or user.get("email", "").lower() != SUPER_ADMIN_EMAIL.lower():
         return None
     return user
+
+@app.get("/api/admin/health")
+async def admin_health(authorization: Optional[str] = Header(None)):
+    """Comprehensive system health check for admin dashboard."""
+    user = await require_admin(authorization)
+    if not user:
+        return JSONResponse({"error": "Admin access required"}, status_code=403)
+
+    checks = {}
+    async with httpx.AsyncClient(timeout=8) as hc:
+
+        # Supabase DB
+        try:
+            r = await hc.get(f"{SUPABASE_URL}/rest/v1/profiles?select=id&limit=1",
+                headers={"apikey": SUPABASE_SERVICE_KEY, "Authorization": f"Bearer {SUPABASE_SERVICE_KEY}"})
+            checks["supabase"] = {"status": "ok" if r.status_code == 200 else "error", "latency_ms": int(r.elapsed.total_seconds()*1000), "code": r.status_code}
+        except Exception as e:
+            checks["supabase"] = {"status": "error", "error": str(e)}
+
+        # Anthropic Claude
+        checks["anthropic"] = {"status": "ok" if bool(os.environ.get("ANTHROPIC_API_KEY")) else "missing", "key_set": bool(os.environ.get("ANTHROPIC_API_KEY"))}
+
+        # OpenAI
+        checks["openai"] = {"status": "ok" if bool(OPENAI_API_KEY) else "missing", "key_set": bool(OPENAI_API_KEY)}
+
+        # Gemini
+        checks["gemini"] = {"status": "ok" if bool(GEMINI_API_KEY) else "missing", "key_set": bool(GEMINI_API_KEY)}
+
+        # Grok / xAI
+        grok_key = os.environ.get("XAI_API_KEY", "")
+        checks["grok"] = {"status": "ok" if bool(grok_key) else "missing", "key_set": bool(grok_key)}
+
+        # Replicate
+        _rt = os.environ.get("REPLICATE_API_TOKEN", REPLICATE_API_TOKEN)
+        checks["replicate"] = {"status": "ok" if bool(_rt) else "missing", "key_set": bool(_rt)}
+
+        # Runway
+        checks["runway"] = {"status": "ok" if bool(RUNWAY_API_KEY) else "missing", "key_set": bool(RUNWAY_API_KEY)}
+
+        # Stripe
+        checks["stripe"] = {"status": "ok" if bool(os.environ.get("STRIPE_SECRET_KEY")) else "missing", "key_set": bool(os.environ.get("STRIPE_SECRET_KEY"))}
+
+        # Resend
+        checks["resend"] = {"status": "ok" if bool(os.environ.get("RESEND_API_KEY")) else "missing", "key_set": bool(os.environ.get("RESEND_API_KEY"))}
+
+        # RentCast
+        checks["rentcast"] = {"status": "ok" if bool(RENTCAST_API_KEY) else "missing", "key_set": bool(RENTCAST_API_KEY)}
+
+        # PropertyAPI
+        checks["propertyapi"] = {"status": "ok" if bool(PROPERTY_API_KEY) else "missing", "key_set": bool(PROPERTY_API_KEY)}
+
+        # Live ping to Render (self)
+        try:
+            r2 = await hc.get("https://saintsallabs.com/api/health", timeout=5)
+            checks["render_live"] = {"status": "ok" if r2.status_code == 200 else "error", "latency_ms": int(r2.elapsed.total_seconds()*1000)}
+        except Exception:
+            checks["render_live"] = {"status": "error", "error": "Self-ping failed"}
+
+    ok_count = sum(1 for v in checks.values() if v.get("status") == "ok")
+    return {
+        "overall": "healthy" if ok_count >= 6 else ("degraded" if ok_count >= 3 else "critical"),
+        "ok_count": ok_count,
+        "total_checks": len(checks),
+        "checks": checks,
+        "timestamp": datetime.now().isoformat(),
+    }
+
+
+@app.post("/api/admin/users/{user_id}/tier")
+async def admin_set_user_tier(user_id: str, request: Request, authorization: Optional[str] = Header(None)):
+    """Override a user's full tier (free/pro/elite/enterprise). SUPER ADMIN ONLY."""
+    user = await require_super_admin(authorization)
+    if not user:
+        return JSONResponse({"error": "Super admin access required"}, status_code=403)
+
+    body = await request.json()
+    new_tier = body.get("tier", "free")
+    valid_tiers = ["free", "pro", "elite", "enterprise"]
+    if new_tier not in valid_tiers:
+        return JSONResponse({"error": f"Invalid tier. Must be one of: {valid_tiers}"}, status_code=400)
+
+    tier_limits = {"free": 100, "pro": 1000, "elite": 5000, "enterprise": 999999}
+    compute_map = {"free": "mini", "pro": "pro", "elite": "max", "enterprise": "maxpro"}
+
+    try:
+        # Update profiles table
+        if supabase_admin:
+            supabase_admin.table("profiles").update({
+                "tier": new_tier,
+                "plan_tier": new_tier,
+                "compute_tier": compute_map[new_tier],
+                "request_limit": tier_limits[new_tier],
+            }).eq("id", user_id).execute()
+
+        # Update Supabase Auth user_metadata
+        async with httpx.AsyncClient(timeout=15) as hc:
+            resp = await hc.put(
+                f"{SUPABASE_URL}/auth/v1/admin/users/{user_id}",
+                headers={"apikey": SUPABASE_SERVICE_KEY, "Authorization": f"Bearer {SUPABASE_SERVICE_KEY}", "Content-Type": "application/json"},
+                json={"user_metadata": {"plan_tier": new_tier, "tier": new_tier, "compute_tier": compute_map[new_tier]}}
+            )
+        return {"success": True, "user_id": user_id, "new_tier": new_tier, "compute_tier": compute_map[new_tier], "request_limit": tier_limits[new_tier]}
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.post("/api/admin/users/{user_id}/confirm")
+async def admin_confirm_user(user_id: str, authorization: Optional[str] = Header(None)):
+    """Force-confirm a user's email. SUPER ADMIN ONLY."""
+    user = await require_super_admin(authorization)
+    if not user:
+        return JSONResponse({"error": "Super admin access required"}, status_code=403)
+    try:
+        async with httpx.AsyncClient(timeout=15) as hc:
+            resp = await hc.put(
+                f"{SUPABASE_URL}/auth/v1/admin/users/{user_id}",
+                headers={"apikey": SUPABASE_SERVICE_KEY, "Authorization": f"Bearer {SUPABASE_SERVICE_KEY}", "Content-Type": "application/json"},
+                json={"email_confirm": True}
+            )
+            if resp.status_code == 200:
+                return {"success": True, "message": "Email confirmed"}
+            return JSONResponse({"error": resp.text}, status_code=resp.status_code)
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.post("/api/generate/pdf")
+async def generate_pdf(request: Request):
+    """Generate a PDF document from a prompt using AI + HTML rendering."""
+    body = await request.json()
+    prompt = body.get("prompt", "")
+    title = body.get("title", "Document")
+    if not prompt:
+        return JSONResponse({"error": "Prompt is required"}, status_code=400)
+
+    # Use Claude (or fallback) to generate HTML document content
+    doc_prompt = f"""Generate a professional, well-structured HTML document for: {prompt}
+
+Return ONLY the HTML body content (no <html>/<head>/<body> tags).
+Use clean, professional styling with inline CSS.
+Include proper headings, sections, bullet points.
+Make it ready to print as a PDF."""
+
+    html_content = ""
+    if client:
+        try:
+            msg = client.messages.create(
+                model="claude-haiku-4-5-20251001",
+                max_tokens=2048,
+                messages=[{"role": "user", "content": doc_prompt}]
+            )
+            html_content = msg.content[0].text if msg.content else ""
+        except Exception:
+            pass
+
+    if not html_content and OPENAI_API_KEY:
+        try:
+            async with httpx.AsyncClient(timeout=30) as hc:
+                r = await hc.post("https://api.openai.com/v1/chat/completions",
+                    headers={"Authorization": f"Bearer {OPENAI_API_KEY}", "Content-Type": "application/json"},
+                    json={"model": "gpt-4o-mini", "max_tokens": 2048,
+                          "messages": [{"role": "user", "content": doc_prompt}]})
+                html_content = r.json().get("choices", [{}])[0].get("message", {}).get("content", "")
+        except Exception:
+            pass
+
+    # Wrap in full HTML with print styles
+    full_html = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>{title}</title>
+<style>
+  body {{ font-family: 'Georgia', serif; max-width: 800px; margin: 40px auto; color: #1a1a1a; line-height: 1.7; font-size: 15px; }}
+  h1, h2, h3 {{ color: #111; font-family: 'Arial', sans-serif; }}
+  h1 {{ font-size: 26px; border-bottom: 2px solid #e5e5e5; padding-bottom: 12px; margin-bottom: 24px; }}
+  h2 {{ font-size: 20px; margin-top: 32px; }}
+  ul, ol {{ padding-left: 24px; }}
+  li {{ margin-bottom: 6px; }}
+  .header {{ display: flex; justify-content: space-between; align-items: center; margin-bottom: 32px; }}
+  .brand {{ font-size: 11px; color: #888; text-transform: uppercase; letter-spacing: 0.1em; }}
+  @media print {{ body {{ margin: 20px; }} }}
+</style>
+</head>
+<body>
+<div class="header">
+  <div class="brand">SaintSal™ Labs — Generated Document</div>
+  <div class="brand">{datetime.now().strftime("%B %d, %Y")}</div>
+</div>
+{html_content}
+</body>
+</html>"""
+
+    return {
+        "html": full_html,
+        "title": title,
+        "provider": "claude" if client else "openai",
+        "note": "Open in browser and print to save as PDF (Cmd+P / Ctrl+P → Save as PDF)"
+    }
+
 
 @app.get("/api/admin/check")
 async def admin_check(authorization: Optional[str] = Header(None)):

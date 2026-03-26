@@ -124,43 +124,35 @@ function renderAdminDashboard() {
   if (!el) return;
 
   if (!adminState.isAdmin) {
-    el.innerHTML = '<div style="padding:60px 20px;text-align:center;color:#333;font-size:14px;">Admin access required.</div>';
+    el.innerHTML = '<div style="padding:60px 20px;text-align:center;color:var(--text-muted);font-size:14px;">Admin access required. Sign in as ryan@cookin.io to access this panel.</div>';
     return;
   }
 
-  var h = '';
-  h += '<div class="admin-wrap">';
+  // Use the new full control panel from admin-panel.js if available
+  if (typeof renderAdminPanel === 'function') {
+    el.innerHTML = renderAdminPanel();
+    // Initialize
+    setTimeout(initAdminPanel, 100);
+    return;
+  }
 
-  /* Tab bar — User Management only visible to super admin (ryan@cookin.io) */
+  // Legacy fallback (orders + users only)
+  var h = '<div class="admin-wrap">';
   h += '<div class="admin-tabs">';
   h += '<button class="admin-tab' + (adminState.activeTab === 'orders' ? ' active' : '') + '" onclick="adminSwitchTab(\'orders\')">Orders</button>';
   if (adminState.isSuperAdmin) {
     h += '<button class="admin-tab' + (adminState.activeTab === 'users' ? ' active' : '') + '" onclick="adminSwitchTab(\'users\')">User Management</button>';
   }
   h += '</div>';
-
   if (adminState.activeTab === 'orders') {
     h += _adminOrdersTab();
   } else if (adminState.activeTab === 'users' && adminState.isSuperAdmin) {
     h += _adminUsersTab();
-  } else if (adminState.activeTab === 'users') {
-    h += '<div class="admin-empty" style="padding:40px;">User management requires super admin access (ryan@cookin.io only).</div>';
   }
-
-  h += '</div>';
-
-  /* Modal container */
-  h += '<div id="adminOrderModal"></div>';
-
+  h += '</div><div id="adminOrderModal"></div>';
   el.innerHTML = h;
-
-  /* Load data */
-  if (adminState.activeTab === 'orders') {
-    adminLoadOrders();
-    adminLoadStats();
-  } else {
-    adminLoadUsers();
-  }
+  if (adminState.activeTab === 'orders') { adminLoadOrders(); adminLoadStats(); }
+  else { adminLoadUsers(); }
 }
 
 function adminSwitchTab(tab) {
