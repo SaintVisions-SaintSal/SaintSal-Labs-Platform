@@ -13168,6 +13168,261 @@ async def realestate_portfolio(request: Request):
         return JSONResponse({"properties": [], "total_value": 0, "ok": False, "error": str(e)})
 
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# GHL SUB-ACCOUNT PROVISIONING ENGINE — SaintSal™ Labs
+# Stripe webhook → GHL sub-account → snapshot deploy → welcome email
+# ═══════════════════════════════════════════════════════════════════════════════
+
+GHL_COMPANY_KEY = _env("GHL_COMPANY_KEY")
+GHL_AGENCY_BASE = "https://services.leadconnectorhq.com"
+
+# Tier + Vertical → Snapshot mapping
+SNAPSHOT_MAP = {
+    ("starter", "general"): "General Mini Business v1.0",
+    ("pro", "general"): "General Business Pro v1.0",
+    ("teams", "general"): "General Business Pro v1.0",
+    ("enterprise", "general"): "General Business Pro v1.0",
+    ("starter", "realestate"): "RE mini v1.0",
+    ("pro", "realestate"): "RE Pro Snapshot v1.0",
+    ("teams", "realestate"): "RE Pro Snapshot v1.0",
+    ("enterprise", "realestate"): "RE Pro Snapshot v1.0",
+    ("starter", "investment"): "Investment mini v1.0",
+    ("pro", "investment"): "Investment Pro Snapshot v1.0",
+    ("teams", "investment"): "Investment Pro Snapshot v1.0",
+    ("enterprise", "investment"): "Investment Pro Snapshot v1.0",
+    ("starter", "lending"): "Residential Lending Mini v1.0",
+    ("pro", "lending"): "Lending System Pro v1",
+    ("teams", "lending"): "Lending System Pro v1",
+    ("enterprise", "lending"): "Lending System Pro v1",
+    ("starter", "commercial_lending"): "Residential Lending Mini v1.0",
+    ("pro", "commercial_lending"): "Lending System Pro v1",
+}
+
+
+async def provision_ghl_subaccount(
+    customer_email: str, customer_name: str, plan_tier: str,
+    vertical: str = "general", phone: str = "", company_name: str = "",
+) -> dict:
+    """Create GHL sub-account, deploy snapshot, send welcome email."""
+    result = {"success": False, "step": "init"}
+
+    if not GHL_COMPANY_KEY:
+        result["error"] = "GHL_COMPANY_KEY not configured"
+        print(f"[GHL Provision] FAILED: No company key")
+        return result
+
+    snapshot_name = SNAPSHOT_MAP.get((plan_tier, vertical))
+    if not snapshot_name and plan_tier != "free":
+        snapshot_name = SNAPSHOT_MAP.get((plan_tier, "general"))
+    if not snapshot_name:
+        result["error"] = f"No snapshot for tier={plan_tier}, vertical={vertical}"
+        return result
+
+    result["step"] = "create_subaccount"
+    result["snapshot_name"] = snapshot_name
+    headers = {"Authorization": f"Bearer {GHL_COMPANY_KEY}", "Content-Type": "application/json", "Version": "2021-07-28"}
+    business_name = company_name or f"{customer_name}'s Business"
+
+    try:
+        async with httpx.AsyncClient(timeout=30) as hc:
+            # Step 1: Create sub-account
+            resp = await hc.post(f"{GHL_AGENCY_BASE}/saas-api/public-api/locations", headers=headers, json={
+                "name": business_name, "email": customer_email, "phone": phone or "",
+                "country": "US", "timezone": "America/Los_Angeles",
+                "settings": {"allowDuplicateContact": False, "allowDuplicateOpportunity": False},
+            })
+            if resp.status_code not in (200, 201):
+                result["error"] = f"GHL create failed: {resp.status_code} — {resp.text[:300]}"
+                print(f"[GHL Provision] Create failed: {resp.status_code}")
+                return result
+
+            location_data = resp.json()
+            location_id = location_data.get("id") or location_data.get("locationId", "")
+            if not location_id:
+                result["error"] = f"No location ID returned"
+                return result
+
+            result["location_id"] = location_id
+            result["step"] = "deploy_snapshot"
+            print(f"[GHL Provision] Sub-account created: {location_id} for {customer_email}")
+
+            # Step 2: Deploy snapshot
+            snap_resp = await hc.post(
+                f"{GHL_AGENCY_BASE}/saas-api/public-api/locations/{location_id}/snapshot",
+                headers=headers, json={"snapshotId": snapshot_name},
+            )
+            result["snapshot_deployed"] = snap_resp.status_code in (200, 201)
+            if not result["snapshot_deployed"]:
+                result["snapshot_error"] = f"{snap_resp.status_code}: {snap_resp.text[:200]}"
+            else:
+                print(f"[GHL Provision] Snapshot '{snapshot_name}' deployed to {location_id}")
+
+            # Step 3: Store in Supabase
+            result["step"] = "store_in_supabase"
+            if supabase_admin:
+                try:
+                    supabase_admin.table("profiles").update({
+                        "ghl_location_id": location_id, "ghl_provisioned": True,
+                        "ghl_snapshot": snapshot_name, "ghl_vertical": vertical,
+                        "updated_at": "now()",
+                    }).eq("email", customer_email).execute()
+                    result["profile_updated"] = True
+                except Exception as db_err:
+                    result["profile_updated"] = False
+                    result["db_error"] = str(db_err)
+
+            # Step 4: Send welcome email
+            result["step"] = "send_welcome_email"
+            login_url = "https://app.saintsallabs.com"
+            if RESEND_API_KEY:
+                try:
+                    welcome_html = f"""<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;max-width:600px;margin:0 auto;padding:40px 20px;">
+<div style="text-align:center;margin-bottom:32px;"><h1 style="font-size:28px;font-weight:800;color:#F59E0B;margin:0;">SaintSal™ Labs</h1><p style="color:#888;font-size:14px;margin-top:4px;">Your AI-powered business platform is ready</p></div>
+<div style="background:#111115;border:1px solid #2a2a35;border-radius:12px;padding:32px;margin-bottom:24px;">
+<h2 style="color:#fff;font-size:20px;margin:0 0 16px;">Welcome, {customer_name}!</h2>
+<p style="color:#ccc;font-size:15px;line-height:1.6;margin:0 0 20px;">Your <strong style="color:#F59E0B;">{plan_tier.title()}</strong> account is live with our <strong>{snapshot_name}</strong> template — pipelines, automations, and workflows pre-built for your industry.</p>
+<div style="background:#0C0C0F;border-radius:8px;padding:20px;margin-bottom:20px;">
+<p style="color:#888;font-size:12px;text-transform:uppercase;letter-spacing:0.5px;margin:0 0 8px;">Your login</p>
+<p style="color:#fff;font-size:16px;margin:0 0 4px;"><strong>Platform:</strong> <a href="{login_url}" style="color:#F59E0B;">{login_url}</a></p>
+<p style="color:#fff;font-size:16px;margin:0 0 4px;"><strong>Email:</strong> {customer_email}</p>
+<p style="color:#888;font-size:13px;margin:8px 0 0;">Use "Forgot Password" to set your password on first login.</p></div>
+<a href="{login_url}" style="display:inline-block;background:#F59E0B;color:#000;font-weight:700;font-size:16px;padding:14px 32px;border-radius:8px;text-decoration:none;">Log In to Your Dashboard</a></div>
+<div style="background:#111115;border:1px solid #2a2a35;border-radius:12px;padding:24px;margin-bottom:24px;">
+<h3 style="color:#F59E0B;font-size:16px;margin:0 0 12px;">What's inside your account:</h3>
+<ul style="color:#ccc;font-size:14px;line-height:2;padding-left:20px;margin:0;">
+<li>Pre-built CRM pipelines for your industry</li><li>Automated follow-up workflows</li>
+<li>Calendar booking and scheduling</li><li>Email and SMS campaigns</li>
+<li>Funnel and landing page templates</li><li>SAL AI intelligence</li></ul></div>
+<div style="text-align:center;padding:20px;">
+<p style="color:#888;font-size:13px;margin:0;">Questions? Reply to this email or chat with SAL at <a href="https://www.saintsallabs.com" style="color:#F59E0B;">saintsallabs.com</a></p>
+<p style="color:#555;font-size:11px;margin-top:12px;">Saint Vision Technologies LLC | US Patent #10,290,222</p></div></div>"""
+                    async with httpx.AsyncClient(timeout=15) as ec:
+                        email_resp = await ec.post("https://api.resend.com/emails", headers={
+                            "Authorization": f"Bearer {RESEND_API_KEY}", "Content-Type": "application/json",
+                        }, json={
+                            "from": f"SaintSal Labs <support@cookin.io>",
+                            "to": [customer_email],
+                            "subject": f"Your SaintSal™ Labs {plan_tier.title()} account is live!",
+                            "html": welcome_html,
+                        })
+                        result["email_sent"] = email_resp.status_code in (200, 201)
+                except Exception as email_err:
+                    result["email_sent"] = False
+                    result["email_error"] = str(email_err)
+
+            result["success"] = True
+            result["step"] = "complete"
+            print(f"[GHL Provision] ✅ COMPLETE: {customer_email} → {location_id} → {snapshot_name}")
+            return result
+    except Exception as e:
+        result["error"] = str(e)
+        print(f"[GHL Provision] Exception at step {result['step']}: {e}")
+        return result
+
+
+@app.post("/api/admin/provision/{user_id}")
+async def admin_provision_user(user_id: str, request: Request):
+    """Manually provision a GHL sub-account for an existing user."""
+    auth = request.headers.get("authorization", "").replace("Bearer ", "")
+    user = await get_current_user(f"Bearer {auth}")
+    if not user or user.get("email") != CAP_EMAIL:
+        return JSONResponse({"error": "Admin access required"}, status_code=403)
+    if not supabase_admin:
+        return JSONResponse({"error": "Supabase not configured"}, status_code=500)
+    profile = supabase_admin.table("profiles").select("*").eq("id", user_id).single().execute()
+    if not profile.data:
+        return JSONResponse({"error": "User not found"}, status_code=404)
+    p = profile.data
+    if p.get("ghl_provisioned") and p.get("ghl_location_id"):
+        return JSONResponse({"error": "Already provisioned", "location_id": p["ghl_location_id"]}, status_code=409)
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    result = await provision_ghl_subaccount(
+        customer_email=p.get("email", ""), customer_name=p.get("full_name", p.get("email", "").split("@")[0]),
+        plan_tier=p.get("plan_tier", "starter"), vertical=body.get("vertical", p.get("ghl_vertical", "general")),
+        company_name=body.get("company_name", ""),
+    )
+    return JSONResponse(result, status_code=200 if result["success"] else 500)
+
+
+@app.get("/api/admin/subaccounts")
+async def admin_list_subaccounts(request: Request):
+    """List all provisioned GHL sub-accounts."""
+    auth = request.headers.get("authorization", "").replace("Bearer ", "")
+    user = await get_current_user(f"Bearer {auth}")
+    if not user or user.get("email") != CAP_EMAIL:
+        return JSONResponse({"error": "Admin access required"}, status_code=403)
+    if not supabase_admin:
+        return JSONResponse({"error": "Supabase not configured"}, status_code=500)
+    result = supabase_admin.table("profiles").select(
+        "id, email, full_name, plan_tier, ghl_location_id, ghl_provisioned, ghl_snapshot, ghl_vertical, created_at"
+    ).eq("ghl_provisioned", True).order("created_at", desc=True).execute()
+    return {"subaccounts": result.data or [], "total": len(result.data or [])}
+
+
+@app.post("/api/checkout/create-session")
+async def create_checkout_with_vertical(request: Request):
+    """Stripe checkout with vertical metadata for GHL provisioning."""
+    import stripe as stripe_lib
+    stripe_lib.api_key = _env("STRIPE_SECRET_KEY")
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Invalid body"}, status_code=400)
+    price_id = body.get("price_id", "")
+    vertical = body.get("vertical", "general")
+    referral_id = body.get("referral_id", body.get("referralId", ""))
+    if not price_id:
+        return JSONResponse({"error": "price_id required"}, status_code=400)
+    try:
+        params = {
+            "payment_method_types": ["card"], "mode": "subscription",
+            "line_items": [{"price": price_id, "quantity": 1}],
+            "success_url": "https://www.saintsallabs.com/#welcome?session_id={CHECKOUT_SESSION_ID}",
+            "cancel_url": "https://www.saintsallabs.com/#pricing",
+            "metadata": {"vertical": vertical, "company_name": body.get("company_name", ""), "source": "saintsallabs.com"},
+            "allow_promotion_codes": True,
+        }
+        if referral_id:
+            params["client_reference_id"] = referral_id
+        session = stripe_lib.checkout.Session.create(**params)
+        return {"session_id": session.id, "url": session.url}
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.get("/api/pricing/plans")
+async def get_pricing_plans():
+    """Pricing plans with vertical options for the checkout flow."""
+    return {
+        "tiers": [
+            {"id": "free", "name": "Free", "price": 0, "price_id": "price_1T5bkAL47U80vDLAslOm3HoX", "features": ["50 msgs/mo", "Basic AI chat", "Finance + RE modules"], "cta": "Get Started Free"},
+            {"id": "starter", "name": "Starter", "price": 27, "price_id": "price_1T5bkAL47U80vDLAaChP4Hqg", "features": ["500 msgs/mo", "All 6 AI modules", "CRM sub-account", "Industry snapshot", "Email support"], "cta": "Start Building"},
+            {"id": "pro", "name": "Pro", "price": 97, "price_id": "price_1T5bkBL47U80vDLALiVDkOgb", "features": ["Unlimited msgs", "All AI models", "Pro CRM snapshot", "Builder IDE", "Priority support"], "cta": "Go Pro", "popular": True},
+            {"id": "teams", "name": "Teams", "price": 297, "price_id": "price_1T5bkCL47U80vDLANsCa647K", "features": ["Everything in Pro", "Up to 5 seats", "Pro CRM snapshot", "Shared AI agents", "Team analytics"], "cta": "Get Teams"},
+            {"id": "enterprise", "name": "Enterprise", "price": 497, "price_id": "price_1T5bkDL47U80vDLANXWF33A7", "features": ["Everything in Teams", "Unlimited seats", "White-label", "Custom integrations", "API access"], "cta": "Contact Sales"},
+        ],
+        "verticals": [
+            {"id": "general", "name": "General Business", "icon": "briefcase"},
+            {"id": "realestate", "name": "Real Estate", "icon": "home"},
+            {"id": "lending", "name": "Lending / Mortgage", "icon": "dollar"},
+            {"id": "investment", "name": "Investment / Finance", "icon": "chart"},
+            {"id": "commercial_lending", "name": "Commercial Lending", "icon": "building"},
+        ],
+        "addons": [
+            {"id": "ai_employee", "name": "AI Employee", "price": 149},
+            {"id": "conversation_ai", "name": "Conversation AI", "price": 97},
+            {"id": "email_ip", "name": "Dedicated Email IP", "price": 99},
+            {"id": "branded_app", "name": "Branded Client App", "price": 97},
+            {"id": "ad_manager", "name": "Ad Manager", "price": 49},
+            {"id": "hipaa", "name": "HIPAA Compliance", "price": 497},
+        ],
+    }
+
+
+
 # ─── Rewardful Affiliate Tier Engine ──────────────────────────────────────────
 
 REWARDFUL_API_SECRET = _env("REWARDFUL_API_SECRET")
