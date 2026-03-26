@@ -11,6 +11,39 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
 <!-- Rewardful Affiliate Tracking -->
 <script>(function(w,r){w._rwq=r;w[r]=w[r]||function(){(w[r].q=w[r].q||[]).push(arguments)}})(window,'rewardful');</script>
 <script async src='https://r.wdfl.co/rw.js' data-rewardful='80669a'></script>
+<script>
+// Auto-append Rewardful referral ID to all Stripe Payment Links
+(function(){
+  function wirePaymentLinks(){
+    if(typeof window.rewardful!=='function')return;
+    window.rewardful('ready',function(){
+      var ref=window.Rewardful&&window.Rewardful.referral;
+      if(!ref)return;
+      document.querySelectorAll('a[href*="buy.stripe.com"]').forEach(function(a){
+        var h=a.getAttribute('href');
+        if(h&&h.indexOf('client_reference_id')===-1){
+          var sep=h.indexOf('?')>-1?'&':'?';
+          a.setAttribute('href',h+sep+'client_reference_id='+ref);
+        }
+      });
+      // Also update data-monthly-link and data-annual-link attributes
+      document.querySelectorAll('[data-monthly-link*="buy.stripe.com"]').forEach(function(el){
+        ['data-monthly-link','data-annual-link'].forEach(function(attr){
+          var v=el.getAttribute(attr);
+          if(v&&v.indexOf('client_reference_id')===-1){
+            var sep=v.indexOf('?')>-1?'&':'?';
+            el.setAttribute(attr,v+sep+'client_reference_id='+ref);
+          }
+        });
+      });
+    });
+  }
+  // Run on load and periodically (SPA navigation may add new links)
+  if(document.readyState==='complete')wirePaymentLinks();
+  else window.addEventListener('load',wirePaymentLinks);
+  setInterval(wirePaymentLinks,5000);
+})();
+</script>
 <!--
    ______                            __
   / ____/___  ____ ___  ____  __  __/ /____  _____

@@ -10096,9 +10096,15 @@ async def billing_checkout(request: Request):
             session_params["mode"] = "setup"
             session_params["payment_method_types"] = ["card"]
         
+        # Rewardful affiliate tracking — pass referral ID for commission attribution
+        referral_id = body.get("referral_id", body.get("referralId", ""))
+        if referral_id:
+            session_params["client_reference_id"] = referral_id
+        
         user = getattr(request.state, "user", None)
         if user:
-            session_params["client_reference_id"] = user.get("id", "")
+            if not referral_id:  # Don't override Rewardful referral
+                session_params["client_reference_id"] = user.get("id", "")
             email = user.get("email", "")
             if email:
                 session_params["customer_email"] = email
@@ -13169,6 +13175,127 @@ async def realestate_portfolio(request: Request):
         return JSONResponse({"properties": properties, "total_value": round(total, 2), "count": len(properties), "ok": True})
     except Exception as e:
         return JSONResponse({"properties": [], "total_value": 0, "ok": False, "error": str(e)})
+
+
+# ─── Rewardful Affiliate Tier Engine ──────────────────────────────────────────
+
+REWARDFUL_API_SECRET = _env("REWARDFUL_API_SECRET")
+REWARDFUL_PARTNER_CAMPAIGN = _env("REWARDFUL_LABS_PARTNER_CAMPAIGN_ID", "e73aeb4c-34f3-4e9c-8910-c0f6c16456aa")
+REWARDFUL_VP_CAMPAIGN = _env("REWARDFUL_VP_CAMPAIGN_ID")
+NOTIFICATION_EMAIL = _env("NOTIFICATION_EMAIL", "support@cookin.io")
+CAP_EMAIL = _env("CAP_EMAIL", "ryan@cookin.io")
+
+
+async def _rewardful_api(method: str, path: str, body: dict = None) -> dict:
+    """Call Rewardful API v1."""
+    if not REWARDFUL_API_SECRET:
+        return {"error": "REWARDFUL_API_SECRET not configured"}
+    async with httpx.AsyncClient(timeout=15) as hc:
+        headers = {"Authorization": f"Bearer {REWARDFUL_API_SECRET}", "Content-Type": "application/json"}
+        url = f"https://api.getrewardful.com/v1{path}"
+        if method == "GET":
+            r = await hc.get(url, headers=headers, params=body)
+        elif method == "PUT":
+            r = await hc.put(url, headers=headers, json=body)
+        elif method == "POST":
+            r = await hc.post(url, headers=headers, json=body)
+        else:
+            return {"error": f"Unsupported method: {method}"}
+        if r.status_code < 300:
+            return r.json()
+        return {"error": f"Rewardful API {r.status_code}: {r.text[:200]}"}
+
+
+@app.get("/api/rewardful/affiliates")
+async def list_affiliates(request: Request):
+    """List affiliates, optionally filtered by campaign."""
+    campaign = request.query_params.get("campaign", "")
+    params = {"expand[]": "campaign"}
+    if campaign:
+        params["campaign_id"] = campaign
+    data = await _rewardful_api("GET", "/affiliates", params)
+    return JSONResponse(data)
+
+
+@app.get("/api/rewardful/stats")
+async def rewardful_stats():
+    """Get aggregate affiliate stats."""
+    stats = {"partner_count": 0, "vp_count": 0, "total_referrals": 0}
+    partner_data = await _rewardful_api("GET", "/affiliates", {"campaign_id": REWARDFUL_PARTNER_CAMPAIGN})
+    if isinstance(partner_data, list):
+        stats["partner_count"] = len(partner_data)
+    elif isinstance(partner_data, dict) and "data" in partner_data:
+        stats["partner_count"] = len(partner_data["data"])
+    if REWARDFUL_VP_CAMPAIGN:
+        vp_data = await _rewardful_api("GET", "/affiliates", {"campaign_id": REWARDFUL_VP_CAMPAIGN})
+        if isinstance(vp_data, list):
+            stats["vp_count"] = len(vp_data)
+        elif isinstance(vp_data, dict) and "data" in vp_data:
+            stats["vp_count"] = len(vp_data["data"])
+    return JSONResponse({"ok": True, **stats})
+
+
+@app.post("/api/rewardful/tier-check")
+async def tier_check(request: Request):
+    """Check Partner affiliates for VP promotion (150+ conversions). Run daily."""
+    auth = request.headers.get("x-sal-key", "") or request.headers.get("authorization", "").replace("Bearer ", "")
+    cron_secret = _env("CRON_SECRET")
+    valid_key = _env("SAL_GATEWAY_SECRET")
+    if auth not in [cron_secret, valid_key] and len(auth) < 100:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    if not REWARDFUL_API_SECRET:
+        return JSONResponse({"error": "Rewardful not configured"}, status_code=500)
+    if not REWARDFUL_VP_CAMPAIGN:
+        return JSONResponse({"error": "VP campaign ID not configured"}, status_code=500)
+
+    promoted = []
+    checked = 0
+    partner_data = await _rewardful_api("GET", "/affiliates", {"campaign_id": REWARDFUL_PARTNER_CAMPAIGN})
+    affiliates = partner_data if isinstance(partner_data, list) else partner_data.get("data", [])
+
+    for aff in affiliates:
+        checked += 1
+        conversions = aff.get("conversions_count", aff.get("conversions", 0))
+        aff_id = aff.get("id", "")
+        name = f"{aff.get('first_name', '')} {aff.get('last_name', '')}".strip() or aff.get("email", "unknown")
+
+        if isinstance(conversions, int) and conversions >= 150:
+            result = await _rewardful_api("PUT", f"/affiliates/{aff_id}", {"campaign_id": REWARDFUL_VP_CAMPAIGN})
+            if "error" not in result:
+                promoted.append({"id": aff_id, "name": name, "conversions": conversions})
+                print(f"[Tier Engine] PROMOTED {name} to VP — {conversions} conversions")
+                if RESEND_API_KEY:
+                    try:
+                        async with httpx.AsyncClient(timeout=10) as hc:
+                            await hc.post("https://api.resend.com/emails", headers={
+                                "Authorization": f"Bearer {RESEND_API_KEY}", "Content-Type": "application/json"
+                            }, json={
+                                "from": f"SaintSal Labs <{NOTIFICATION_EMAIL}>",
+                                "to": [CAP_EMAIL],
+                                "subject": f"Affiliate Promoted to VP: {name}",
+                                "html": f"<h2>Affiliate Tier Promotion</h2><p><strong>{name}</strong> hit {conversions} conversions and was auto-promoted from Partner (15%) to VP (25%).</p><p>Affiliate ID: {aff_id}</p>"
+                            })
+                    except Exception as e:
+                        print(f"[Tier Engine] Email failed: {e}")
+
+    return JSONResponse({"ok": True, "checked": checked, "promoted": len(promoted), "promotions": promoted, "timestamp": datetime.utcnow().isoformat()})
+
+
+@app.post("/api/rewardful/promote")
+async def manual_promote(request: Request):
+    """Manually promote/demote an affiliate. Admin only (Cap)."""
+    auth = request.headers.get("authorization", "").replace("Bearer ", "")
+    user = await get_current_user(f"Bearer {auth}")
+    if not user or user.get("email") != CAP_EMAIL:
+        return JSONResponse({"error": "Admin access required"}, status_code=403)
+    body = await request.json()
+    affiliate_id = body.get("affiliate_id", "")
+    target_campaign = body.get("campaign_id", "")
+    if not affiliate_id or not target_campaign:
+        return JSONResponse({"error": "affiliate_id and campaign_id required"}, status_code=400)
+    result = await _rewardful_api("PUT", f"/affiliates/{affiliate_id}", {"campaign_id": target_campaign})
+    return JSONResponse(result)
+
 
 # ─── Static file serving — MUST BE LAST (catch-all mount) ────────────────────
 # WARNING: Do NOT move this above any @app routes — it will block them (returns 404)
