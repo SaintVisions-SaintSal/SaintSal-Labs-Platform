@@ -9314,7 +9314,7 @@ function setBuilderMode(mode) {
 function generateAffiliateLink() {
   var handle = (document.getElementById('affiliateHandleInput').value || '').trim().toLowerCase().replace(/[^a-z0-9_-]/g,'');
   if (!handle) { showToast('Enter your handle first', 'error'); return; }
-  var link = 'https://saintsallabs.com?ref=' + encodeURIComponent(handle);
+  var link = 'https://saintsallabs.com?via=' + encodeURIComponent(handle);
   document.getElementById('affiliateLinkText').textContent = link;
   document.getElementById('affiliateLinkOutput').style.display = 'block';
 }
