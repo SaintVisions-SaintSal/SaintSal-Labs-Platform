@@ -6617,7 +6617,7 @@ async def stripe_webhook(request: Request):
                 # Update profile with Stripe customer ID + resolved tier
                 supabase_admin.table("profiles").update({
                     "stripe_customer_id": customer_id,
-                    "plan_tier": plan_tier,
+                    "tier": plan_tier,
                     "updated_at": "now()"
                 }).eq("email", customer_email).execute()
 
@@ -6674,7 +6674,7 @@ async def stripe_webhook(request: Request):
             
             if supabase_admin and customer_id:
                 supabase_admin.table("profiles").update({
-                    "plan_tier": tier if status == "active" else "free",
+                    "tier": tier if status == "active" else "free",
                     "updated_at": "now()"
                 }).eq("stripe_customer_id", customer_id).execute()
                 print(f"[Stripe Webhook] Updated plan to {tier} for customer {customer_id}")
@@ -6683,7 +6683,7 @@ async def stripe_webhook(request: Request):
             customer_id = data.get("customer")
             if supabase_admin and customer_id:
                 supabase_admin.table("profiles").update({
-                    "plan_tier": "free",
+                    "tier": "free",
                     "updated_at": "now()"
                 }).eq("stripe_customer_id", customer_id).execute()
                 print(f"[Stripe Webhook] Subscription cancelled for customer {customer_id}")
@@ -10530,7 +10530,6 @@ async def admin_set_user_tier(user_id: str, request: Request, authorization: Opt
         if supabase_admin:
             supabase_admin.table("profiles").update({
                 "tier": new_tier,
-                "plan_tier": new_tier,
                 "compute_tier": compute_map[new_tier],
                 "request_limit": tier_limits[new_tier],
             }).eq("id", user_id).execute()
@@ -10965,7 +10964,6 @@ async def admin_update_user(user_id: str, data: AdminUpdateUser, authorization: 
                         profile_updates = {}
                         if data.plan_tier:
                             profile_updates["tier"] = data.plan_tier
-                            profile_updates["plan_tier"] = data.plan_tier
                             # Update credit limits based on tier
                             tier_limits = {"free": 100, "starter": 500, "pro": 2000, "teams": 5000, "enterprise": 999999}
                             profile_updates["request_limit"] = tier_limits.get(data.plan_tier, 100)
