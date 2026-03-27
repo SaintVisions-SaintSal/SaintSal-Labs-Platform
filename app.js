@@ -305,8 +305,9 @@ function loadDiscover(category) {
       // Hero section
       heroHtml += '<div class="home-hero">';
       heroHtml += '<div class="home-hero-content">';
-      heroHtml += '<img src="saintsal-full-logo.png" class="home-hero-logo" alt="SaintSal Labs">';
+      heroHtml += '<img src="saintsal-labs-logo.png" class="home-hero-logo" alt="SaintSal">';
       heroHtml += '<div class="home-hero-text">';
+      heroHtml += '<div class="home-hero-title">SaintSal\u2122 <span class="labs-green">LABS</span></div>';
       heroHtml += '<div class="home-hero-subtitle">' + (verticalDescs[category] || verticalDescs.search) + '</div>';
       heroHtml += '<div class="home-hero-badges">';
       heroHtml += '<span class="home-hero-badge gold">\u26A1 HACP\u2122 Protocol</span>';
