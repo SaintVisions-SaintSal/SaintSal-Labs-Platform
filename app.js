@@ -1230,7 +1230,7 @@ function renderWelcome() {
 
   if (sessionMatch) {
     // Fetch session details to get the plan
-    fetch(API_BASE + '/api/checkout/session-status?session_id=' + sessionMatch[1])
+    fetch(API + '/api/checkout/session-status?session_id=' + sessionMatch[1])
       .then(function(r) { return r.json(); })
       .then(function(data) {
         renderWelcomeContent(data.plan || 'pro', data.vertical || 'general', data.customer_name || '');
@@ -1324,7 +1324,7 @@ async function proceedToCheckout() {
   if (btn) { btn.disabled = true; btn.textContent = 'Creating checkout...'; }
   var companyName = (document.getElementById('verticalCompanyName') || {}).value || '';
   try {
-    var resp = await fetch(API_BASE + '/api/checkout/create-session', {
+    var resp = await fetch(API + '/api/checkout/create-session', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
