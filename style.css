@@ -954,10 +954,11 @@ ul, ol { list-style: none; }
   gap: var(--space-6);
 }
 .home-hero-logo {
-  width: 80px;
-  height: 80px;
-  border-radius: 16px;
-  object-fit: cover;
+  width: auto;
+  height: 60px;
+  max-width: 360px;
+  border-radius: 0;
+  object-fit: contain;
   flex-shrink: 0;
   border: none;
   background: transparent;
