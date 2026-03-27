@@ -13575,6 +13575,179 @@ async def get_pricing_plans():
 
 
 
+# ─── Social Studio → GHL Integration ──────────────────────────────────────────
+
+
+@app.get("/api/social-studio/accounts")
+async def social_studio_accounts(request: Request):
+    """Get user's connected social accounts from their GHL sub-account."""
+    user = await get_current_user(request.headers.get("authorization"))
+    if not user:
+        return JSONResponse({"error": "Authentication required"}, status_code=401)
+
+    # Get user's GHL location ID from profile
+    if not supabase_admin:
+        return JSONResponse({"error": "Database not available"}, status_code=500)
+
+    profile = supabase_admin.table("profiles").select("ghl_location_id, ghl_provisioned").eq("id", user["id"]).single().execute()
+    if not profile.data or not profile.data.get("ghl_location_id"):
+        return {"accounts": [], "provisioned": False, "message": "Connect your social accounts at app.saintsallabs.com"}
+
+    location_id = profile.data["ghl_location_id"]
+
+    if not GHL_COMPANY_KEY:
+        return JSONResponse({"error": "GHL not configured"}, status_code=500)
+
+    try:
+        async with httpx.AsyncClient(timeout=15) as hc:
+            headers = {"Authorization": f"Bearer {GHL_COMPANY_KEY}", "Content-Type": "application/json", "Version": "2021-07-28"}
+            resp = await hc.get(
+                f"{GHL_AGENCY_BASE}/social-media-posting/{location_id}/accounts",
+                headers=headers,
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                accounts = data.get("accounts", data.get("data", []))
+                return {"accounts": accounts, "provisioned": True, "locationId": location_id}
+            else:
+                # If the social media endpoint doesn't exist for this location, return empty
+                return {"accounts": [], "provisioned": True, "message": "No social accounts connected yet. Visit app.saintsallabs.com → Marketing → Social Planner to connect."}
+    except Exception as e:
+        print(f"[Social Studio] Failed to get accounts: {e}")
+        return {"accounts": [], "error": str(e)}
+
+
+@app.post("/api/social-studio/publish")
+async def social_studio_publish(request: Request):
+    """Publish AI-generated content to user's social accounts via GHL."""
+    user = await get_current_user(request.headers.get("authorization"))
+    if not user:
+        return JSONResponse({"error": "Authentication required"}, status_code=401)
+
+    body = await request.json()
+    content = body.get("content", "")
+    platforms = body.get("platforms", [])
+    media_urls = body.get("mediaUrls", [])
+    schedule_date = body.get("scheduleDate")  # ISO 8601 UTC, null = post now
+
+    if not content and not media_urls:
+        return JSONResponse({"error": "Content or media required"}, status_code=400)
+    if not platforms:
+        return JSONResponse({"error": "Select at least one platform"}, status_code=400)
+
+    # Get user's GHL location
+    profile = supabase_admin.table("profiles").select("ghl_location_id").eq("id", user["id"]).single().execute()
+    if not profile.data or not profile.data.get("ghl_location_id"):
+        return JSONResponse({"error": "No GHL account. Complete onboarding at app.saintsallabs.com"}, status_code=400)
+
+    location_id = profile.data["ghl_location_id"]
+
+    try:
+        async with httpx.AsyncClient(timeout=30) as hc:
+            headers = {"Authorization": f"Bearer {GHL_COMPANY_KEY}", "Content-Type": "application/json", "Version": "2021-07-28"}
+
+            ghl_payload = {
+                "type": "post",
+                "socialMediaPlatforms": platforms,
+                "content": content,
+            }
+            if media_urls:
+                ghl_payload["mediaUrls"] = media_urls
+            if schedule_date:
+                ghl_payload["scheduleDate"] = schedule_date
+
+            resp = await hc.post(
+                f"{GHL_AGENCY_BASE}/social-media-posting/{location_id}/post",
+                headers=headers,
+                json=ghl_payload,
+            )
+
+            result = resp.json() if resp.status_code in (200, 201) else {}
+
+            # Store in marketing_content table
+            if supabase_admin:
+                try:
+                    supabase_admin.table("marketing_content").insert({
+                        "user_id": user["id"],
+                        "content": content,
+                        "platform": ",".join(platforms),
+                        "media_url": media_urls[0] if media_urls else None,
+                        "status": "scheduled" if schedule_date else "published",
+                        "ghl_post_id": result.get("id", result.get("postId", "")),
+                        "schedule_date": schedule_date,
+                        "date": datetime.now().isoformat(),
+                    }).execute()
+                except Exception as db_err:
+                    print(f"[Social Studio] Failed to store post record: {db_err}")
+
+            if resp.status_code in (200, 201):
+                return {
+                    "success": True,
+                    "postId": result.get("id", result.get("postId", "")),
+                    "platforms": platforms,
+                    "scheduled": bool(schedule_date),
+                    "message": f"{'Scheduled' if schedule_date else 'Published'} to {', '.join(platforms)}",
+                }
+            else:
+                return JSONResponse({
+                    "error": f"GHL posting failed: {resp.text[:300]}",
+                    "status_code": resp.status_code,
+                }, status_code=resp.status_code)
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.get("/api/social-studio/history")
+async def social_studio_history(request: Request):
+    """Get social posting history."""
+    user = await get_current_user(request.headers.get("authorization"))
+    if not user:
+        return JSONResponse({"error": "Authentication required"}, status_code=401)
+
+    if supabase_admin:
+        try:
+            result = supabase_admin.table("marketing_content").select("*").eq(
+                "user_id", user["id"]
+            ).order("date", desc=True).limit(50).execute()
+            return {"posts": result.data or [], "total": len(result.data or [])}
+        except Exception as e:
+            return {"posts": [], "error": str(e)}
+    return {"posts": []}
+
+
+@app.delete("/api/social-studio/post/{post_id}")
+async def social_studio_delete_post(post_id: str, request: Request):
+    """Delete a scheduled/published post."""
+    user = await get_current_user(request.headers.get("authorization"))
+    if not user:
+        return JSONResponse({"error": "Authentication required"}, status_code=401)
+
+    profile = supabase_admin.table("profiles").select("ghl_location_id").eq("id", user["id"]).single().execute()
+    if not profile.data or not profile.data.get("ghl_location_id"):
+        return JSONResponse({"error": "No GHL account"}, status_code=400)
+
+    location_id = profile.data["ghl_location_id"]
+
+    try:
+        async with httpx.AsyncClient(timeout=15) as hc:
+            headers = {"Authorization": f"Bearer {GHL_COMPANY_KEY}", "Content-Type": "application/json", "Version": "2021-07-28"}
+            resp = await hc.delete(
+                f"{GHL_AGENCY_BASE}/social-media-posting/{location_id}/post/{post_id}",
+                headers=headers,
+            )
+
+        # Update marketing_content status
+        if supabase_admin:
+            try:
+                supabase_admin.table("marketing_content").update({"status": "cancelled"}).eq("ghl_post_id", post_id).execute()
+            except Exception:
+                pass
+
+        return {"success": resp.status_code in (200, 204), "deleted": post_id}
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
 # ─── Rewardful Affiliate Tier Engine ──────────────────────────────────────────
 
 REWARDFUL_API_SECRET = _env("REWARDFUL_API_SECRET")

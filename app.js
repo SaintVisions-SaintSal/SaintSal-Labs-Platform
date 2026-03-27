@@ -7089,7 +7089,7 @@ function generateSocialContent() {
         '<div class="gen-actions">' +
           '<button class="social-btn small" onclick="copyGenContent()">Copy</button>' +
           '<button class="social-btn small secondary" onclick="saveToMediaLibrary(\'' + escHTML(platform) + '\', \'' + escHTML(contentType) + '\')">Save to Library</button>' +
-          '<button class="social-btn small" onclick="publishGenContent(\'' + escHTML(platform) + '\')">Publish</button>' +
+          '<button class="social-btn small primary" onclick="showPublishPanel()">Publish to Socials</button>' +
         '</div>' +
       '</div>';
     })
@@ -7130,20 +7130,110 @@ function saveToMediaLibrary(platform, contentType) {
 }
 
 function publishGenContent(platform) {
+  showPublishPanel();
+}
+
+function showPublishPanel() {
+  var actionsEl = document.querySelector('.gen-actions');
+  if (!actionsEl) return;
+
+  actionsEl.innerHTML = '<div style="padding:8px 0;"><div style="font-size:11px;color:var(--text-muted);margin-bottom:8px;">Loading platforms...</div></div>';
+
+  fetch(API + '/api/social-studio/accounts', { headers: authHeaders() })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      var accounts = data.accounts || [];
+      var fallbackPlatforms = [
+        { id: 'facebook', name: 'Facebook' },
+        { id: 'instagram', name: 'Instagram' },
+        { id: 'linkedin', name: 'LinkedIn' },
+        { id: 'google_business', name: 'Google Business' },
+        { id: 'tiktok', name: 'TikTok' },
+      ];
+      var platforms = accounts.length ? accounts.map(function(a) {
+        return { id: a.platform || a.type || a.id, name: a.name || a.platform || a.type || 'Account' };
+      }) : fallbackPlatforms;
+
+      var checkboxes = platforms.map(function(p) {
+        return '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:4px 0;">' +
+          '<input type="checkbox" class="publish-platform-cb" value="' + escHTML(p.id) + '" checked style="accent-color:var(--accent-gold);"> ' +
+          '<span style="font-size:12px;color:var(--text-secondary);">' + escHTML(p.name) + '</span></label>';
+      }).join('');
+
+      var noAccountsMsg = (!accounts.length && data.provisioned === false) ?
+        '<div style="font-size:11px;color:var(--accent-gold);margin-bottom:8px;">Connect accounts at <a href="https://app.saintsallabs.com" target="_blank" style="color:var(--accent-gold);">app.saintsallabs.com</a> for direct posting.</div>' : '';
+
+      actionsEl.innerHTML = '<div style="border-top:1px solid rgba(255,255,255,0.06);padding-top:12px;margin-top:8px;">' +
+        '<div style="font-size:12px;font-weight:600;color:var(--text-primary);margin-bottom:8px;">Publish to Platforms</div>' +
+        noAccountsMsg +
+        '<div style="margin-bottom:10px;">' + checkboxes + '</div>' +
+        '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">' +
+          '<button class="social-btn small primary" onclick="executePublish(false)" id="publishNowBtn">Post Now</button>' +
+          '<input type="datetime-local" id="publishScheduleDate" style="background:var(--bg-surface-2);border:1px solid rgba(255,255,255,0.1);border-radius:6px;padding:4px 8px;font-size:11px;color:var(--text-secondary);outline:none;">' +
+          '<button class="social-btn small secondary" onclick="executePublish(true)">Schedule</button>' +
+          '<button class="social-btn small" onclick="cancelPublishPanel()">Cancel</button>' +
+        '</div>' +
+      '</div>';
+    })
+    .catch(function() {
+      actionsEl.innerHTML = '<div style="color:#ff6b6b;font-size:12px;">Failed to load platforms. <button class="social-btn small" onclick="showPublishPanel()">Retry</button></div>';
+    });
+}
+
+function executePublish(isScheduled) {
   var el = document.querySelector('.gen-content-text');
   if (!el) return;
   var content = el.innerText;
-  fetch(API + '/api/social/publish', {
+  var selectedPlatforms = [];
+  document.querySelectorAll('.publish-platform-cb:checked').forEach(function(cb) {
+    selectedPlatforms.push(cb.value);
+  });
+  if (!selectedPlatforms.length) { showToast('Select at least one platform'); return; }
+
+  var scheduleDate = null;
+  if (isScheduled) {
+    var dateInput = document.getElementById('publishScheduleDate');
+    if (!dateInput || !dateInput.value) { showToast('Pick a date and time to schedule'); return; }
+    scheduleDate = new Date(dateInput.value).toISOString();
+  }
+
+  var btn = document.getElementById('publishNowBtn');
+  if (btn) { btn.disabled = true; btn.textContent = isScheduled ? 'Scheduling...' : 'Publishing...'; }
+
+  fetch(API + '/api/social-studio/publish', {
     method: 'POST',
     headers: Object.assign({ 'Content-Type': 'application/json' }, authHeaders()),
-    body: JSON.stringify({ platform: platform, content: content })
+    body: JSON.stringify({
+      content: content,
+      platforms: selectedPlatforms,
+      mediaUrls: [],
+      scheduleDate: scheduleDate,
+    })
   })
     .then(function(r) { return r.json(); })
     .then(function(data) {
-      if (data.error) { showToast(data.error); }
-      else { showToast('Published to ' + platform); }
+      if (data.success) {
+        showToast(data.message || ('Published to ' + selectedPlatforms.join(', ')));
+        cancelPublishPanel();
+      } else {
+        showToast(data.error || 'Publish failed', 'error');
+        if (btn) { btn.disabled = false; btn.textContent = isScheduled ? 'Schedule' : 'Post Now'; }
+      }
     })
-    .catch(function() { showToast('Publish failed'); });
+    .catch(function() {
+      showToast('Network error — please try again');
+      if (btn) { btn.disabled = false; btn.textContent = isScheduled ? 'Schedule' : 'Post Now'; }
+    });
+}
+
+function cancelPublishPanel() {
+  var actionsEl = document.querySelector('.gen-actions');
+  if (!actionsEl) return;
+  var platform = document.querySelector('.gen-platform-badge');
+  var platformName = platform ? platform.textContent.split(' \u00B7 ')[0].toLowerCase() : '';
+  actionsEl.innerHTML = '<button class="social-btn small" onclick="copyGenContent()">Copy</button>' +
+    '<button class="social-btn small secondary" onclick="saveToMediaLibrary(\'' + escHTML(platformName) + '\', \'\')">Save to Library</button>' +
+    '<button class="social-btn small primary" onclick="showPublishPanel()">Publish to Socials</button>';
 }
 
 /* ---- CAMPAIGNS TAB ---- */
@@ -7561,77 +7651,64 @@ function deleteMedia(mediaId) {
 function renderPlatformsTab(container) {
   container.innerHTML = '<div class="social-loading">Loading platform connections...</div>';
 
-  fetch(API + '/api/social/connections', { headers: authHeaders() })
+  var ghlPlatforms = [
+    { id: 'facebook', name: 'Facebook', icon: '\uD83D\uDCD8', color: '#1877F2' },
+    { id: 'instagram', name: 'Instagram', icon: '\uD83D\uDCF7', color: '#E4405F' },
+    { id: 'linkedin', name: 'LinkedIn', icon: '\uD83D\uDCBC', color: '#0A66C2' },
+    { id: 'google_business', name: 'Google Business', icon: '\uD83C\uDF10', color: '#4285F4' },
+    { id: 'tiktok', name: 'TikTok', icon: '\uD83C\uDFB5', color: '#000' },
+  ];
+
+  fetch(API + '/api/social-studio/accounts', { headers: authHeaders() })
     .then(function(r) { return r.json(); })
     .then(function(data) {
-      socialStudioState.connectedPlatforms = data.connections || [];
-      renderPlatformsList(container);
+      var accounts = data.accounts || [];
+      var connected = {};
+      accounts.forEach(function(a) { connected[a.platform || a.type || a.id] = a; });
+      socialStudioState.connectedPlatforms = accounts;
+
+      if (data.provisioned === false || !accounts.length) {
+        container.innerHTML = '<div style="text-align:center;padding:40px 20px;">' +
+          '<div style="font-size:48px;margin-bottom:16px;">\uD83D\uDD17</div>' +
+          '<div style="font-size:16px;font-weight:700;color:var(--text-primary);margin-bottom:8px;">Connect Your Social Accounts</div>' +
+          '<div style="font-size:13px;color:var(--text-muted);margin-bottom:20px;max-width:400px;margin-left:auto;margin-right:auto;">' +
+            (data.message || 'Connect your social accounts at app.saintsallabs.com \u2192 Marketing \u2192 Social Planner to publish directly from SAL.') +
+          '</div>' +
+          '<a href="https://app.saintsallabs.com" target="_blank" class="social-btn primary" style="display:inline-block;text-decoration:none;padding:12px 24px;">Open CRM Dashboard \u2192</a>' +
+        '</div>' +
+        '<div style="margin-top:24px;">' +
+          '<div style="font-size:12px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:12px;">Supported Platforms</div>' +
+          '<div class="platforms-grid">' +
+            ghlPlatforms.map(function(p) {
+              return '<div class="platform-card">' +
+                '<div class="platform-icon" style="font-size:28px;">' + p.icon + '</div>' +
+                '<div class="platform-name">' + escHTML(p.name) + '</div>' +
+                '<div class="platform-status" style="color:var(--text-muted);">Connect via CRM</div>' +
+              '</div>';
+            }).join('') +
+          '</div>' +
+        '</div>';
+        return;
+      }
+
+      container.innerHTML = '<div class="platforms-grid">' +
+        ghlPlatforms.map(function(p) {
+          var isConnected = !!connected[p.id];
+          return '<div class="platform-card' + (isConnected ? ' connected' : '') + '">' +
+            '<div class="platform-icon" style="font-size:28px;">' + p.icon + '</div>' +
+            '<div class="platform-name">' + escHTML(p.name) + '</div>' +
+            '<div class="platform-status" style="color:' + (isConnected ? 'var(--accent-gold)' : 'var(--text-muted)') + ';">' + (isConnected ? 'Connected' : 'Not Connected') + '</div>' +
+          '</div>';
+        }).join('') +
+      '</div>' +
+      '<div style="margin-top:20px;padding:16px;background:rgba(212,168,67,0.08);border-radius:12px;font-size:13px;color:var(--text-secondary);">' +
+        '<strong style="color:var(--accent-gold);">' + accounts.length + ' Account' + (accounts.length !== 1 ? 's' : '') + ' Connected</strong> \u2014 Manage connections at <a href="https://app.saintsallabs.com" target="_blank" style="color:var(--accent-gold);">app.saintsallabs.com</a> \u2192 Marketing \u2192 Social Planner' +
+      '</div>';
     })
     .catch(function() {
       socialStudioState.connectedPlatforms = [];
-      renderPlatformsList(container);
+      container.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-muted);">Failed to load platform connections. Please try again.</div>';
     });
-}
-
-function renderPlatformsList(container) {
-  var platforms = [
-    { id: 'twitter', name: 'Twitter / X', icon: '𝕏', color: '#000' },
-    { id: 'instagram', name: 'Instagram', icon: '📷', color: '#E4405F' },
-    { id: 'linkedin', name: 'LinkedIn', icon: '💼', color: '#0A66C2' },
-    { id: 'facebook', name: 'Facebook', icon: '📘', color: '#1877F2' },
-    { id: 'tiktok', name: 'TikTok', icon: '🎵', color: '#000' },
-    { id: 'youtube', name: 'YouTube', icon: '▶️', color: '#FF0000' },
-    { id: 'snapchat', name: 'Snapchat', icon: '👻', color: '#FFFC00' },
-    { id: 'whatsapp', name: 'WhatsApp', icon: '💬', color: '#25D366' },
-    { id: 'threads', name: 'Threads', icon: '@', color: '#000' },
-    { id: 'discord', name: 'Discord', icon: '🎮', color: '#5865F2' }
-  ];
-
-  var connected = {};
-  socialStudioState.connectedPlatforms.forEach(function(c) { connected[c.platform] = c; });
-
-  container.innerHTML = '<div class="platforms-grid">' +
-    platforms.map(function(p) {
-      var isConnected = !!connected[p.id];
-      return '<div class="platform-card' + (isConnected ? ' connected' : '') + '">' +
-        '<div class="platform-icon" style="font-size:28px;">' + p.icon + '</div>' +
-        '<div class="platform-name">' + escHTML(p.name) + '</div>' +
-        '<div class="platform-status" style="color:' + (isConnected ? 'var(--accent-gold)' : 'var(--text-muted)') + ';">' + (isConnected ? 'Connected' : 'Not Connected') + '</div>' +
-        (isConnected ?
-          '<div style="display:flex;gap:8px;margin-top:8px;"><button class="social-btn small danger" onclick="disconnectPlatform(\'' + p.id + '\')">Disconnect</button></div>' :
-          '<button class="social-btn small" onclick="connectPlatform(\'' + p.id + '\')" style="margin-top:8px;">Connect</button>') +
-      '</div>';
-    }).join('') +
-  '</div>' +
-  '<div style="margin-top:20px;padding:16px;background:rgba(212,168,67,0.08);border-radius:12px;font-size:13px;color:var(--text-secondary);">' +
-    '<strong style="color:var(--accent-gold);">10 Platforms</strong> — Click Connect to authenticate via OAuth. Your credentials are securely stored and encrypted.' +
-  '</div>';
-}
-
-function connectPlatform(platform) {
-  fetch(API + '/api/social/auth/' + platform, { headers: authHeaders() })
-    .then(function(r) { return r.json(); })
-    .then(function(data) {
-      if (data.auth_url) {
-        window.open(data.auth_url, '_blank', 'width=600,height=700');
-      } else if (data.error) {
-        showToast(data.error, 'error');
-      } else {
-        showToast(platform + ' OAuth not configured yet', 'error');
-      }
-    })
-    .catch(function() { showToast('Failed to initiate connection'); });
-}
-
-function disconnectPlatform(platform) {
-  if (!confirm('Disconnect ' + platform + '?')) return;
-  fetch(API + '/api/social/disconnect/' + platform, {
-    method: 'POST',
-    headers: authHeaders()
-  }).then(function() {
-    showToast(platform + ' disconnected');
-    renderPlatformsTab(document.getElementById('socialStudioBody'));
-  });
 }
 
 /* ---- CALENDAR VIEW (Placeholder) ---- */
