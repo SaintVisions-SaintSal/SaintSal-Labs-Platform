@@ -12,36 +12,19 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
 <script>(function(w,r){w._rwq=r;w[r]=w[r]||function(){(w[r].q=w[r].q||[]).push(arguments)}})(window,'rewardful');</script>
 <script async src='https://r.wdfl.co/rw.js' data-rewardful='80669a'></script>
 <script>
-// Auto-append Rewardful referral ID to all Stripe Payment Links
+// Store Rewardful referral ID globally for Stripe Checkout
+window._salReferralId = '';
 (function(){
-  function wirePaymentLinks(){
+  function captureReferral(){
     if(typeof window.rewardful!=='function')return;
     window.rewardful('ready',function(){
       var ref=window.Rewardful&&window.Rewardful.referral;
-      if(!ref)return;
-      document.querySelectorAll('a[href*="buy.stripe.com"]').forEach(function(a){
-        var h=a.getAttribute('href');
-        if(h&&h.indexOf('client_reference_id')===-1){
-          var sep=h.indexOf('?')>-1?'&':'?';
-          a.setAttribute('href',h+sep+'client_reference_id='+ref);
-        }
-      });
-      // Also update data-monthly-link and data-annual-link attributes
-      document.querySelectorAll('[data-monthly-link*="buy.stripe.com"]').forEach(function(el){
-        ['data-monthly-link','data-annual-link'].forEach(function(attr){
-          var v=el.getAttribute(attr);
-          if(v&&v.indexOf('client_reference_id')===-1){
-            var sep=v.indexOf('?')>-1?'&':'?';
-            el.setAttribute(attr,v+sep+'client_reference_id='+ref);
-          }
-        });
-      });
+      if(ref) window._salReferralId = ref;
     });
   }
-  // Run on load and periodically (SPA navigation may add new links)
-  if(document.readyState==='complete')wirePaymentLinks();
-  else window.addEventListener('load',wirePaymentLinks);
-  setInterval(wirePaymentLinks,5000);
+  if(document.readyState==='complete')captureReferral();
+  else window.addEventListener('load',captureReferral);
+  setInterval(captureReferral,3000);
 })();
 </script>
 <!--
@@ -489,7 +472,7 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
               <div class="card-feature"><svg class="card-feature-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>1 seat</div>
               <div class="card-feature"><svg class="card-feature-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Search &amp; chat across verticals</div>
             </div>
-            <a class="card-cta" href="https://buy.stripe.com/28EaEYgvk7zjbaPa2gbjW06" target="_blank" rel="noopener noreferrer">Start Free</a>
+            <button class="card-cta" onclick="startCheckout('free','price_1T5bkAL47U80vDLAslOm3HoX')">Start Free</button>
           </div>
           <div class="pricing-card card-starter">
             <div class="card-accent"></div>
@@ -504,7 +487,7 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
               <div class="card-feature"><svg class="card-feature-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>All 6 domain modules</div>
               <div class="card-feature"><svg class="card-feature-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Email support</div>
             </div>
-            <a class="card-cta" href="https://buy.stripe.com/8x2eVea6W3j30wb3DSbjW07" data-monthly-link="https://buy.stripe.com/8x2eVea6W3j30wb3DSbjW07" data-annual-link="https://buy.stripe.com/8x2eVea6W3j30wb3DSbjW07" target="_blank" rel="noopener noreferrer">Get Started</a>
+            <button class="card-cta" onclick="openVerticalModal('starter','price_1T5bkAL47U80vDLAaChP4Hqg')">Get Started</button>
           </div>
           <div class="pricing-card card-pro popular">
             <div class="card-popular-badge">MOST POPULAR</div>
@@ -521,7 +504,7 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
               <div class="card-feature"><svg class="card-feature-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Cookin.io builder</div>
               <div class="card-feature"><svg class="card-feature-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Priority support</div>
             </div>
-            <a class="card-cta" href="https://buy.stripe.com/5kQ3cw92S8Dn3In4HWbjW08" data-monthly-link="https://buy.stripe.com/5kQ3cw92S8Dn3In4HWbjW08" data-annual-link="https://buy.stripe.com/5kQ3cw92S8Dn3In4HWbjW08" target="_blank" rel="noopener noreferrer">Go Pro</a>
+            <button class="card-cta" onclick="openVerticalModal('pro','price_1T5bkBL47U80vDLALiVDkOgb')">Go Pro</button>
           </div>
           <div class="pricing-card card-teams">
             <div class="card-tier-badge" style="background:var(--accent-purple-dim);color:var(--accent-purple);">FOR TEAMS</div>
@@ -538,7 +521,7 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
               <div class="card-feature"><svg class="card-feature-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>GHL CRM integration</div>
               <div class="card-feature"><svg class="card-feature-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Career Suite + Voice AI</div>
             </div>
-            <a class="card-cta" href="https://buy.stripe.com/fZufZi5QG9Hr2Ej4HWbjW09" data-monthly-link="https://buy.stripe.com/fZufZi5QG9Hr2Ej4HWbjW09" data-annual-link="https://buy.stripe.com/fZufZi5QG9Hr2Ej4HWbjW09" target="_blank" rel="noopener noreferrer">Build Your Team</a>
+            <button class="card-cta" onclick="openVerticalModal('teams','price_1T5bkCL47U80vDLANsCa647K')">Build Your Team</button>
           </div>
           <div class="pricing-card card-enterprise">
             <div class="card-tier-badge" style="background:rgba(255,255,255,0.06);color:var(--text-secondary);">ENTERPRISE</div>
@@ -555,7 +538,7 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
               <div class="card-feature"><svg class="card-feature-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>HACP™ Protocol (Patent #10,290,222)</div>
               <div class="card-feature"><svg class="card-feature-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Dedicated support + Enterprise SLA</div>
             </div>
-            <a class="card-cta" href="https://buy.stripe.com/7sY5kEbb0cTDa6L2zObjW0a" data-monthly-link="https://buy.stripe.com/7sY5kEbb0cTDa6L2zObjW0a" data-annual-link="https://buy.stripe.com/7sY5kEbb0cTDa6L2zObjW0a" target="_blank" rel="noopener noreferrer">Partner With Us</a>
+            <button class="card-cta" onclick="openVerticalModal('enterprise','price_1T5bkDL47U80vDLANXWF33A7')">Partner With Us</button>
           </div>
         </div>
 
@@ -623,8 +606,8 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
             <div style="font-size:18px;font-weight:800;color:#fff;margin-bottom:8px">"The Gotta Guy™ in AI form."</div>
             <div style="font-size:13px;color:#9CA3AF">One platform. Every domain. Always on. SAL is the operating system ambitious people actually run on.</div>
             <div style="margin-top:20px;display:flex;gap:12px;justify-content:center;flex-wrap:wrap">
-              <a href="https://buy.stripe.com/5kQ3cw92S8Dn3In4HWbjW08" target="_blank" style="background:#ffd709;color:#000;padding:12px 24px;border-radius:6px;font-weight:800;text-decoration:none;font-size:13px">GO PRO — $97/mo →</a>
-              <a href="https://buy.stripe.com/28EaEYgvk7zjbaPa2gbjW06" target="_blank" style="background:transparent;color:#9CA3AF;padding:12px 24px;border-radius:6px;font-weight:700;text-decoration:none;font-size:13px;border:1px solid rgba(255,255,255,0.12)">Start Free</a>
+              <button onclick="openVerticalModal('pro','price_1T5bkBL47U80vDLALiVDkOgb')" style="background:#ffd709;color:#000;padding:12px 24px;border-radius:6px;font-weight:800;border:none;font-size:13px;cursor:pointer">GO PRO — $97/mo →</button>
+              <button onclick="startCheckout('free','price_1T5bkAL47U80vDLAslOm3HoX')" style="background:transparent;color:#9CA3AF;padding:12px 24px;border-radius:6px;font-weight:700;border:1px solid rgba(255,255,255,0.12);font-size:13px;cursor:pointer">Start Free</button>
             </div>
           </div>
         </div>
@@ -1588,6 +1571,21 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
 
 <!-- Connector Auth Modal -->
 <div class="modal-overlay" id="connectorModal"></div>
+
+<!-- Vertical Selector Modal -->
+<div class="modal-overlay" id="verticalModal">
+  <div class="modal" style="max-width:480px;position:relative;">
+    <button style="position:absolute;top:16px;right:16px;background:none;border:none;color:var(--text-muted);font-size:18px;cursor:pointer;" onclick="closeVerticalModal()">✕</button>
+    <div class="modal-title" style="margin-bottom:4px;">Choose Your Industry</div>
+    <div style="font-size:13px;color:var(--text-muted);margin-bottom:20px;">We'll pre-load your CRM with industry-specific pipelines, automations, and templates.</div>
+    <div id="verticalOptions" style="display:grid;gap:10px;margin-bottom:20px;"></div>
+    <div id="verticalCompanyRow" style="margin-bottom:16px;">
+      <label style="display:block;font-size:12px;font-weight:500;color:var(--text-muted);margin-bottom:6px;">Company Name (optional)</label>
+      <input type="text" id="verticalCompanyName" placeholder="Your business name" style="width:100%;padding:10px 14px;background:var(--bg-surface-2);border:1px solid var(--border-subtle,rgba(255,255,255,0.1));border-radius:8px;font-size:14px;color:var(--text-primary);outline:none;box-sizing:border-box;" />
+    </div>
+    <button class="modal-cta" id="verticalContinueBtn" onclick="proceedToCheckout()" style="width:100%;padding:14px;background:var(--accent-gold);color:#000;border:none;border-radius:8px;font-size:15px;font-weight:700;cursor:pointer;">Continue to Checkout →</button>
+  </div>
+</div>
 
 <!-- Old mobile-tabs removed in v8.5.0 — consolidated to mobile-bottom-nav -->
 

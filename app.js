@@ -1219,11 +1219,132 @@ var tierConfig = {
 
 function renderWelcome() {
   var hash = window.location.hash;
+  var inner = document.getElementById('welcomeInner');
+
+  // Show loading state first
+  inner.innerHTML = '<div style="padding:80px 20px;text-align:center;"><div class="welcome-loading"></div><div style="margin-top:16px;font-size:14px;color:var(--text-muted);">Setting up your account...</div></div>';
+
+  // Check for session_id (Stripe Checkout redirect) vs plan (legacy/direct)
+  var sessionMatch = hash.match(/session_id=([^&]+)/);
   var planMatch = hash.match(/plan=(\w+)/);
-  var plan = planMatch ? planMatch[1] : 'pro';
+
+  if (sessionMatch) {
+    // Fetch session details to get the plan
+    fetch(API_BASE + '/api/checkout/session-status?session_id=' + sessionMatch[1])
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        renderWelcomeContent(data.plan || 'pro', data.vertical || 'general', data.customer_name || '');
+      })
+      .catch(function() {
+        // Fallback — show pro welcome if session fetch fails
+        renderWelcomeContent('pro', 'general', '');
+      });
+  } else {
+    var plan = planMatch ? planMatch[1] : 'pro';
+    renderWelcomeContent(plan, 'general', '');
+  }
+}
+
+function renderWelcomeContent(plan, vertical, customerName) {
   var config = tierConfig[plan] || tierConfig.pro;
   var inner = document.getElementById('welcomeInner');
-  inner.innerHTML = '<div class="welcome-icon" style="background:' + config.iconBg + ';"><svg viewBox="0 0 24 24" fill="none" stroke="var(--accent-gold)" stroke-width="2" width="40" height="40"><path d="M2 4l3 12h14l3-12-5.5 7L12 2l-4.5 9L2 4z"/><path d="M5 16l-1 4h16l-1-4"/></svg></div><div class="welcome-greeting">Welcome to SaintSal\u2122 <span class=\'labs-green\'>LABS</span></div><div class="welcome-tier-badge" style="background:' + config.bgColor + ';color:' + config.color + ';">' + config.name + '</div><div class="welcome-compute">Your compute allocation is ready</div><div class="welcome-compute-amount">' + config.minutes + ' minutes</div><button class="welcome-cta" onclick="navigate(\'chat\')">Enter SAL<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><polyline points="9 18 15 12 9 6"/></svg></button>';
+  var greeting = customerName ? ('Welcome, ' + customerName + '!') : 'Welcome to SaintSal\u2122 <span class=\'labs-green\'>LABS</span>';
+
+  var featuresHtml = '<div class="welcome-features">'
+    + '<div class="welcome-feature"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><polyline points="20 6 9 17 4 12"/></svg>AI Chat + Research</div>'
+    + '<div class="welcome-feature"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><polyline points="20 6 9 17 4 12"/></svg>' + config.minutes + ' compute min</div>'
+    + (plan !== 'free' ? '<div class="welcome-feature"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><polyline points="20 6 9 17 4 12"/></svg>CRM Pipeline Ready</div>' : '<div class="welcome-feature"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><polyline points="20 6 9 17 4 12"/></svg>6 Domain Modules</div>')
+    + (plan !== 'free' ? '<div class="welcome-feature"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><polyline points="20 6 9 17 4 12"/></svg>Industry Snapshot</div>' : '<div class="welcome-feature"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><polyline points="20 6 9 17 4 12"/></svg>Search & Chat</div>')
+    + '</div>';
+
+  inner.innerHTML = '<div class="welcome-icon" style="background:' + config.iconBg + ';"><svg viewBox="0 0 24 24" fill="none" stroke="var(--accent-gold)" stroke-width="2" width="40" height="40"><path d="M2 4l3 12h14l3-12-5.5 7L12 2l-4.5 9L2 4z"/><path d="M5 16l-1 4h16l-1-4"/></svg></div>'
+    + '<div class="welcome-greeting">' + greeting + '</div>'
+    + '<div class="welcome-tier-badge" style="background:' + config.bgColor + ';color:' + config.color + ';">' + config.name + '</div>'
+    + '<div class="welcome-compute">Your compute allocation is ready</div>'
+    + '<div class="welcome-compute-amount">' + config.minutes + ' minutes</div>'
+    + featuresHtml
+    + '<button class="welcome-cta" onclick="navigate(\'chat\')">Enter SAL<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><polyline points="9 18 15 12 9 6"/></svg></button>';
+}
+
+/* ============================================
+   VERTICAL SELECTOR + STRIPE CHECKOUT FLOW
+   ============================================ */
+var _checkoutPriceId = '';
+var _checkoutTier = '';
+var _selectedVertical = 'general';
+
+var VERTICALS = [
+  { id: 'general', name: 'General Business', desc: 'CRM, funnels, automations', icon: '\uD83D\uDCBC' },
+  { id: 'realestate', name: 'Real Estate', desc: 'Listings, lead gen, IDX', icon: '\uD83C\uDFE0' },
+  { id: 'lending', name: 'Lending / Mortgage', desc: 'Loan pipeline, pre-qual funnels', icon: '\uD83C\uDFE6' },
+  { id: 'investment', name: 'Investment / Finance', desc: 'AUM pipeline, compliance', icon: '\uD83D\uDCC8' },
+  { id: 'commercial_lending', name: 'Commercial Lending', desc: '$5K\u2013$100M deal pipeline', icon: '\uD83C\uDFD7\uFE0F' },
+];
+
+function openVerticalModal(tier, priceId) {
+  _checkoutTier = tier;
+  _checkoutPriceId = priceId;
+  _selectedVertical = 'general';
+  var container = document.getElementById('verticalOptions');
+  container.innerHTML = VERTICALS.map(function(v) {
+    return '<div class="vertical-option' + (v.id === 'general' ? ' selected' : '') + '" onclick="selectVertical(this,\'' + v.id + '\')">'
+      + '<div class="vertical-option-icon">' + v.icon + '</div>'
+      + '<div class="vertical-option-info"><div class="vertical-option-name">' + v.name + '</div><div class="vertical-option-desc">' + v.desc + '</div></div>'
+      + '<div class="vertical-option-check">' + (v.id === 'general' ? '<svg viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="3" width="12" height="12"><polyline points="20 6 9 17 4 12"/></svg>' : '') + '</div>'
+      + '</div>';
+  }).join('');
+  document.getElementById('verticalCompanyName').value = '';
+  document.getElementById('verticalModal').classList.add('active');
+}
+
+function selectVertical(el, verticalId) {
+  _selectedVertical = verticalId;
+  document.querySelectorAll('#verticalOptions .vertical-option').forEach(function(opt) {
+    opt.classList.remove('selected');
+    opt.querySelector('.vertical-option-check').innerHTML = '';
+  });
+  el.classList.add('selected');
+  el.querySelector('.vertical-option-check').innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="3" width="12" height="12"><polyline points="20 6 9 17 4 12"/></svg>';
+}
+
+function closeVerticalModal() {
+  document.getElementById('verticalModal').classList.remove('active');
+}
+
+function startCheckout(tier, priceId) {
+  // Free tier — skip vertical selector, go straight to checkout
+  _checkoutTier = tier;
+  _checkoutPriceId = priceId;
+  _selectedVertical = 'general';
+  proceedToCheckout();
+}
+
+async function proceedToCheckout() {
+  var btn = document.getElementById('verticalContinueBtn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Creating checkout...'; }
+  var companyName = (document.getElementById('verticalCompanyName') || {}).value || '';
+  try {
+    var resp = await fetch(API_BASE + '/api/checkout/create-session', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        price_id: _checkoutPriceId,
+        vertical: _selectedVertical,
+        company_name: companyName,
+        referral_id: window._salReferralId || '',
+      }),
+    });
+    var data = await resp.json();
+    if (data.url) {
+      window.location.href = data.url;
+    } else {
+      alert('Checkout error: ' + (data.error || 'Unknown error'));
+      if (btn) { btn.disabled = false; btn.textContent = 'Continue to Checkout \u2192'; }
+    }
+  } catch (err) {
+    alert('Network error \u2014 please try again');
+    if (btn) { btn.disabled = false; btn.textContent = 'Continue to Checkout \u2192'; }
+  }
 }
 
 /* ============================================

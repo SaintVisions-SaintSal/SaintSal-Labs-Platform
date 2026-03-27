@@ -13343,6 +13343,75 @@ async def provision_ghl_subaccount(
                     result["email_sent"] = False
                     result["email_error"] = str(email_err)
 
+            # Step 5: Create opportunity in main pipeline (tracking)
+            result["step"] = "pipeline_update"
+            try:
+                ghl_private = os.environ.get("GHL_PRIVATE_TOKEN", "")
+                main_loc = os.environ.get("GHL_LOCATION_ID", "oRA8vL3OSiCPjpwmEC0V")
+                if ghl_private and main_loc:
+                    track_hdrs = {"Authorization": f"Bearer {ghl_private}", "Content-Type": "application/json"}
+                    async with httpx.AsyncClient(timeout=15) as tc:
+                        # Get pipelines to find the SaaS pipeline
+                        pipe_resp = await tc.get(
+                            f"https://rest.gohighlevel.com/v1/pipelines/?locationId={main_loc}",
+                            headers=track_hdrs,
+                        )
+                        pipelines = pipe_resp.json().get("pipelines", [])
+                        # Look for a pipeline named 'SaaS' or 'Labs' or use the first one
+                        target_pipe = None
+                        for p in pipelines:
+                            pname = (p.get("name") or "").lower()
+                            if "saas" in pname or "labs" in pname or "onboard" in pname:
+                                target_pipe = p
+                                break
+                        if not target_pipe and pipelines:
+                            target_pipe = pipelines[0]
+
+                        if target_pipe:
+                            stages = target_pipe.get("stages", [])
+                            # Find 'Provisioned' or 'Active' or last stage
+                            target_stage = stages[-1]["id"] if stages else None
+                            for s in stages:
+                                sname = (s.get("name") or "").lower()
+                                if "provision" in sname or "active" in sname or "onboard" in sname:
+                                    target_stage = s["id"]
+                                    break
+
+                            if target_stage:
+                                # First, find or create contact
+                                contact_resp = await tc.post(
+                                    "https://rest.gohighlevel.com/v1/contacts/",
+                                    headers=track_hdrs,
+                                    json={
+                                        "locationId": main_loc,
+                                        "email": customer_email,
+                                        "firstName": customer_name.split()[0] if customer_name else "",
+                                        "lastName": " ".join(customer_name.split()[1:]) if customer_name and len(customer_name.split()) > 1 else "",
+                                        "tags": [f"plan:{plan_tier}", f"vertical:{vertical}", "auto-provisioned"],
+                                    },
+                                )
+                                contact_data = contact_resp.json()
+                                contact_id = contact_data.get("contact", {}).get("id") or contact_data.get("id", "")
+
+                                if contact_id:
+                                    opp_resp = await tc.post(
+                                        "https://rest.gohighlevel.com/v1/pipelines/" + target_pipe["id"] + "/opportunities/",
+                                        headers=track_hdrs,
+                                        json={
+                                            "locationId": main_loc,
+                                            "title": f"{customer_name} — {plan_tier.title()} ({vertical})",
+                                            "stageId": target_stage,
+                                            "contactId": contact_id,
+                                            "status": "open",
+                                            "monetaryValue": {"free": 0, "starter": 27, "pro": 97, "teams": 297, "enterprise": 497}.get(plan_tier, 0),
+                                        },
+                                    )
+                                    result["pipeline_updated"] = opp_resp.status_code in (200, 201)
+                                    print(f"[GHL Provision] Pipeline opportunity created: {opp_resp.status_code}")
+            except Exception as pipe_err:
+                result["pipeline_error"] = str(pipe_err)
+                print(f"[GHL Provision] Pipeline update failed (non-fatal): {pipe_err}")
+
             result["success"] = True
             result["step"] = "complete"
             print(f"[GHL Provision] ✅ COMPLETE: {customer_email} → {location_id} → {snapshot_name}")
@@ -13422,6 +13491,36 @@ async def create_checkout_with_vertical(request: Request):
             params["client_reference_id"] = referral_id
         session = stripe_lib.checkout.Session.create(**params)
         return {"session_id": session.id, "url": session.url}
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.get("/api/checkout/session-status")
+async def checkout_session_status(session_id: str = ""):
+    """Return plan tier + vertical from a completed Stripe checkout session."""
+    import stripe as stripe_lib
+    stripe_lib.api_key = _env("STRIPE_SECRET_KEY")
+    if not session_id:
+        return JSONResponse({"error": "session_id required"}, status_code=400)
+    try:
+        session = stripe_lib.checkout.Session.retrieve(session_id, expand=["line_items"])
+        metadata = session.get("metadata", {})
+        line_items = session.get("line_items", {}).get("data", [])
+        price_id = line_items[0]["price"]["id"] if line_items else ""
+        _price_to_tier = {
+            "price_1T5bkAL47U80vDLAslOm3HoX": "free",
+            "price_1T5bkAL47U80vDLAaChP4Hqg": "starter",
+            "price_1T5bkBL47U80vDLALiVDkOgb": "pro",
+            "price_1T5bkCL47U80vDLANsCa647K": "teams",
+            "price_1T5bkDL47U80vDLANXWF33A7": "enterprise",
+        }
+        plan = _price_to_tier.get(price_id, "pro")
+        return {
+            "plan": plan,
+            "vertical": metadata.get("vertical", "general"),
+            "customer_name": session.get("customer_details", {}).get("name", ""),
+            "customer_email": session.get("customer_details", {}).get("email", ""),
+        }
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
 
