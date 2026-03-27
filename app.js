@@ -201,6 +201,7 @@ window.addEventListener('DOMContentLoaded', function() {
   handleHash();
   updateThemeIcon('dark');
   initAuth();
+  document.querySelector('.app-shell').setAttribute('data-active-vertical', currentVertical);
 });
 
 /* ============================================
@@ -208,6 +209,8 @@ window.addEventListener('DOMContentLoaded', function() {
    ============================================ */
 function switchVertical(vertical, el) {
   currentVertical = vertical;
+  // Set vertical accent color on the app shell
+  document.querySelector('.app-shell').setAttribute('data-active-vertical', vertical);
 
   // Update sidebar highlights
   document.querySelectorAll('.nav-item').forEach(function(i) { i.classList.remove('active'); });
@@ -335,9 +338,18 @@ function loadDiscover(category) {
       heroHtml += '</div>';
 
       // Trending section header
+      var trendingLabel = {
+        search: 'Trending Now',
+        sports: 'Trending in Sports',
+        news: 'Breaking News',
+        tech: 'Trending in Tech',
+        finance: 'Market Movers',
+        realestate: 'Real Estate Intelligence',
+        medical: 'Medical & Health'
+      };
       heroHtml += '<div class="feed-section-header">';
-      heroHtml += '<div class="feed-section-icon"><svg viewBox="0 0 24 24" fill="none" stroke="var(--accent-gold)" stroke-width="2" width="16" height="16"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg></div>';
-      heroHtml += '<span class="feed-section-title">Trending Now</span>';
+      heroHtml += '<div class="feed-section-icon"><svg viewBox="0 0 24 24" fill="none" stroke="var(--v-accent)" stroke-width="2" width="16" height="16"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg></div>';
+      heroHtml += '<span class="feed-section-title">' + (trendingLabel[category] || 'Trending Now') + '</span>';
       heroHtml += '</div>';
 
       var html = '';
@@ -353,6 +365,9 @@ function loadDiscover(category) {
         html += '<div class="discover-card-sources"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>' + sourceInfo + '</div>';
         html += '</div>';
       });
+      if (data.live) {
+        heroHtml = heroHtml.replace('feed-section-title">', 'feed-section-title"><span style="display:inline-block;width:6px;height:6px;background:#22c55e;border-radius:50%;margin-right:6px;animation:pulse 2s infinite;"></span>');
+      }
       grid.innerHTML = heroHtml + html;
     })
     .catch(function(err) {

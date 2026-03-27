@@ -524,22 +524,42 @@ DISCOVER_TOPICS = {
         {"title": "Fed Minutes Reveal Split on Inflation Outlook", "category": "Economy", "sources": 47, "time": "2h ago", "summary": "FOMC minutes show a divided committee, with several members advocating for patience while others push for a preemptive cut."},
         {"title": "Palantir Announces $500M AI Contract with Department of Defense", "category": "Defense", "sources": 33, "time": "6h ago", "summary": "Palantir secures its largest DoD contract to date for an AI-powered battlefield intelligence platform across all service branches."},
     ],
+    "medical": [
+        {"title": "FDA Approves First AI-Powered Diagnostic for Early Cancer Detection", "category": "FDA", "sources": 56, "time": "2h ago", "summary": "The FDA granted approval to an AI system that detects early-stage pancreatic cancer from routine blood tests with 94% accuracy."},
+        {"title": "mRNA Vaccine Technology Expands to Autoimmune Diseases", "category": "Biotech", "sources": 41, "time": "3h ago", "summary": "Moderna begins Phase 3 trials for an mRNA-based treatment for multiple sclerosis, building on COVID vaccine platform success."},
+        {"title": "Telehealth Usage Stabilizes at 3x Pre-Pandemic Levels", "category": "Health Tech", "sources": 29, "time": "5h ago", "summary": "Virtual care visits now account for 25% of all outpatient encounters, with mental health and dermatology leading adoption."},
+        {"title": "GLP-1 Drug Shortage Eases as New Manufacturing Comes Online", "category": "Pharma", "sources": 37, "time": "4h ago", "summary": "Novo Nordisk and Eli Lilly both announce expanded production capacity for GLP-1 medications, reducing wait times for patients."},
+        {"title": "CRISPR Gene Therapy Shows Durable Results in Sickle Cell Disease", "category": "Gene Therapy", "sources": 48, "time": "6h ago", "summary": "Two-year follow-up data shows sustained hemoglobin levels in patients treated with CRISPR-based sickle cell therapy."},
+    ],
 }
+
+
+# ─── Discover Cache (15 min TTL) ──────────────────────────────────────────────
+_discover_cache = {}
+_DISCOVER_CACHE_TTL = 900  # 15 minutes
 
 
 @app.get("/api/discover/{category}")
 async def get_discover(category: str):
     """Get trending topics — live from Tavily search when available, hardcoded fallback."""
+    from time import time as _time
+
+    # Check cache first
+    cached = _discover_cache.get(category)
+    if cached and (_time() - cached["ts"]) < _DISCOVER_CACHE_TTL:
+        return cached["data"]
+
     # Try live search first
     if TAVILY_API_KEY:
         live_queries = {
-            "top": "trending news today 2026",
-            "sports": "sports scores results today 2026",
-            "news": "breaking news today headlines 2026",
-            "tech": "technology AI news today 2026",
-            "finance": "stock market crypto financial news today 2026",
-            "realestate": "real estate housing market news 2026",
-            "medical": "medical health breakthroughs FDA drug news today 2026",
+            "top": "trending news stories today",
+            "search": "trending news today important stories",
+            "sports": "sports scores highlights results today",
+            "news": "breaking news headlines today",
+            "tech": "artificial intelligence technology startup news today",
+            "finance": "stock market cryptocurrency earnings financial news today",
+            "realestate": "real estate housing market mortgage rates property news today",
+            "medical": "medical health FDA drug approval breakthrough clinical trial news today",
         }
         query = live_queries.get(category, live_queries["top"])
         try:
@@ -558,7 +578,9 @@ async def get_discover(category: str):
                     "image": images[i] if i < len(images) else None,
                 })
             if live_topics:
-                return {"category": category, "topics": live_topics, "updated_at": datetime.now().isoformat(), "live": True}
+                result = {"category": category, "topics": live_topics, "updated_at": datetime.now().isoformat(), "live": True}
+                _discover_cache[category] = {"data": result, "ts": _time()}
+                return result
         except Exception as e:
             print(f"Live discover failed for {category}: {e}")
 
