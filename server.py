@@ -6901,6 +6901,299 @@ async def get_connectors_status():
     return {"connectors": status}
 
 
+# ════════════════════════════════════════════════════════════════════════════════
+# GHL PROVISIONING ENGINE — Stripe → GHL sub-account → Snapshot → Email → Pipeline
+# ════════════════════════════════════════════════════════════════════════════════
+
+GHL_COMPANY_KEY  = os.environ.get("GHL_COMPANY_KEY", "")
+GHL_AGENCY_BASE  = "https://services.leadconnectorhq.com"
+_GHL_LOC_TOKEN   = os.environ.get("GHL_PRIVATE_TOKEN", "")
+_GHL_LOC_ID      = os.environ.get("GHL_LOCATION_ID", "")
+
+SNAPSHOT_MAP = {
+    ("starter", "general"):            "General Mini Business v1.0",
+    ("pro",     "general"):            "General Business Pro v1.0",
+    ("teams",   "general"):            "General Business Pro v1.0",
+    ("enterprise", "general"):         "General Business Pro v1.0",
+    ("starter", "realestate"):         "RE mini v1.0",
+    ("pro",     "realestate"):         "RE Pro Snapshot v1.0",
+    ("teams",   "realestate"):         "RE Pro Snapshot v1.0",
+    ("enterprise", "realestate"):      "RE Pro Snapshot v1.0",
+    ("starter", "investment"):         "Investment mini v1.0",
+    ("pro",     "investment"):         "Investment Pro Snapshot v1.0",
+    ("teams",   "investment"):         "Investment Pro Snapshot v1.0",
+    ("enterprise", "investment"):      "Investment Pro Snapshot v1.0",
+    ("starter", "lending"):            "Residential Lending Mini v1.0",
+    ("pro",     "lending"):            "Lending System Pro v1",
+    ("teams",   "lending"):            "Lending System Pro v1",
+    ("enterprise", "lending"):         "Lending System Pro v1",
+    ("starter", "commercial_lending"): "Residential Lending Mini v1.0",
+    ("pro",     "commercial_lending"): "Lending System Pro v1",
+}
+
+PRICE_TO_TIER_MAP = {
+    "price_1T5bkAL47U80vDLAslOm3HoX": "free",
+    "price_1T5bkAL47U80vDLAaChP4Hqg": "starter",
+    "price_1T5bkBL47U80vDLALiVDkOgb": "pro",
+    "price_1T5bkCL47U80vDLANsCa647K": "teams",
+    "price_1T5bkDL47U80vDLANXWF33A7": "enterprise",
+    "price_1T6dHNL47U80vDLAPgfsUmtO": "starter",
+    "price_1T6dHNL47U80vDLAHYxorUNk": "pro",
+    "price_1T84uZL47U80vDLARDZK46qE": "pro",
+    "price_1T6dHNL47U80vDLAqTTV84lL": "teams",
+    "price_1T6dHOL47U80vDLARSODO7b1": "enterprise",
+    "price_1T7p1sL47U80vDLAgU2shcQO": "starter",
+    "price_1T7p1tL47U80vDLAVC0N4N4J": "pro",
+    "price_1T7p1uL47U80vDLA9QF62BKS": "teams",
+    "price_1T7p1uL47U80vDLAR4Wk6uW0": "enterprise",
+    "price_1T7p1sL47U80vDLAYEEv8Kmg": "starter",
+    "price_1T7p1tL47U80vDLAk5HK8YcR": "pro",
+    "price_1T7p1uL47U80vDLAjlnLTuul": "teams",
+    "price_1T7p1uL47U80vDLAk9UA0lnr": "enterprise",
+    "price_1T7p1tL47U80vDLAnxtkrGV4": "free",
+}
+
+TIER_PRICES = {"free": 0, "starter": 27, "pro": 97, "teams": 297, "enterprise": 497}
+
+
+async def update_ghl_pipeline_stage(
+    customer_email: str,
+    customer_name: str,
+    plan_tier: str,
+    vertical: str = "general",
+) -> dict:
+    """
+    Creates a contact + opportunity in the MAIN GHL location (your agency CRM).
+    Tags: plan:{tier}, vertical:{industry}, auto-provisioned
+    Pipeline: first match of SaaS / Labs / Onboard keywords, fallback to first pipeline.
+    Non-fatal — provisioning succeeds even if this fails.
+    """
+    result = {"success": False}
+    if not _GHL_LOC_TOKEN or not _GHL_LOC_ID:
+        result["error"] = "GHL_PRIVATE_TOKEN or GHL_LOCATION_ID not set"
+        return result
+
+    headers = {"Authorization": f"Bearer {_GHL_LOC_TOKEN}", "Content-Type": "application/json"}
+    name_parts = customer_name.split(" ", 1)
+    first_name = name_parts[0]
+    last_name = name_parts[1] if len(name_parts) > 1 else ""
+
+    try:
+        async with httpx.AsyncClient(timeout=20) as client:
+            # ── Step 1: Create contact with tier/vertical tags ───────────────
+            contact_resp = await client.post(
+                "https://rest.gohighlevel.com/v1/contacts/",
+                headers=headers,
+                json={
+                    "locationId": _GHL_LOC_ID,
+                    "email": customer_email,
+                    "firstName": first_name,
+                    "lastName": last_name,
+                    "tags": [f"plan:{plan_tier}", f"vertical:{vertical}", "auto-provisioned"],
+                    "source": "SaintSal Labs — Stripe Checkout",
+                },
+            )
+            if contact_resp.status_code not in (200, 201):
+                result["error"] = f"Contact create failed: {contact_resp.status_code}"
+                print(f"[GHL Pipeline] Contact failed: {contact_resp.status_code} {contact_resp.text[:200]}")
+                return result
+
+            contact_id = contact_resp.json().get("contact", {}).get("id", "")
+            result["contact_id"] = contact_id
+            print(f"[GHL Pipeline] Contact created: {contact_id} for {customer_email}")
+
+            # ── Step 2: Find best pipeline ───────────────────────────────────
+            pipelines_resp = await client.get(
+                f"https://rest.gohighlevel.com/v1/pipelines/?locationId={_GHL_LOC_ID}",
+                headers=headers,
+            )
+            pipeline_id = None
+            stage_id = None
+            if pipelines_resp.status_code == 200:
+                pipelines = pipelines_resp.json().get("pipelines", [])
+                for pipeline in pipelines:
+                    if any(kw in pipeline.get("name", "").lower() for kw in ["saas", "labs", "onboard"]):
+                        pipeline_id = pipeline.get("id", "")
+                        stages = pipeline.get("stages", [])
+                        stage_id = stages[0].get("id", "") if stages else ""
+                        break
+                if not pipeline_id and pipelines:
+                    pipeline_id = pipelines[0].get("id", "")
+                    stages = pipelines[0].get("stages", [])
+                    stage_id = stages[0].get("id", "") if stages else ""
+
+            if not pipeline_id:
+                result["error"] = "No pipeline found"
+                print(f"[GHL Pipeline] No pipeline found in location {_GHL_LOC_ID}")
+                return result
+
+            # ── Step 3: Create opportunity ───────────────────────────────────
+            opp_resp = await client.post(
+                "https://rest.gohighlevel.com/v1/opportunities/",
+                headers=headers,
+                json={
+                    "pipelineId": pipeline_id,
+                    "locationId": _GHL_LOC_ID,
+                    "name": f"{customer_name} — {plan_tier.title()} ({vertical.title()})",
+                    "pipelineStageId": stage_id,
+                    "status": "open",
+                    "contactId": contact_id,
+                    "monetaryValue": TIER_PRICES.get(plan_tier, 0),
+                    "source": "SaintSal Labs — Auto-Provisioned",
+                },
+            )
+            if opp_resp.status_code in (200, 201):
+                result["opportunity_id"] = opp_resp.json().get("opportunity", {}).get("id", "")
+                result["success"] = True
+                print(f"[GHL Pipeline] \u2705 Opportunity: {result['opportunity_id']} — ${TIER_PRICES.get(plan_tier, 0)}")
+            else:
+                result["error"] = f"Opportunity create failed: {opp_resp.status_code}"
+                print(f"[GHL Pipeline] Opp failed: {opp_resp.status_code} {opp_resp.text[:200]}")
+    except Exception as e:
+        result["error"] = str(e)
+        print(f"[GHL Pipeline] Exception: {e}")
+    return result
+
+
+async def provision_ghl_subaccount(
+    customer_email: str,
+    customer_name: str,
+    plan_tier: str,
+    vertical: str = "general",
+    phone: str = "",
+    company_name: str = "",
+) -> dict:
+    """
+    Creates a GHL sub-account, deploys snapshot, stores in Supabase,
+    sends welcome email, and fires pipeline stage update.
+    """
+    result = {"success": False, "step": "init"}
+
+    if not GHL_COMPANY_KEY:
+        result["error"] = "GHL_COMPANY_KEY not configured"
+        print("[GHL Provision] FAILED: No company key")
+        return result
+
+    snapshot_name = SNAPSHOT_MAP.get((plan_tier, vertical)) or SNAPSHOT_MAP.get((plan_tier, "general"))
+    if not snapshot_name:
+        result["error"] = f"No snapshot for tier={plan_tier}, vertical={vertical}"
+        return result
+
+    result["snapshot_name"] = snapshot_name
+    headers = {
+        "Authorization": f"Bearer {GHL_COMPANY_KEY}",
+        "Content-Type": "application/json",
+        "Version": "2021-07-28",
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            # ── Step 1: Create sub-account ───────────────────────────────────
+            result["step"] = "create_subaccount"
+            resp = await client.post(
+                f"{GHL_AGENCY_BASE}/saas-api/public-api/locations",
+                headers=headers,
+                json={
+                    "name": company_name or f"{customer_name}'s Business",
+                    "email": customer_email,
+                    "phone": phone or "",
+                    "address": "", "city": "", "state": "", "country": "US", "postalCode": "",
+                    "timezone": "America/Los_Angeles",
+                    "settings": {
+                        "allowDuplicateContact": False,
+                        "allowDuplicateOpportunity": False,
+                        "allowFacebookNameMerge": True,
+                    },
+                    "snapshotId": "",
+                },
+            )
+            if resp.status_code not in (200, 201):
+                result["error"] = f"GHL create failed: {resp.status_code} — {resp.text[:300]}"
+                return result
+
+            location_id = resp.json().get("id") or resp.json().get("locationId", "")
+            if not location_id:
+                result["error"] = f"No location ID returned: {resp.text[:300]}"
+                return result
+
+            result["location_id"] = location_id
+            print(f"[GHL Provision] Sub-account created: {location_id} for {customer_email}")
+
+            # ── Step 2: Deploy snapshot (non-fatal) ──────────────────────────
+            result["step"] = "deploy_snapshot"
+            snap_resp = await client.post(
+                f"{GHL_AGENCY_BASE}/saas-api/public-api/locations/{location_id}/snapshot",
+                headers=headers,
+                json={"snapshotId": snapshot_name},
+            )
+            result["snapshot_deployed"] = snap_resp.status_code in (200, 201)
+            if not result["snapshot_deployed"]:
+                result["snapshot_error"] = f"{snap_resp.status_code}: {snap_resp.text[:200]}"
+
+            # ── Step 3: Store in Supabase ────────────────────────────────────
+            result["step"] = "store_in_supabase"
+            if supabase_admin:
+                try:
+                    supabase_admin.table("profiles").update({
+                        "ghl_location_id": location_id,
+                        "ghl_provisioned": True,
+                        "ghl_snapshot": snapshot_name,
+                        "ghl_vertical": vertical,
+                        "updated_at": "now()",
+                    }).eq("email", customer_email).execute()
+                    result["profile_updated"] = True
+                except Exception as db_err:
+                    result["profile_updated"] = False
+                    result["db_error"] = str(db_err)
+
+            # ── Step 4: Send welcome email ───────────────────────────────────
+            result["step"] = "send_welcome_email"
+            login_url = "https://app.saintsallabs.com"
+            if RESEND_API_KEY:
+                try:
+                    async with httpx.AsyncClient(timeout=15) as ec:
+                        er = await ec.post(
+                            "https://api.resend.com/emails",
+                            headers={"Authorization": f"Bearer {RESEND_API_KEY}", "Content-Type": "application/json"},
+                            json={
+                                "from": "SaintSal Labs <sal@saintsallabs.com>",
+                                "to": [customer_email],
+                                "subject": f"Your SaintSal\u2122 Labs {plan_tier.title()} account is live!",
+                                "html": f"""<div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:40px 20px;">
+<h1 style="color:#F59E0B;">SaintSal\u2122 Labs</h1>
+<h2 style="color:#fff;background:#111;padding:20px;border-radius:8px;">Welcome, {customer_name}!</h2>
+<p>Your <strong>{plan_tier.title()}</strong> account is live with the <strong>{snapshot_name}</strong> template.</p>
+<p><strong>Login:</strong> <a href="{login_url}">{login_url}</a><br/><strong>Email:</strong> {customer_email}</p>
+<a href="{login_url}" style="display:inline-block;background:#F59E0B;color:#000;font-weight:700;padding:14px 28px;border-radius:8px;text-decoration:none;margin-top:12px;">Open Dashboard &rarr;</a>
+<p style="color:#888;font-size:11px;margin-top:24px;">Saint Vision Technologies LLC &bull; Patent #10,290,222</p>
+</div>""",
+                            },
+                        )
+                        result["email_sent"] = er.status_code in (200, 201)
+                except Exception as email_err:
+                    result["email_sent"] = False
+                    result["email_error"] = str(email_err)
+
+            # ── Step 5: Pipeline stage update (non-fatal) ────────────────────
+            result["step"] = "pipeline_update"
+            result["pipeline_update"] = await update_ghl_pipeline_stage(
+                customer_email=customer_email,
+                customer_name=customer_name,
+                plan_tier=plan_tier,
+                vertical=vertical,
+            )
+
+            result["success"] = True
+            result["step"] = "complete"
+            print(f"[GHL Provision] \u2705 COMPLETE: {customer_email} \u2192 {location_id} \u2192 {snapshot_name}")
+            return result
+
+    except Exception as e:
+        result["error"] = str(e)
+        print(f"[GHL Provision] Exception at step {result['step']}: {e}")
+        return result
+
+
 # ─── Stripe Webhook Handler ──────────────────────────────────────────────────
 STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET", "")
 
@@ -6932,52 +7225,30 @@ async def stripe_webhook(request: Request):
     
     try:
         if event_type == "checkout.session.completed":
-            customer_id = data.get("customer")
-            subscription_id = data.get("subscription")
-            customer_email = data.get("customer_details", {}).get("email", "")
-            customer_name = data.get("customer_details", {}).get("name", customer_email.split("@")[0] if customer_email else "User")
-            metadata = data.get("metadata", {})
-            vertical = metadata.get("vertical", "general")
-            company_name = metadata.get("company_name", "")
-            phone = data.get("customer_details", {}).get("phone", "")
-            print(f"[Stripe Webhook] Checkout completed for {customer_email} (customer: {customer_id}, vertical: {vertical})")
+            customer_id      = data.get("customer")
+            subscription_id  = data.get("subscription")
+            customer_email   = data.get("customer_details", {}).get("email", "")
+            customer_name    = data.get("customer_details", {}).get("name", "") or customer_email.split("@")[0]
+            metadata         = data.get("metadata", {})
+            vertical         = metadata.get("vertical", "general").lower().replace(" ", "_")
+            company_name     = metadata.get("company_name", "")
+            phone            = data.get("customer_details", {}).get("phone", "")
 
-            # Resolve plan tier from the subscription's price ID
-            _checkout_price_to_tier = {
-                "price_1T5bkAL47U80vDLAslOm3HoX": "free",
-                "price_1T5bkAL47U80vDLAaChP4Hqg": "starter",
-                "price_1T5bkBL47U80vDLALiVDkOgb": "pro",
-                "price_1T5bkCL47U80vDLANsCa647K": "teams",
-                "price_1T5bkDL47U80vDLANXWF33A7": "enterprise",
-                "price_1T7p1tL47U80vDLAnxtkrGV4": "free",
-                "price_1T6dHNL47U80vDLAPgfsUmtO": "starter",
-                "price_1T6dHNL47U80vDLAHYxorUNk": "pro",
-                "price_1T84uZL47U80vDLARDZK46qE": "pro",
-                "price_1T6dHNL47U80vDLAqTTV84lL": "teams",
-                "price_1T6dHOL47U80vDLARSODO7b1": "enterprise",
-                "price_1T7p1sL47U80vDLAgU2shcQO": "starter",
-                "price_1T7p1tL47U80vDLAVC0N4N4J": "pro",
-                "price_1T7p1uL47U80vDLA9QF62BKS": "teams",
-                "price_1T7p1uL47U80vDLAR4Wk6uW0": "enterprise",
-                "price_1T7p1sL47U80vDLAYEEv8Kmg": "starter",
-                "price_1T7p1tL47U80vDLAk5HK8YcR": "pro",
-                "price_1T7p1uL47U80vDLAjlnLTuul": "teams",
-                "price_1T7p1uL47U80vDLAk9UA0lnr": "enterprise",
-            }
-            # Extract price ID from line items or subscription
+            # Resolve tier from price ID
             _line_items = data.get("line_items", {}).get("data", []) if data.get("line_items") else []
-            _checkout_price_id = _line_items[0].get("price", {}).get("id", "") if _line_items else ""
-            plan_tier = _checkout_price_to_tier.get(_checkout_price_id, "starter")
+            _price_id = _line_items[0].get("price", {}).get("id", "") if _line_items else metadata.get("price_id", "")
+            plan_tier = PRICE_TO_TIER_MAP.get(_price_id, metadata.get("tier", "starter"))
+
+            print(f"[Stripe Webhook] Checkout completed — {customer_email} | tier={plan_tier} | vertical={vertical}")
 
             if supabase_admin and customer_id:
-                # Update profile with Stripe customer ID + resolved tier
                 supabase_admin.table("profiles").update({
                     "stripe_customer_id": customer_id,
-                    "tier": plan_tier,
-                    "updated_at": "now()"
+                    "plan_tier": plan_tier,
+                    "updated_at": "now()",
                 }).eq("email", customer_email).execute()
 
-            # GHL Provisioning — create sub-account + deploy snapshot + welcome email
+            # GHL Provisioning — create sub-account + deploy snapshot + welcome email + pipeline
             if plan_tier != "free" and customer_email:
                 try:
                     provision_result = await provision_ghl_subaccount(
@@ -6991,7 +7262,6 @@ async def stripe_webhook(request: Request):
                     print(f"[Stripe Webhook] GHL Provisioning: {provision_result.get('step')} — success={provision_result.get('success')}")
                 except Exception as prov_err:
                     print(f"[Stripe Webhook] GHL Provisioning FAILED (non-fatal): {prov_err}")
-                    # Non-fatal: payment succeeded, CRM provisioning failed — user can be provisioned manually via admin endpoint
         
         elif event_type == "customer.subscription.updated":
             customer_id = data.get("customer")
@@ -7886,6 +8156,110 @@ async def social_publish(request: Request):
         return JSONResponse(result)
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
+
+
+# ── SAL Social Studio → GHL Social Media Posting Bridge ─────────────────────
+
+@app.post("/api/social-studio/publish")
+async def social_studio_publish(request: Request):
+    """Bridge SAL Social Studio to GHL's Social Media Posting API."""
+    try:
+        # 1. Auth
+        auth_header = request.headers.get("authorization", "")
+        user = await get_current_user(auth_header if auth_header else None)
+        if not user:
+            return JSONResponse({"success": False, "error": "Unauthorized"}, status_code=401)
+
+        # 2. Parse body
+        try:
+            body = await request.json()
+        except Exception:
+            return JSONResponse({"success": False, "error": "Invalid JSON body"}, status_code=400)
+
+        content = body.get("content") or ""
+        media_urls = body.get("mediaUrls") or []
+        platforms = body.get("platforms") or []
+        schedule_date = body.get("scheduleDate") or None
+        post_type = body.get("type") or "post"
+
+        # 3. Resolve ghl_location_id
+        ghl_location_id = body.get("ghl_location_id") or ""
+        if not ghl_location_id and supabase_admin:
+            try:
+                profile_result = supabase_admin.table("profiles").select("ghl_location_id").eq(
+                    "id", user["id"]
+                ).single().execute()
+                if profile_result.data:
+                    ghl_location_id = profile_result.data.get("ghl_location_id") or ""
+            except Exception:
+                pass
+
+        if not ghl_location_id:
+            return JSONResponse(
+                {"success": False, "error": "No GHL location ID found. Provide ghl_location_id in the request body or connect your GHL account."},
+                status_code=400
+            )
+
+        # 4. Build GHL payload
+        ghl_payload: dict = {
+            "type": post_type,
+            "content": content,
+            "mediaUrls": media_urls,
+            "platforms": platforms,
+        }
+        if schedule_date:
+            ghl_payload["scheduledAt"] = schedule_date
+
+        # 5. Call GHL Social Media Posting API
+        ghl_url = f"https://services.leadconnectorhq.com/social-media-posting/{ghl_location_id}/posts"
+        ghl_headers = {
+            "Authorization": f"Bearer {GHL_COMPANY_KEY}",
+            "Content-Type": "application/json",
+            "Version": "2021-07-28",
+        }
+
+        async with httpx.AsyncClient(timeout=30) as hc:
+            resp = await hc.post(ghl_url, headers=ghl_headers, json=ghl_payload)
+
+        if resp.status_code not in (200, 201):
+            try:
+                err_detail = resp.json().get("message") or resp.text[:300]
+            except Exception:
+                err_detail = resp.text[:300]
+            return JSONResponse({"success": False, "error": f"GHL API error {resp.status_code}: {err_detail}"})
+
+        resp_data = resp.json()
+        ghl_post_id = (
+            resp_data.get("id")
+            or resp_data.get("post", {}).get("id")
+            or ""
+        )
+
+        # 6. Log to marketing_content table (non-fatal)
+        if supabase_admin:
+            try:
+                supabase_admin.table("marketing_content").insert({
+                    "user_id": user["id"],
+                    "content": content,
+                    "platforms": platforms,
+                    "ghl_post_id": ghl_post_id,
+                    "ghl_location_id": ghl_location_id,
+                    "scheduled_at": schedule_date,
+                    "status": "scheduled" if schedule_date else "published",
+                    "post_type": post_type,
+                }).execute()
+            except Exception:
+                pass  # Table may not exist — non-fatal
+
+        return JSONResponse({
+            "success": True,
+            "posted_to": platforms,
+            "scheduled_at": schedule_date,
+            "ghl_post_id": ghl_post_id,
+        })
+
+    except Exception as e:
+        return JSONResponse({"success": False, "error": str(e)}, status_code=500)
 
 
 # ── Builder In-Memory Project Store ─────────────────────────────────────────

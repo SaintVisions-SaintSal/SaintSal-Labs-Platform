@@ -7200,6 +7200,7 @@ function executePublish(isScheduled) {
   var btn = document.getElementById('publishNowBtn');
   if (btn) { btn.disabled = true; btn.textContent = isScheduled ? 'Scheduling...' : 'Publishing...'; }
 
+
   fetch(API + '/api/social-studio/publish', {
     method: 'POST',
     headers: Object.assign({ 'Content-Type': 'application/json' }, authHeaders()),
@@ -7208,6 +7209,8 @@ function executePublish(isScheduled) {
       platforms: selectedPlatforms,
       mediaUrls: [],
       scheduleDate: scheduleDate,
+      type: 'post',
+      ghl_location_id: ''
     })
   })
     .then(function(r) { return r.json(); })
@@ -7234,6 +7237,37 @@ function cancelPublishPanel() {
   actionsEl.innerHTML = '<button class="social-btn small" onclick="copyGenContent()">Copy</button>' +
     '<button class="social-btn small secondary" onclick="saveToMediaLibrary(\'' + escHTML(platformName) + '\', \'\')">Save to Library</button>' +
     '<button class="social-btn small primary" onclick="showPublishPanel()">Publish to Socials</button>';
+}
+
+function scheduleGenContent(platform) {
+  var el = document.querySelector('.gen-content-text');
+  if (!el) return;
+  var content = el.innerText;
+  var dateStr = prompt('Enter schedule date/time (e.g. 2026-04-01T10:00):');
+  if (!dateStr) return;
+  var scheduleDate = new Date(dateStr).toISOString();
+  if (!scheduleDate || scheduleDate === 'Invalid Date') {
+    showToast('Invalid date. Please use format: 2026-04-01T10:00');
+    return;
+  }
+  fetch(API + '/api/social-studio/publish', {
+    method: 'POST',
+    headers: Object.assign({ 'Content-Type': 'application/json' }, authHeaders()),
+    body: JSON.stringify({
+      content: content,
+      mediaUrls: [],
+      platforms: [platform],
+      scheduleDate: scheduleDate,
+      type: 'post',
+      ghl_location_id: ''
+    })
+  })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data.error) { showToast(data.error); }
+      else { showToast('Scheduled successfully!'); }
+    })
+    .catch(function() { showToast('Schedule failed'); });
 }
 
 /* ---- CAMPAIGNS TAB ---- */
