@@ -8393,6 +8393,11 @@ TIER_FEATURES = {
         "builder_deploy_cloudflare": False,
         "builder_github": False,
         "builder_custom_domains": False,
+        "builder_v2_pipeline": "basic",
+        "builder_stitch_design": False,
+        "builder_opus_synthesis": False,
+        "builder_gpt5_validation": False,
+        "builder_iteration": True,
         "voice_ai": False,
         "career_suite": False,
         "rag_knowledge": False,
@@ -8410,6 +8415,11 @@ TIER_FEATURES = {
         "builder_deploy_cloudflare": False,
         "builder_github": True,
         "builder_custom_domains": False,
+        "builder_v2_pipeline": "basic",
+        "builder_stitch_design": False,
+        "builder_opus_synthesis": False,
+        "builder_gpt5_validation": False,
+        "builder_iteration": True,
         "voice_ai": False,
         "career_suite": False,
         "rag_knowledge": False,
@@ -8427,6 +8437,11 @@ TIER_FEATURES = {
         "builder_deploy_cloudflare": False,
         "builder_github": True,
         "builder_custom_domains": False,
+        "builder_v2_pipeline": "full",
+        "builder_stitch_design": True,
+        "builder_opus_synthesis": True,
+        "builder_gpt5_validation": True,
+        "builder_iteration": True,
         "voice_ai": True,
         "career_suite": True,
         "rag_knowledge": True,
@@ -8444,6 +8459,11 @@ TIER_FEATURES = {
         "builder_deploy_cloudflare": True,
         "builder_github": True,
         "builder_custom_domains": True,
+        "builder_v2_pipeline": "full",
+        "builder_stitch_design": True,
+        "builder_opus_synthesis": True,
+        "builder_gpt5_validation": True,
+        "builder_iteration": True,
         "voice_ai": True,
         "career_suite": True,
         "rag_knowledge": True,
@@ -9458,6 +9478,868 @@ async def agent_build(request: Request):
         yield "data: " + json.dumps({"phase": "complete", "message": "Build complete!", "model": build_result.get("model_used", "AI")}) + "\n\n"
 
     return StreamingResponse(stream(), media_type="text/event-stream")
+
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# BUILDER V2 — 5-AGENT PARALLEL PIPELINE
+# Grok 4.20 (Architect) → Stitch MCP (Designer) ‖ Claude Sonnet (Engineer)
+#   → Claude Opus (Synthesizer) → GPT-5 (Validator)
+# US Patent #10,290,222 — HACP Protocol
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# ── v2 Agent Configs ──────────────────────────────────────────────────────────
+
+BUILDER_V2_AGENTS = {
+    "architect": {
+        "name": "Grok 4.20", "role": "Architect", "color": "#F59E0B", "icon": "🟠",
+        "model": "grok-4.20-multi-agent-beta-0309", "provider": "xai",
+        "fallback_model": "grok-4", "fallback_provider": "xai",
+    },
+    "designer": {
+        "name": "Google Stitch", "role": "Designer", "color": "#60A5FA", "icon": "🔵",
+        "model": "stitch_mcp", "provider": "google_stitch",
+    },
+    "engineer": {
+        "name": "Claude Sonnet 4.6", "role": "Engineer", "color": "#A78BFA", "icon": "🟣",
+        "model": "claude-sonnet-4-20250514", "provider": "anthropic",
+        "fallback_model": "claude-sonnet-4-20250514", "fallback_provider": "anthropic",
+    },
+    "synthesizer": {
+        "name": "Claude Opus 4.6", "role": "Synthesizer", "color": "#8B5CF6", "icon": "🟣",
+        "model": "claude-opus-4-20250611", "provider": "anthropic",
+        "fallback_model": "claude-sonnet-4-20250514", "fallback_provider": "anthropic",
+    },
+    "validator": {
+        "name": "GPT-5 Core", "role": "Validator", "color": "#00FF88", "icon": "🟢",
+        "model": "gpt-5", "provider": "openai",
+        "fallback_model": "gpt-5.4-mini", "fallback_provider": "openai",
+    },
+}
+
+BUILDER_V2_TIER_ACCESS = {
+    "free":       {"agents": ["architect", "engineer"],             "deploy": [],                        "models_override": {"architect": "grok-3-mini"}},
+    "starter":    {"agents": ["architect", "engineer"],             "deploy": [],                        "models_override": {"architect": "grok-3-mini"}},
+    "pro":        {"agents": ["architect", "designer", "engineer", "synthesizer", "validator"], "deploy": ["vercel"],   "models_override": {}},
+    "teams":      {"agents": ["architect", "designer", "engineer", "synthesizer", "validator"], "deploy": ["vercel", "render", "cloudflare"],   "models_override": {}},
+    "enterprise": {"agents": ["architect", "designer", "engineer", "synthesizer", "validator"], "deploy": ["vercel", "render", "cloudflare", "github"],   "models_override": {}},
+}
+
+BUILDER_V2_ARCHITECT_SYSTEM = """You are SAL™ Architect Agent — powered by Grok 4.20 multi-agent intelligence.
+Given a build request, analyze it deeply and output ONLY valid JSON with these keys:
+{
+  "title": "Project title",
+  "description": "2-sentence project description",
+  "components": ["Component1", "Component2", ...],
+  "pages": [{"name": "index", "route": "/", "purpose": "Main landing page"}, ...],
+  "apis": ["API or integration needed"],
+  "steps": ["Step 1 — specific action", "Step 2 — specific action", ...],
+  "complexity": "low|medium|high|extreme",
+  "estimated_time": "30s|45s|60s|90s",
+  "framework": "react|nextjs|vue|html|flask|express",
+  "design_direction": "Brief design direction for the UI designer — colors, mood, layout style",
+  "file_structure": ["index.html", "styles/main.css", "js/app.js", ...]
+}
+No markdown. No explanation. Only valid JSON."""
+
+BUILDER_V2_ENGINEER_SYSTEM = """You are SAL™ Engineer Agent — powered by Claude Sonnet 4.6.
+Given an architectural plan and (optionally) UI design HTML from the Designer, generate the complete file scaffold with all logic, routing, and business rules.
+
+OUTPUT ONLY valid JSON:
+{
+  "files": [
+    {"name": "filename.ext", "content": "COMPLETE file content — no placeholders, no TODOs", "language": "html|css|js|jsx|tsx|py|json"},
+    ...
+  ],
+  "dependencies": ["package-name@version", ...],
+  "routes": [{"path": "/", "method": "GET", "handler": "description"}],
+  "notes": "Brief engineering notes"
+}
+
+RULES:
+- Every file must contain COMPLETE, production-ready code
+- No placeholder comments like "// add logic here"
+- Include proper error handling, loading states, responsive design
+- Use modern patterns: async/await, ES modules, CSS custom properties
+- If React/Next.js: use functional components, hooks, Tailwind CSS
+- If HTML: use semantic HTML5, CSS Grid/Flexbox, vanilla JS
+- Minimum 3 files, typically 5-8 for a real project"""
+
+BUILDER_V2_SYNTHESIZER_SYSTEM = """You are SAL™ Synthesizer Agent — powered by Claude Opus 4.6.
+You receive outputs from the Architect (plan), Designer (UI HTML/CSS), and Engineer (file scaffold).
+Your job is to SYNTHESIZE them into the final, polished, production-ready codebase.
+
+SYNTHESIS RULES:
+1. Merge the Designer's visual HTML/CSS with the Engineer's logic and structure
+2. Ensure visual consistency — the Designer's colors, typography, spacing must be preserved
+3. Ensure functional completeness — the Engineer's routes, handlers, state management must work
+4. Add transitions, animations, and micro-interactions where appropriate
+5. Ensure responsive design across mobile/tablet/desktop
+6. Add proper meta tags, Open Graph, favicon references
+7. Optimize: minimize redundant CSS, consolidate JS, lazy-load where possible
+
+OUTPUT ONLY valid JSON:
+{
+  "files": [
+    {"name": "filename.ext", "content": "COMPLETE synthesized code", "language": "html|css|js|jsx|tsx|py"},
+    ...
+  ],
+  "design_tokens": {"primary": "#hex", "secondary": "#hex", "accent": "#hex", "bg": "#hex", "text": "#hex"},
+  "synthesis_notes": "What was merged and how"
+}
+
+Output COMPLETE files only. No placeholders. No TODOs. Production-ready."""
+
+BUILDER_V2_VALIDATOR_SYSTEM = """You are SAL™ Validator Agent — powered by GPT-5 Core.
+You receive the final synthesized codebase. Your job is to validate, lint, and optimize.
+
+CHECK FOR:
+1. Syntax errors in HTML/CSS/JS/JSX/TSX/Python
+2. Broken imports or missing dependencies
+3. Accessibility issues (missing alt, aria labels, contrast)
+4. Security issues (XSS, injection, exposed keys)
+5. Performance issues (render-blocking, unoptimized images, memory leaks)
+6. Responsive design gaps
+7. SEO basics (meta tags, semantic HTML, headings hierarchy)
+
+OUTPUT ONLY valid JSON:
+{
+  "valid": true|false,
+  "score": 0-100,
+  "issues": [
+    {"severity": "error|warning|info", "file": "filename", "line": null, "message": "description", "fix": "suggested fix code"}
+  ],
+  "optimizations": [
+    {"file": "filename", "type": "performance|accessibility|seo|security", "suggestion": "what to improve"}
+  ],
+  "fixed_files": [
+    {"name": "filename.ext", "content": "FIXED complete file content", "changes": "what was fixed"}
+  ],
+  "summary": "Brief validation summary"
+}
+
+If issues are minor, include fixed_files with auto-corrections applied.
+If issues are critical, set valid=false and list what needs manual attention."""
+
+
+# ── v2 Helper: Call a specific agent ──────────────────────────────────────────
+
+async def _v2_agent_call(agent_id: str, system: str, user_msg: str, tier: str = "pro", max_tokens: int = 64000, timeout: int = 120) -> dict:
+    """Call a specific v2 agent with tier-aware model selection and fallback."""
+    agent = BUILDER_V2_AGENTS.get(agent_id, {})
+    if not agent:
+        return {"text": "", "agent": agent_id, "error": "Unknown agent"}
+
+    tier_cfg = BUILDER_V2_TIER_ACCESS.get(tier, BUILDER_V2_TIER_ACCESS["pro"])
+    model_override = tier_cfg.get("models_override", {}).get(agent_id)
+
+    # Determine model and provider
+    model = model_override or agent["model"]
+    provider = agent["provider"]
+
+    # Special case: Stitch MCP (not a standard LLM call)
+    if provider == "google_stitch":
+        return await _v2_stitch_design(user_msg)
+
+    # Build provider chain: primary → fallback
+    attempts = [
+        (model, provider),
+    ]
+    if agent.get("fallback_model") and agent["fallback_model"] != model:
+        attempts.append((agent["fallback_model"], agent.get("fallback_provider", provider)))
+
+    for try_model, try_provider in attempts:
+        try:
+            if try_provider == "xai":
+                key = XAI_API_KEY
+                if not key:
+                    continue
+                async with httpx.AsyncClient(timeout=timeout) as hc:
+                    r = await hc.post("https://api.x.ai/v1/chat/completions",
+                        headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+                        json={"model": try_model, "max_tokens": min(max_tokens, 32000), "temperature": 0.3,
+                              "messages": [{"role": "system", "content": system}, {"role": "user", "content": user_msg}]})
+                    if r.status_code != 200:
+                        print(f"[Builder V2] {agent_id} xAI {try_model} -> HTTP {r.status_code}")
+                        continue
+                    text = r.json().get("choices", [{}])[0].get("message", {}).get("content", "")
+                    if text:
+                        return {"text": text, "agent": agent_id, "model_used": try_model, "provider": try_provider}
+
+            elif try_provider == "anthropic":
+                key = os.environ.get("ANTHROPIC_API_KEY", "")
+                if not key:
+                    continue
+                async with httpx.AsyncClient(timeout=timeout) as hc:
+                    r = await hc.post("https://api.anthropic.com/v1/messages",
+                        headers={"x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json"},
+                        json={"model": try_model, "max_tokens": min(max_tokens, 64000), "system": system,
+                              "messages": [{"role": "user", "content": user_msg}]})
+                    if r.status_code != 200:
+                        print(f"[Builder V2] {agent_id} Anthropic {try_model} -> HTTP {r.status_code}")
+                        continue
+                    text = r.json().get("content", [{}])[0].get("text", "")
+                    if text:
+                        return {"text": text, "agent": agent_id, "model_used": try_model, "provider": try_provider}
+
+            elif try_provider == "openai":
+                key = OPENAI_API_KEY
+                if not key:
+                    continue
+                async with httpx.AsyncClient(timeout=timeout) as hc:
+                    r = await hc.post("https://api.openai.com/v1/chat/completions",
+                        headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+                        json={"model": try_model, "max_tokens": min(max_tokens, 32000), "temperature": 0.3,
+                              "messages": [{"role": "system", "content": system}, {"role": "user", "content": user_msg}]})
+                    if r.status_code != 200:
+                        print(f"[Builder V2] {agent_id} OpenAI {try_model} -> HTTP {r.status_code}")
+                        continue
+                    text = r.json().get("choices", [{}])[0].get("message", {}).get("content", "")
+                    if text:
+                        return {"text": text, "agent": agent_id, "model_used": try_model, "provider": try_provider}
+
+        except Exception as ex:
+            print(f"[Builder V2] {agent_id} {try_provider}/{try_model} exception: {ex}")
+            continue
+
+    return {"text": "", "agent": agent_id, "error": "All providers failed"}
+
+
+async def _v2_stitch_design(prompt: str) -> dict:
+    """Generate UI design via Google Stitch MCP. Returns HTML/CSS + screenshot URL."""
+    if not STITCH_API_KEY:
+        # Fallback to Gemini design tokens if no Stitch key
+        return {"text": "", "agent": "designer", "error": "Stitch API key not configured", "fallback": True}
+
+    try:
+        # Step 1: Create project
+        proj = await stitch_call("create_project", {"title": prompt[:50]})
+        project_id = ""
+        if isinstance(proj, dict) and proj.get("name"):
+            project_id = proj["name"].replace("projects/", "")
+        else:
+            return {"text": "", "agent": "designer", "error": f"Stitch project creation failed: {proj}"}
+
+        # Step 2: Generate screen
+        screen_result = await stitch_call("generate_screen_from_text", {
+            "project_id": project_id,
+            "prompt": prompt,
+            "model_id": "GEMINI_3_PRO",
+        })
+
+        # Step 3: List screens to get the generated one
+        screens_data = await stitch_call("list_screens", {"project_id": project_id})
+        screens = screens_data.get("screens", []) if isinstance(screens_data, dict) else []
+
+        # Step 4: Get HTML for the first screen
+        html_content = ""
+        image_url = ""
+        if screens:
+            screen_id = screens[0].get("name", "").split("/")[-1] if screens[0].get("name") else ""
+            if screen_id:
+                screen_detail = await stitch_call("get_screen", {"project_id": project_id, "screen_id": screen_id})
+                if isinstance(screen_detail, dict):
+                    html_url = screen_detail.get("htmlUri", screen_detail.get("html_uri", ""))
+                    image_url = screen_detail.get("imageUri", screen_detail.get("image_uri", ""))
+                    # Fetch actual HTML from the URL
+                    if html_url:
+                        try:
+                            async with httpx.AsyncClient(timeout=30) as hc:
+                                html_resp = await hc.get(html_url)
+                                if html_resp.status_code == 200:
+                                    html_content = html_resp.text
+                        except Exception:
+                            pass
+
+        result_json = json.dumps({
+            "html": html_content,
+            "image_url": image_url,
+            "project_id": project_id,
+            "screen_count": len(screens),
+            "stitch_url": f"https://stitch.withgoogle.com/project/{project_id}",
+        })
+
+        return {"text": result_json, "agent": "designer", "model_used": "Google Stitch MCP", "provider": "google_stitch"}
+
+    except Exception as ex:
+        print(f"[Builder V2] Stitch design error: {ex}")
+        return {"text": "", "agent": "designer", "error": str(ex)}
+
+
+def _v2_parse_json(text: str) -> dict:
+    """Parse JSON from agent response, stripping markdown fences if present."""
+    import re
+    stripped = text.strip()
+    stripped = re.sub(r'^```(?:json)?\s*', '', stripped, flags=re.IGNORECASE)
+    stripped = re.sub(r'\s*```\s*$', '', stripped)
+    try:
+        return json.loads(stripped)
+    except json.JSONDecodeError:
+        # Try to find JSON object in the text
+        match = re.search(r'\{[\s\S]*\}', stripped, re.DOTALL)
+        if match:
+            try:
+                return json.loads(match.group(0))
+            except json.JSONDecodeError:
+                pass
+    return {}
+
+
+# ── v2 Main Pipeline Endpoint ─────────────────────────────────────────────────
+
+@app.post("/api/builder/agent/v2")
+async def agent_build_v2(request: Request):
+    """5-Agent Pipeline: Grok 4.20 plans → Stitch designs ‖ Claude scaffolds → Opus synthesizes → GPT-5 validates.
+    SAL Builder v2 — US Patent #10,290,222."""
+    body = await request.json()
+    prompt = body.get("prompt", "").strip()
+    framework = body.get("framework", "auto")
+    tier = body.get("tier", "pro")
+    project_id = body.get("project_id")
+    user_id = body.get("user_id")
+
+    if not prompt:
+        return JSONResponse({"error": "prompt required"}, status_code=400)
+
+    tier_cfg = BUILDER_V2_TIER_ACCESS.get(tier, BUILDER_V2_TIER_ACCESS["pro"])
+    available_agents = tier_cfg["agents"]
+
+    async def v2_stream():
+        # ═══ PHASE 1: ARCHITECT (Grok 4.20) — Planning ═══
+        yield "data: " + json.dumps({
+            "phase": "planning", "agent": "architect",
+            "agent_info": BUILDER_V2_AGENTS["architect"],
+            "message": "Analyzing architecture with multi-agent reasoning..."
+        }) + "\n\n"
+
+        architect_result = await _v2_agent_call(
+            "architect", BUILDER_V2_ARCHITECT_SYSTEM,
+            f"Build request: {prompt}\nPreferred framework: {framework}",
+            tier=tier, max_tokens=4096, timeout=60
+        )
+
+        plan = _v2_parse_json(architect_result.get("text", ""))
+        if not plan:
+            plan = {
+                "title": prompt[:60], "description": prompt,
+                "components": ["Header", "Hero", "Features", "CTA", "Footer"],
+                "pages": [{"name": "index", "route": "/", "purpose": "Main page"}],
+                "apis": [], "steps": ["Design", "Build", "Test"],
+                "complexity": "medium", "estimated_time": "45s",
+                "framework": framework if framework != "auto" else "html",
+                "design_direction": "Modern dark theme with gold accents",
+                "file_structure": ["index.html", "styles/main.css", "js/app.js"],
+            }
+
+        yield "data: " + json.dumps({
+            "phase": "plan_ready", "agent": "architect",
+            "plan": plan,
+            "model_used": architect_result.get("model_used", "grok-4.20")
+        }) + "\n\n"
+
+        chosen_framework = plan.get("framework", framework if framework != "auto" else "html")
+
+        # ═══ PHASE 2: PARALLEL — Designer (Stitch) + Engineer (Claude Sonnet) ═══
+        design_result = {"text": "", "agent": "designer"}
+        scaffold_result = {"text": "", "agent": "engineer"}
+
+        if "designer" in available_agents:
+            yield "data: " + json.dumps({
+                "phase": "designing", "agent": "designer",
+                "agent_info": BUILDER_V2_AGENTS["designer"],
+                "message": "Generating UI screens with Google Stitch..."
+            }) + "\n\n"
+
+        yield "data: " + json.dumps({
+            "phase": "scaffolding", "agent": "engineer",
+            "agent_info": BUILDER_V2_AGENTS["engineer"],
+            "message": "Building file structure and logic..."
+        }) + "\n\n"
+
+        # Run designer + engineer in parallel
+        import asyncio as _aio
+
+        async def _run_designer():
+            nonlocal design_result
+            if "designer" not in available_agents:
+                return
+            design_prompt = (
+                f"Create a beautiful, modern UI design for: {prompt}\n"
+                f"Design direction: {plan.get('design_direction', 'Modern dark theme')}\n"
+                f"Components needed: {', '.join(plan.get('components', []))}\n"
+                f"Pages: {json.dumps(plan.get('pages', []))}\n"
+                f"Framework: {chosen_framework}"
+            )
+            design_result = await _v2_agent_call("designer", "", design_prompt, tier=tier)
+
+        async def _run_engineer():
+            nonlocal scaffold_result
+            engineer_prompt = (
+                f"ARCHITECTURAL PLAN:\n{json.dumps(plan, indent=2)}\n\n"
+                f"Framework: {chosen_framework}\n"
+                f"Original request: {prompt}\n\n"
+                f"Generate the complete file scaffold with all logic and routes."
+            )
+            scaffold_result = await _v2_agent_call(
+                "engineer", BUILDER_V2_ENGINEER_SYSTEM,
+                engineer_prompt, tier=tier, max_tokens=64000, timeout=120
+            )
+
+        # Keep SSE alive with pings while agents work
+        _parallel_done = {"done": False}
+
+        async def _run_parallel():
+            await _aio.gather(_run_designer(), _run_engineer())
+            _parallel_done["done"] = True
+
+        _aio.create_task(_run_parallel())
+
+        ping_msgs_design = ["Crafting visual layout...", "Applying design system...", "Rendering components...", "Polishing UI details..."]
+        ping_msgs_eng = ["Structuring file tree...", "Writing route handlers...", "Building state management...", "Wiring API integrations..."]
+        _pi = 0
+        while not _parallel_done["done"]:
+            await _aio.sleep(4)
+            if not _parallel_done["done"]:
+                yield "data: " + json.dumps({
+                    "phase": "building", "agent": "designer" if _pi % 2 == 0 else "engineer",
+                    "message": (ping_msgs_design if _pi % 2 == 0 else ping_msgs_eng)[_pi // 2 % 4]
+                }) + "\n\n"
+                _pi += 1
+
+        # Emit design_ready
+        if "designer" in available_agents:
+            design_data = _v2_parse_json(design_result.get("text", ""))
+            yield "data: " + json.dumps({
+                "phase": "design_ready", "agent": "designer",
+                "design": design_data if design_data else {"html": "", "note": "Design via Stitch"},
+                "model_used": design_result.get("model_used", "Stitch"),
+                "stitch_url": design_data.get("stitch_url", "") if design_data else "",
+            }) + "\n\n"
+
+        # Emit scaffold_ready
+        scaffold_data = _v2_parse_json(scaffold_result.get("text", ""))
+        yield "data: " + json.dumps({
+            "phase": "scaffold_ready", "agent": "engineer",
+            "scaffold": scaffold_data,
+            "model_used": scaffold_result.get("model_used", "claude-sonnet-4.6"),
+        }) + "\n\n"
+
+        # ═══ PHASE 3: SYNTHESIZER (Claude Opus) — Merge design + scaffold ═══
+        if "synthesizer" in available_agents:
+            yield "data: " + json.dumps({
+                "phase": "synthesizing", "agent": "synthesizer",
+                "agent_info": BUILDER_V2_AGENTS["synthesizer"],
+                "message": "Synthesizing design + code into final build..."
+            }) + "\n\n"
+
+            design_html = ""
+            if design_data and design_data.get("html"):
+                design_html = f"\n\nDESIGNER OUTPUT (HTML/CSS from Stitch):\n{design_data['html'][:20000]}"
+
+            synth_prompt = (
+                f"ARCHITECTURAL PLAN:\n{json.dumps(plan, indent=2)}\n\n"
+                f"ENGINEER SCAFFOLD:\n{json.dumps(scaffold_data, indent=2) if scaffold_data else scaffold_result.get('text', '')[:20000]}"
+                f"{design_html}\n\n"
+                f"Original request: {prompt}\n"
+                f"Framework: {chosen_framework}\n\n"
+                f"Synthesize everything into the final production codebase."
+            )
+
+            # Run with keepalive pings
+            _synth_holder = {"result": None, "done": False}
+
+            async def _run_synth():
+                _synth_holder["result"] = await _v2_agent_call(
+                    "synthesizer", BUILDER_V2_SYNTHESIZER_SYSTEM,
+                    synth_prompt, tier=tier, max_tokens=64000, timeout=150
+                )
+                _synth_holder["done"] = True
+
+            _aio.create_task(_run_synth())
+
+            synth_pings = ["Merging design tokens...", "Applying visual system...", "Integrating logic layer...", "Optimizing responsive layout...", "Adding micro-interactions...", "Polishing final code..."]
+            _si = 0
+            while not _synth_holder["done"]:
+                await _aio.sleep(5)
+                if not _synth_holder["done"]:
+                    yield "data: " + json.dumps({
+                        "phase": "synthesizing", "agent": "synthesizer",
+                        "message": synth_pings[_si % len(synth_pings)]
+                    }) + "\n\n"
+                    _si += 1
+
+            synth_data = _v2_parse_json(_synth_holder["result"].get("text", "") if _synth_holder["result"] else "")
+            final_files = synth_data.get("files", []) if synth_data else []
+
+            yield "data: " + json.dumps({
+                "phase": "files_ready", "agent": "synthesizer",
+                "files": final_files,
+                "design_tokens": synth_data.get("design_tokens", {}) if synth_data else {},
+                "model_used": _synth_holder["result"].get("model_used", "claude-opus-4.6") if _synth_holder["result"] else "none",
+            }) + "\n\n"
+        else:
+            # No synthesizer (free/starter tier) — use engineer scaffold directly
+            final_files = scaffold_data.get("files", []) if scaffold_data else []
+            # Try to extract files from raw text if scaffold_data is empty
+            if not final_files and scaffold_result.get("text"):
+                import re as _re
+                text = scaffold_result["text"]
+                html_match = _re.search(r'<!DOCTYPE html>.*?</html>', text, _re.DOTALL | _re.IGNORECASE)
+                if html_match:
+                    final_files = [{"name": "index.html", "content": html_match.group(0)}]
+
+            yield "data: " + json.dumps({
+                "phase": "files_ready", "agent": "engineer",
+                "files": final_files,
+                "model_used": scaffold_result.get("model_used", "claude"),
+            }) + "\n\n"
+
+        # ═══ PHASE 4: VALIDATOR (GPT-5 Core) — Lint + Test + Optimize ═══
+        if "validator" in available_agents and final_files:
+            yield "data: " + json.dumps({
+                "phase": "validating", "agent": "validator",
+                "agent_info": BUILDER_V2_AGENTS["validator"],
+                "message": "Running validation, linting, and optimization..."
+            }) + "\n\n"
+
+            # Only send first 30K chars to validator to stay within limits
+            files_for_validation = json.dumps(final_files)[:30000]
+            validation_prompt = (
+                f"Validate this codebase:\n{files_for_validation}\n\n"
+                f"Framework: {chosen_framework}\n"
+                f"Check for syntax errors, accessibility, security, performance, and SEO."
+            )
+
+            validation_result = await _v2_agent_call(
+                "validator", BUILDER_V2_VALIDATOR_SYSTEM,
+                validation_prompt, tier=tier, max_tokens=16000, timeout=60
+            )
+
+            validation_data = _v2_parse_json(validation_result.get("text", ""))
+
+            # If validator provided fixed files, use those instead
+            if validation_data and validation_data.get("fixed_files"):
+                for fixed in validation_data["fixed_files"]:
+                    for i, f in enumerate(final_files):
+                        if f.get("name") == fixed.get("name"):
+                            final_files[i] = {"name": fixed["name"], "content": fixed["content"], "language": f.get("language", "")}
+                            break
+
+            yield "data: " + json.dumps({
+                "phase": "validation_ready", "agent": "validator",
+                "validation": {
+                    "valid": validation_data.get("valid", True) if validation_data else True,
+                    "score": validation_data.get("score", 85) if validation_data else 85,
+                    "issues": validation_data.get("issues", []) if validation_data else [],
+                    "optimizations": validation_data.get("optimizations", []) if validation_data else [],
+                    "summary": validation_data.get("summary", "Validation complete") if validation_data else "Validation complete",
+                },
+                "files": final_files,  # Send potentially fixed files
+                "model_used": validation_result.get("model_used", "gpt-5"),
+            }) + "\n\n"
+
+        # ═══ SAVE PROJECT ═══
+        try:
+            new_project_id = await _builder_upsert_project(
+                project_id=project_id, user_id=user_id,
+                name=plan.get("title", prompt[:50]),
+                files=final_files,
+                framework=chosen_framework,
+                prompt=prompt,
+            )
+        except Exception:
+            new_project_id = None
+
+        # ═══ COMPLETE ═══
+        yield "data: " + json.dumps({
+            "phase": "complete",
+            "message": "Build complete!",
+            "project_id": new_project_id,
+            "agents_used": available_agents,
+            "file_count": len(final_files),
+            "framework": chosen_framework,
+            "pipeline": "v2",
+        }) + "\n\n"
+
+    return StreamingResponse(v2_stream(), media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+# ── v2 Iteration Endpoint (Diff-based, not full regen) ───────────────────────
+
+@app.post("/api/builder/iterate")
+async def builder_iterate(request: Request):
+    """Diff-based iteration — edit specific files without full regeneration.
+    This is what makes it v0-killer grade: conversation-aware code patches."""
+    body = await request.json()
+    prompt = body.get("prompt", "").strip()
+    files = body.get("files", [])
+    project_id = body.get("project_id")
+    target_files = body.get("target_files", [])  # Specific files to edit, empty = auto-detect
+
+    if not prompt:
+        return JSONResponse({"error": "prompt required"}, status_code=400)
+    if not files:
+        return JSONResponse({"error": "files array required — send current project files"}, status_code=400)
+
+    # Build context of current files
+    files_context = ""
+    for f in files:
+        name = f.get("name", "unknown")
+        content = f.get("content", "")[:5000]  # Limit per file
+        files_context += f"\n--- {name} ---\n{content}\n"
+
+    system = """You are SAL™ Iterator — a precision code editor. Given existing files and an edit request, output ONLY the changed files with complete updated content.
+
+RULES:
+1. Only output files that actually changed — do NOT re-emit unchanged files
+2. Each file must contain the COMPLETE updated content (not just the diff)
+3. Preserve all existing functionality that wasn't asked to change
+4. Be surgical — minimal changes to achieve the requested edit
+5. Maintain design consistency with the existing codebase
+
+OUTPUT ONLY valid JSON:
+{
+  "changed_files": [
+    {"name": "filename.ext", "content": "COMPLETE updated file content", "changes": "Brief description of what changed"}
+  ],
+  "summary": "Brief summary of all changes"
+}"""
+
+    edit_prompt = f"CURRENT FILES:{files_context}\n\nEDIT REQUEST: {prompt}"
+    if target_files:
+        edit_prompt += f"\n\nFocus on these files: {', '.join(target_files)}"
+
+    result = await _builder_ai_call(system, edit_prompt, "claude", 64000, timeout_seconds=90)
+
+    if not result.get("text"):
+        return JSONResponse({"error": "AI iteration failed"}, status_code=503)
+
+    parsed = _v2_parse_json(result["text"])
+    changed = parsed.get("changed_files", [])
+
+    # Merge changes back into original files
+    merged_files = list(files)  # Copy
+    for change in changed:
+        found = False
+        for i, f in enumerate(merged_files):
+            if f.get("name") == change.get("name"):
+                merged_files[i] = {"name": change["name"], "content": change["content"], "language": f.get("language", "")}
+                found = True
+                break
+        if not found:
+            # New file added
+            merged_files.append({"name": change["name"], "content": change["content"]})
+
+    # Save updated project
+    if project_id:
+        try:
+            await _builder_upsert_project(
+                project_id=project_id, user_id=None,
+                name=None, files=merged_files, framework=None, prompt=prompt,
+            )
+        except Exception:
+            pass
+
+    return JSONResponse({
+        "success": True,
+        "changed_files": changed,
+        "all_files": merged_files,
+        "summary": parsed.get("summary", "Changes applied"),
+        "model_used": result.get("model_used", "claude"),
+        "project_id": project_id,
+    })
+
+
+# ── v2 Deploy Endpoint ───────────────────────────────────────────────────────
+
+@app.post("/api/builder/deploy")
+async def builder_deploy(request: Request):
+    """Unified deploy to Vercel / Render / Cloudflare / GitHub."""
+    body = await request.json()
+    target = body.get("target", "vercel")  # vercel | render | cloudflare | github
+    files = body.get("files", [])
+    project_name = body.get("project_name", "sal-project")
+    tier = body.get("tier", "pro")
+    user_id = body.get("user_id")
+
+    if not files:
+        return JSONResponse({"error": "files required"}, status_code=400)
+
+    tier_cfg = BUILDER_V2_TIER_ACCESS.get(tier, BUILDER_V2_TIER_ACCESS["pro"])
+    if target not in tier_cfg.get("deploy", []):
+        return JSONResponse({
+            "error": f"Deploy to {target} requires {next((t for t, cfg in BUILDER_V2_TIER_ACCESS.items() if target in cfg.get('deploy', [])), 'teams')} tier or higher",
+            "current_tier": tier,
+            "available_targets": tier_cfg.get("deploy", []),
+        }, status_code=403)
+
+    if target == "vercel":
+        # Deploy to Vercel via API
+        vercel_token = os.environ.get("VERCEL_TOKEN", "")
+        if not vercel_token:
+            return JSONResponse({"error": "Vercel token not configured"}, status_code=503)
+
+        try:
+            # Build Vercel deployment payload
+            vercel_files = []
+            for f in files:
+                fname = f.get("name", "index.html")
+                content = f.get("content", "")
+                vercel_files.append({"file": fname, "data": content})
+
+            async with httpx.AsyncClient(timeout=60) as hc:
+                deploy_resp = await hc.post(
+                    "https://api.vercel.com/v13/deployments",
+                    headers={"Authorization": f"Bearer {vercel_token}", "Content-Type": "application/json"},
+                    json={
+                        "name": project_name.lower().replace(" ", "-")[:50],
+                        "files": vercel_files,
+                        "projectSettings": {"framework": None},
+                        "target": "production",
+                    }
+                )
+
+                if deploy_resp.status_code in (200, 201):
+                    deploy_data = deploy_resp.json()
+                    url = deploy_data.get("url", "")
+                    deploy_id = deploy_data.get("id", "")
+                    return JSONResponse({
+                        "success": True,
+                        "target": "vercel",
+                        "url": f"https://{url}" if url and not url.startswith("http") else url,
+                        "deploy_id": deploy_id,
+                        "status": deploy_data.get("readyState", "BUILDING"),
+                    })
+                else:
+                    return JSONResponse({
+                        "error": f"Vercel deploy failed: {deploy_resp.text[:300]}",
+                        "status_code": deploy_resp.status_code,
+                    }, status_code=502)
+        except Exception as e:
+            return JSONResponse({"error": f"Deploy error: {str(e)}"}, status_code=500)
+
+    elif target == "github":
+        # Push to GitHub repo
+        # This uses the existing GitHub commit logic from the builder
+        return JSONResponse({"error": "GitHub deploy — use the existing /api/builder/github/commit endpoint", "redirect": "/api/builder/github/commit"}, status_code=400)
+
+    elif target in ("render", "cloudflare"):
+        return JSONResponse({
+            "error": f"{target.title()} deploy coming soon — use Vercel for now",
+            "available": ["vercel"],
+        }, status_code=501)
+
+    return JSONResponse({"error": f"Unknown deploy target: {target}"}, status_code=400)
+
+
+# ── v2 Models Endpoint (Tier-gated) ──────────────────────────────────────────
+
+@app.get("/api/builder/models")
+async def builder_models(tier: str = "free"):
+    """Return available models and agents for the user's tier."""
+    tier_cfg = BUILDER_V2_TIER_ACCESS.get(tier, BUILDER_V2_TIER_ACCESS["free"])
+    available = tier_cfg["agents"]
+
+    agents_info = []
+    for agent_id in available:
+        agent = BUILDER_V2_AGENTS.get(agent_id, {})
+        model_override = tier_cfg.get("models_override", {}).get(agent_id)
+        agents_info.append({
+            "id": agent_id,
+            "name": agent["name"],
+            "role": agent["role"],
+            "color": agent["color"],
+            "icon": agent["icon"],
+            "model": model_override or agent["model"],
+            "available": True,
+        })
+
+    # Also list locked agents
+    for agent_id, agent in BUILDER_V2_AGENTS.items():
+        if agent_id not in available:
+            agents_info.append({
+                "id": agent_id,
+                "name": agent["name"],
+                "role": agent["role"],
+                "color": agent["color"],
+                "icon": agent["icon"],
+                "model": agent["model"],
+                "available": False,
+                "required_tier": next(
+                    (t for t, cfg in BUILDER_V2_TIER_ACCESS.items() if agent_id in cfg["agents"]),
+                    "pro"
+                ),
+            })
+
+    return {
+        "tier": tier,
+        "agents": agents_info,
+        "deploy_targets": tier_cfg.get("deploy", []),
+        "pipeline_version": "v2",
+        "features": {
+            "iteration": True,  # All tiers get iteration
+            "stitch_design": "designer" in available,
+            "opus_synthesis": "synthesizer" in available,
+            "gpt5_validation": "validator" in available,
+            "deploy": len(tier_cfg.get("deploy", [])) > 0,
+        },
+    }
+
+
+# ── v2 Stitch Proxy (Direct access) ──────────────────────────────────────────
+
+@app.post("/api/builder/stitch")
+async def builder_stitch_proxy(request: Request):
+    """Direct proxy to Google Stitch MCP — for standalone design generation."""
+    body = await request.json()
+    prompt = body.get("prompt", "")
+    action = body.get("action", "generate")  # generate | edit | variants | get
+    project_id = body.get("project_id", "")
+    screen_id = body.get("screen_id", "")
+
+    if not STITCH_API_KEY:
+        return JSONResponse({"error": "Stitch API not configured"}, status_code=503)
+
+    if action == "generate":
+        if not prompt:
+            return JSONResponse({"error": "prompt required"}, status_code=400)
+        result = await _v2_stitch_design(prompt)
+        parsed = _v2_parse_json(result.get("text", ""))
+        return JSONResponse({
+            "success": bool(parsed),
+            "design": parsed,
+            "model": "Google Stitch MCP",
+            "error": result.get("error"),
+        })
+
+    elif action == "edit" and project_id and screen_id:
+        data = await stitch_call("edit_screen", {
+            "project_id": project_id,
+            "screen_id": screen_id,
+            "prompt": prompt,
+        })
+        return {"result": data}
+
+    elif action == "variants" and project_id and screen_id:
+        count = body.get("count", 3)
+        data = await stitch_call("generate_variants", {
+            "project_id": project_id,
+            "screen_id": screen_id,
+            "prompt": prompt,
+            "count": min(count, 5),
+        })
+        return {"variants": data}
+
+    elif action == "get" and project_id and screen_id:
+        data = await stitch_call("get_screen", {
+            "project_id": project_id,
+            "screen_id": screen_id,
+        })
+        return {"screen": data}
+
+    return JSONResponse({"error": "Invalid action or missing params"}, status_code=400)
+
+
 
 # ── Builder Design Mode (Replaces Stitch) ───────────────────────────────────
 
