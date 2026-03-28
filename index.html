@@ -98,6 +98,7 @@ window._salReferralId = '';
 <link rel="stylesheet" href="admin-fulfillment.css">
 <link rel="stylesheet" href="admin-panel.css">
 <link rel="stylesheet" href="builder-ide.css">
+<link rel="stylesheet" href="builder-ide-v2.css">
 <link rel="stylesheet" href="social-studio.css">
 <link rel="stylesheet" href="agentic-builder.css">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
@@ -1000,8 +1001,500 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
         </div>
       </div>
 
-      <!-- ═══ MAIN IDE BODY — hidden, kept for JS compat ═══ -->
+      <!-- ═══ BUILDER IDE v2 — 4-Panel Layout ═══ -->
+      <div id="builderIDEv2" style="display:none">
+<!-- ============================================================
+     SaintSalLabs Builder IDE v2 — HTML Fragment
+     Replaces the contents of <div id="builderIDE">
+     All classes use bv2- prefix from builder-ide-v2.css
+     ============================================================ -->
+
+<!-- Builder IDE v2 Shell -->
+<div class="bv2-shell" id="bv2Shell">
+
+  <!-- ═══════════════════════════════════════════════════════
+       TOP BAR
+       ═══════════════════════════════════════════════════════ -->
+  <div class="bv2-topbar">
+
+    <!-- Left: Logo + version badges -->
+    <div class="bv2-topbar__logo">
+      <div class="bv2-logo-icon">⚡</div>
+      <span class="bv2-logo-wordmark">SAL <span style="color:var(--bv2-text);">BUILDER</span></span>
+      <span class="bv2-logo-badge">v2</span>
+      <span class="bv2-logo-badge" id="bv2PipelineBadge" style="color:var(--bv2-neon);border-color:rgba(0,255,136,0.3);background:rgba(0,255,136,0.06);margin-left:4px;">5-AGENT</span>
+    </div>
+
+    <!-- Center: Model Picker + Framework Picker -->
+    <div class="bv2-topbar__controls">
+
+      <!-- Model Picker -->
+      <div class="bv2-model-picker" id="bv2ModelPicker">
+        <button class="bv2-model-picker__trigger" id="bv2ModelTrigger" onclick="bv2ToggleModelPicker(event)" aria-haspopup="listbox" aria-expanded="false">
+          <span class="bv2-model-dot bv2-model-dot--grok" id="bv2ModelDot"></span>
+          <span id="bv2ModelLabel">Grok 4.20</span>
+          <svg class="bv2-picker-chevron" viewBox="0 0 10 10" fill="none">
+            <path d="M2 3.5L5 6.5L8 3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+          </svg>
+        </button>
+        <div class="bv2-picker-dropdown" id="bv2ModelDropdown" role="listbox">
+          <div class="bv2-picker-dropdown__item is-selected" data-model="grok-4.20" data-dot="bv2-model-dot--grok" onclick="bv2SetModel('grok-4.20','Grok 4.20','bv2-model-dot--grok',this)">
+            <span class="bv2-model-dot bv2-model-dot--grok"></span>
+            <span class="bv2-picker-dropdown__item-name">Grok 4.20</span>
+            <span class="bv2-picker-dropdown__item-sub">Architect</span>
+          </div>
+          <div class="bv2-picker-dropdown__item" data-model="claude-sonnet-4.6" data-dot="bv2-model-dot--sonnet" onclick="bv2SetModel('claude-sonnet-4.6','Claude Sonnet 4.6','bv2-model-dot--sonnet',this)">
+            <span class="bv2-model-dot bv2-model-dot--sonnet"></span>
+            <span class="bv2-picker-dropdown__item-name">Claude Sonnet 4.6</span>
+            <span class="bv2-picker-dropdown__item-sub">Engineer</span>
+          </div>
+          <div class="bv2-picker-dropdown__item" data-model="claude-opus-4.6" data-dot="bv2-model-dot--claude" onclick="bv2SetModel('claude-opus-4.6','Claude Opus 4.6','bv2-model-dot--claude',this)">
+            <span class="bv2-model-dot bv2-model-dot--claude"></span>
+            <span class="bv2-picker-dropdown__item-name">Claude Opus 4.6</span>
+            <span class="bv2-picker-dropdown__item-sub">Synthesizer</span>
+          </div>
+          <div class="bv2-picker-dropdown__item" data-model="gpt-5-core" data-dot="bv2-model-dot--gpt" onclick="bv2SetModel('gpt-5-core','GPT-5 Core','bv2-model-dot--gpt',this)">
+            <span class="bv2-model-dot bv2-model-dot--gpt"></span>
+            <span class="bv2-picker-dropdown__item-name">GPT-5 Core</span>
+            <span class="bv2-picker-dropdown__item-sub">Validator</span>
+          </div>
+          <div class="bv2-picker-dropdown__divider"></div>
+          <div class="bv2-picker-dropdown__item" data-model="gemini-pro" data-dot="bv2-model-dot--gemini" onclick="bv2SetModel('gemini-pro','Gemini Pro','bv2-model-dot--gemini',this)">
+            <span class="bv2-model-dot bv2-model-dot--gemini"></span>
+            <span class="bv2-picker-dropdown__item-name">Gemini Pro</span>
+            <span class="bv2-picker-dropdown__item-sub">Multimodal</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Framework Picker -->
+      <div class="bv2-framework-picker" id="bv2FrameworkPicker">
+        <button class="bv2-framework-picker__trigger" id="bv2FrameworkTrigger" onclick="bv2ToggleFrameworkPicker(event)" aria-haspopup="listbox" aria-expanded="false">
+          <span class="bv2-fw-dot" id="bv2FwDot" style="background:var(--bv2-gold);"></span>
+          <span id="bv2FwLabel">Auto Detect</span>
+          <svg class="bv2-picker-chevron" viewBox="0 0 10 10" fill="none">
+            <path d="M2 3.5L5 6.5L8 3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+          </svg>
+        </button>
+        <div class="bv2-picker-dropdown" id="bv2FwDropdown" role="listbox">
+          <div class="bv2-picker-dropdown__item is-selected" onclick="bv2SetFramework('auto','Auto Detect','var(--bv2-gold)',this)">
+            <span class="bv2-fw-dot" style="background:var(--bv2-gold);"></span>
+            <span class="bv2-picker-dropdown__item-name">Auto Detect</span>
+            <span class="bv2-picker-dropdown__item-sub">Smart</span>
+          </div>
+          <div class="bv2-picker-dropdown__item" onclick="bv2SetFramework('react','React','#61dafb',this)">
+            <span class="bv2-fw-dot bv2-fw-dot--react"></span>
+            <span class="bv2-picker-dropdown__item-name">React</span>
+            <span class="bv2-picker-dropdown__item-sub">v18+</span>
+          </div>
+          <div class="bv2-picker-dropdown__item" onclick="bv2SetFramework('nextjs','Next.js 15','#ffffff',this)">
+            <span class="bv2-fw-dot bv2-fw-dot--next"></span>
+            <span class="bv2-picker-dropdown__item-name">Next.js 15</span>
+            <span class="bv2-picker-dropdown__item-sub">App Router</span>
+          </div>
+          <div class="bv2-picker-dropdown__item" onclick="bv2SetFramework('vue','Vue 3','#42b883',this)">
+            <span class="bv2-fw-dot bv2-fw-dot--vue"></span>
+            <span class="bv2-picker-dropdown__item-name">Vue 3</span>
+            <span class="bv2-picker-dropdown__item-sub">Composition API</span>
+          </div>
+          <div class="bv2-picker-dropdown__item" onclick="bv2SetFramework('html','HTML','#e34f26',this)">
+            <span class="bv2-fw-dot bv2-fw-dot--html"></span>
+            <span class="bv2-picker-dropdown__item-name">HTML</span>
+            <span class="bv2-picker-dropdown__item-sub">Vanilla</span>
+          </div>
+          <div class="bv2-picker-dropdown__divider"></div>
+          <div class="bv2-picker-dropdown__item" onclick="bv2SetFramework('flask','Flask','#888',this)">
+            <span class="bv2-fw-dot bv2-fw-dot--flask"></span>
+            <span class="bv2-picker-dropdown__item-name">Flask</span>
+            <span class="bv2-picker-dropdown__item-sub">Python</span>
+          </div>
+          <div class="bv2-picker-dropdown__item" onclick="bv2SetFramework('express','Express','#00FF88',this)">
+            <span class="bv2-fw-dot bv2-fw-dot--express"></span>
+            <span class="bv2-picker-dropdown__item-name">Express</span>
+            <span class="bv2-picker-dropdown__item-sub">Node.js</span>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /.bv2-topbar__controls -->
+
+    <!-- Right: Iteration badge + Deploy bar -->
+    <div class="bv2-topbar__actions">
+      <span class="bv2-badge bv2-badge--muted" id="bv2IterationBadge" style="font-family:var(--bv2-mono);font-size:9px;padding:2px 7px;">Iter #0</span>
+      <div class="bv2-deploy-bar">
+        <button class="bv2-btn-deploy-primary" id="bv2DeployRender" onclick="bv2Deploy('render')">
+          <span id="bv2DeploySpinner" class="bv2-deploy-spinner" style="display:none;"></span>
+          Deploy → Render
+        </button>
+        <button class="bv2-btn-deploy-ghost" onclick="bv2Deploy('github')">GitHub</button>
+        <button class="bv2-btn-deploy-ghost" onclick="bv2Deploy('cloudflare')">CF</button>
+        <button class="bv2-btn-deploy-ghost" onclick="bv2Download()">↓ ZIP</button>
+      </div>
+    </div>
+
+  </div><!-- /.bv2-topbar -->
+
+
+  <!-- ═══════════════════════════════════════════════════════
+       LEFT PANEL — Agent Strip + Chat + Input
+       ═══════════════════════════════════════════════════════ -->
+  <div class="bv2-left" id="bv2Left">
+
+    <!-- 5 Agent Status Cards -->
+    <div class="bv2-agent-strip" id="bv2AgentStrip">
+      <div class="bv2-agent-strip__header">
+        <span class="bv2-agent-strip__title">Pipeline Agents</span>
+        <span class="bv2-agent-strip__badge">
+          <span style="width:5px;height:5px;border-radius:50%;background:var(--bv2-neon);display:inline-block;"></span>
+          <span id="bv2AgentPipelineLabel">READY</span>
+        </span>
+      </div>
+      <!-- Agent cards rendered by bv2RenderAgentStrip() -->
+    </div>
+
+    <!-- Chat Area -->
+    <div class="bv2-chat" id="bv2Chat">
+
+      <!-- Welcome Screen (shown initially, hidden after first build) -->
+      <div id="bv2Welcome" style="display:flex;flex-direction:column;gap:12px;padding:4px 0;">
+        <div style="padding:8px 4px 0;">
+          <div style="font-family:var(--bv2-display);font-size:14px;font-weight:700;color:var(--bv2-text);line-height:1.3;margin-bottom:4px;">
+            Build anything with <span style="color:var(--bv2-gold);">5 AI agents</span>
+          </div>
+          <div style="font-family:var(--bv2-ui);font-size:11px;color:var(--bv2-text-dim);line-height:1.5;">
+            Architect → Designer → Engineer → Synthesizer → Validator
+          </div>
+        </div>
+
+        <!-- Showcase Cards -->
+        <div style="display:flex;flex-direction:column;gap:8px;">
+
+          <!-- SaaS Landing -->
+          <div class="bv2-showcase-card" onclick="bv2QuickPrompt('Build a modern SaaS landing page with hero section, feature grid, pricing table, and testimonials. Use a dark theme with purple gradients.')" style="cursor:pointer;border:1px solid var(--bv2-border);background:var(--bv2-surface-low);padding:10px;transition:border-color 0.12s ease,background 0.12s ease;position:relative;overflow:hidden;" onmouseenter="this.style.borderColor='rgba(245,158,11,0.4)';this.style.background='var(--bv2-surface-high)'" onmouseleave="this.style.borderColor='var(--bv2-border)';this.style.background='var(--bv2-surface-low)'">
+            <div style="width:100%;height:60px;background:#0a0a14;border:1px solid rgba(139,92,246,0.2);margin-bottom:8px;position:relative;overflow:hidden;display:flex;align-items:center;justify-content:center;">
+              <div style="position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,#8b5cf6,transparent);"></div>
+              <div style="font-family:var(--bv2-mono);font-size:8px;color:#8b5cf6;letter-spacing:2px;">SAAS · LANDING</div>
+              <div style="position:absolute;bottom:6px;left:8px;right:8px;height:4px;background:rgba(139,92,246,0.15);border-radius:2px;overflow:hidden;">
+                <div style="width:60%;height:100%;background:linear-gradient(90deg,#8b5cf6,#a78bfa);border-radius:2px;"></div>
+              </div>
+            </div>
+            <div style="font-family:var(--bv2-display);font-size:10px;font-weight:700;color:var(--bv2-text);letter-spacing:0.5px;margin-bottom:2px;">SaaS Landing Page</div>
+            <div style="font-family:var(--bv2-mono);font-size:9px;color:var(--bv2-text-muted);">Hero · Pricing · CTA · Dark theme</div>
+            <div style="position:absolute;top:8px;right:8px;font-family:var(--bv2-mono);font-size:8px;color:var(--bv2-text-muted);">HTML</div>
+          </div>
+
+          <!-- Developer Portfolio -->
+          <div class="bv2-showcase-card" onclick="bv2QuickPrompt('Create a developer portfolio site with animated hero, projects grid with live previews, skills section, and contact form. Dark minimal aesthetic.')" style="cursor:pointer;border:1px solid var(--bv2-border);background:var(--bv2-surface-low);padding:10px;transition:border-color 0.12s ease,background 0.12s ease;position:relative;overflow:hidden;" onmouseenter="this.style.borderColor='rgba(245,158,11,0.4)';this.style.background='var(--bv2-surface-high)'" onmouseleave="this.style.borderColor='var(--bv2-border)';this.style.background='var(--bv2-surface-low)'">
+            <div style="width:100%;height:60px;background:#050b0e;border:1px solid rgba(0,220,255,0.2);margin-bottom:8px;position:relative;overflow:hidden;display:flex;align-items:center;justify-content:center;">
+              <div style="position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,#00dcff,transparent);"></div>
+              <div style="font-family:var(--bv2-mono);font-size:8px;color:#00dcff;letter-spacing:2px;">DEV · PORTFOLIO</div>
+              <div style="position:absolute;bottom:6px;left:8px;display:flex;gap:4px;">
+                <div style="width:18px;height:12px;background:rgba(0,220,255,0.15);border:1px solid rgba(0,220,255,0.3);border-radius:1px;"></div>
+                <div style="width:18px;height:12px;background:rgba(0,220,255,0.15);border:1px solid rgba(0,220,255,0.3);border-radius:1px;"></div>
+                <div style="width:18px;height:12px;background:rgba(0,220,255,0.15);border:1px solid rgba(0,220,255,0.3);border-radius:1px;"></div>
+              </div>
+            </div>
+            <div style="font-family:var(--bv2-display);font-size:10px;font-weight:700;color:var(--bv2-text);letter-spacing:0.5px;margin-bottom:2px;">Developer Portfolio</div>
+            <div style="font-family:var(--bv2-mono);font-size:9px;color:var(--bv2-text-muted);">Projects · Skills · Contact · Animations</div>
+            <div style="position:absolute;top:8px;right:8px;font-family:var(--bv2-mono);font-size:8px;color:var(--bv2-text-muted);">React</div>
+          </div>
+
+          <!-- Restaurant Website -->
+          <div class="bv2-showcase-card" onclick="bv2QuickPrompt('Build a restaurant website with full menu, online reservation form, gallery with lightbox, chef profiles, and location map. Warm elegant design.')" style="cursor:pointer;border:1px solid var(--bv2-border);background:var(--bv2-surface-low);padding:10px;transition:border-color 0.12s ease,background 0.12s ease;position:relative;overflow:hidden;" onmouseenter="this.style.borderColor='rgba(245,158,11,0.4)';this.style.background='var(--bv2-surface-high)'" onmouseleave="this.style.borderColor='var(--bv2-border)';this.style.background='var(--bv2-surface-low)'">
+            <div style="width:100%;height:60px;background:#0e0805;border:1px solid rgba(245,158,11,0.2);margin-bottom:8px;position:relative;overflow:hidden;display:flex;align-items:center;justify-content:center;">
+              <div style="position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,#F59E0B,transparent);"></div>
+              <div style="font-family:var(--bv2-mono);font-size:8px;color:#F59E0B;letter-spacing:2px;">RESTAURANT</div>
+              <div style="position:absolute;bottom:6px;left:50%;transform:translateX(-50%);display:flex;gap:6px;align-items:center;">
+                <div style="width:8px;height:8px;background:rgba(245,158,11,0.4);border-radius:50%;"></div>
+                <div style="width:24px;height:1px;background:rgba(245,158,11,0.3);"></div>
+                <div style="font-size:10px;">🍽</div>
+                <div style="width:24px;height:1px;background:rgba(245,158,11,0.3);"></div>
+                <div style="width:8px;height:8px;background:rgba(245,158,11,0.4);border-radius:50%;"></div>
+              </div>
+            </div>
+            <div style="font-family:var(--bv2-display);font-size:10px;font-weight:700;color:var(--bv2-text);letter-spacing:0.5px;margin-bottom:2px;">Restaurant Website</div>
+            <div style="font-family:var(--bv2-mono);font-size:9px;color:var(--bv2-text-muted);">Menu · Reservations · Gallery</div>
+            <div style="position:absolute;top:8px;right:8px;font-family:var(--bv2-mono);font-size:8px;color:var(--bv2-text-muted);">HTML</div>
+          </div>
+
+          <!-- Weather Widget -->
+          <div class="bv2-showcase-card" onclick="bv2QuickPrompt('Build a weather dashboard widget with real-time weather display, 7-day forecast, animated weather icons, location search, and temperature toggle. Glassmorphism design.')" style="cursor:pointer;border:1px solid var(--bv2-border);background:var(--bv2-surface-low);padding:10px;transition:border-color 0.12s ease,background 0.12s ease;position:relative;overflow:hidden;" onmouseenter="this.style.borderColor='rgba(245,158,11,0.4)';this.style.background='var(--bv2-surface-high)'" onmouseleave="this.style.borderColor='var(--bv2-border)';this.style.background='var(--bv2-surface-low)'">
+            <div style="width:100%;height:60px;background:#050d1a;border:1px solid rgba(96,165,250,0.2);margin-bottom:8px;position:relative;overflow:hidden;display:flex;align-items:center;justify-content:center;">
+              <div style="position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,#60a5fa,transparent);"></div>
+              <div style="font-family:var(--bv2-mono);font-size:8px;color:#60a5fa;letter-spacing:2px;">WEATHER · WIDGET</div>
+              <div style="position:absolute;bottom:4px;left:8px;right:8px;display:flex;justify-content:space-around;">
+                <div style="font-size:11px;opacity:0.6;">☀️</div>
+                <div style="font-size:11px;opacity:0.5;">⛅</div>
+                <div style="font-size:11px;opacity:0.4;">🌧</div>
+                <div style="font-size:11px;opacity:0.3;">⛈</div>
+                <div style="font-size:11px;opacity:0.2;">🌩</div>
+              </div>
+            </div>
+            <div style="font-family:var(--bv2-display);font-size:10px;font-weight:700;color:var(--bv2-text);letter-spacing:0.5px;margin-bottom:2px;">Weather Widget</div>
+            <div style="font-family:var(--bv2-mono);font-size:9px;color:var(--bv2-text-muted);">Forecast · Animated · Glassmorphism</div>
+            <div style="position:absolute;top:8px;right:8px;font-family:var(--bv2-mono);font-size:8px;color:var(--bv2-text-muted);">Vue 3</div>
+          </div>
+
+        </div><!-- /.showcase cards -->
+      </div><!-- /#bv2Welcome -->
+
+      <!-- Messages Container -->
+      <div id="bv2Messages" style="display:flex;flex-direction:column;gap:10px;"></div>
+
+    </div><!-- /.bv2-chat -->
+
+    <!-- Chat Input Bar -->
+    <div class="bv2-chat-input">
+      <div class="bv2-chat-input__row">
+        <!-- Attach button -->
+        <div class="bv2-chat-input__actions">
+          <button class="bv2-icon-btn" onclick="document.getElementById('bv2FileInput').click()" title="Attach files" style="width:28px;height:28px;font-size:14px;">📎</button>
+          <input type="file" id="bv2FileInput" multiple style="display:none" onchange="bv2HandleFileUpload(this.files)">
+          <button class="bv2-icon-btn" id="bv2MicBtn" onclick="bv2ToggleMic()" title="Voice input" style="width:28px;height:28px;font-size:14px;">🎤</button>
+        </div>
+
+        <!-- Textarea -->
+        <textarea
+          id="bv2Prompt"
+          class="bv2-chat-input__textarea"
+          rows="1"
+          placeholder="Describe what you want to build..."
+          onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();bv2Build();}"
+          oninput="this.style.height='auto';this.style.height=Math.min(this.scrollHeight,120)+'px'"
+        ></textarea>
+
+        <!-- Build/Send button -->
+        <div class="bv2-chat-input__actions">
+          <button class="bv2-btn-build" id="bv2SendBtn" onclick="bv2Build()" title="Build or iterate">
+            <span id="bv2SendBtnIcon">⚡</span>
+            <span id="bv2SendBtnLabel">BUILD</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Footer chips: quick actions -->
+      <div class="bv2-chat-input__footer">
+        <span class="bv2-input-chip" onclick="bv2QuickPrompt('Add dark mode toggle')">+ dark mode</span>
+        <span class="bv2-input-chip" onclick="bv2QuickPrompt('Make it fully responsive for mobile')">+ responsive</span>
+        <span class="bv2-input-chip" onclick="bv2QuickPrompt('Add loading animations and transitions')">+ animations</span>
+        <span class="bv2-input-chip" onclick="bv2QuickPrompt('Add authentication with login/signup forms')">+ auth</span>
+        <span class="bv2-input-chip" id="bv2StopChip" style="display:none;border-color:rgba(255,113,108,0.4);color:var(--bv2-error);" onclick="bv2StopBuild()">■ STOP</span>
+      </div>
+    </div><!-- /.bv2-chat-input -->
+
+  </div><!-- /.bv2-left -->
+
+
+  <!-- ═══════════════════════════════════════════════════════
+       CENTER PANEL — File Tree + Code Editor
+       ═══════════════════════════════════════════════════════ -->
+  <div class="bv2-center" id="bv2Center">
+
+    <!-- File Tree -->
+    <div class="bv2-file-tree" id="bv2FileTree">
+      <div class="bv2-file-tree__header">
+        <span class="bv2-file-tree__title">📁 PROJECT FILES</span>
+        <div class="bv2-file-tree__actions">
+          <span id="bv2FileCount" style="font-family:var(--bv2-mono);font-size:9px;color:var(--bv2-text-muted);">0 files</span>
+          <button class="bv2-icon-btn" onclick="bv2CollapseAllFolders()" title="Collapse all">
+            <svg viewBox="0 0 12 12" fill="none" width="10" height="10">
+              <path d="M2 4h8M2 6h6M2 8h4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+      <div class="bv2-file-tree__body" id="bv2FileList">
+        <div class="bv2-editor__empty" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;height:80px;">
+          <div class="bv2-editor__empty-icon" style="font-size:18px;opacity:0.15;">📁</div>
+          <span style="font-family:var(--bv2-mono);font-size:9px;color:var(--bv2-text-muted);">Waiting for build...</span>
+        </div>
+      </div>
+      <div class="bv2-file-tree__resize-handle" id="bv2FileTreeResize"></div>
+    </div>
+
+    <!-- Code Editor -->
+    <div class="bv2-editor" id="bv2Editor">
+      <div class="bv2-editor-tabs" id="bv2EditorTabs"></div>
+      <div class="bv2-editor__content" id="bv2EditorContent">
+        <div class="bv2-editor__empty" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;height:100%;">
+          <div class="bv2-editor__empty-icon" style="font-size:32px;opacity:0.1;">💻</div>
+          <span style="font-family:var(--bv2-mono);font-size:11px;color:var(--bv2-text-muted);">Select a file to view code</span>
+        </div>
+      </div>
+      <div class="bv2-editor__statusbar">
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span class="bv2-editor__statusbar-item" id="bv2EditorLang">—</span>
+          <span class="bv2-editor__statusbar-divider"></span>
+          <span class="bv2-editor__statusbar-item" id="bv2EditorFile">No file open</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span class="bv2-editor__statusbar-item" id="bv2EditorLines">0 lines</span>
+          <span class="bv2-editor__statusbar-divider"></span>
+          <span class="bv2-editor__statusbar-item" id="bv2EditorSize">0 B</span>
+        </div>
+      </div>
+    </div><!-- /.bv2-editor -->
+
+  </div><!-- /.bv2-center -->
+
+
+  <!-- ═══════════════════════════════════════════════════════
+       RIGHT PANEL — Live Preview + Design Panel
+       ═══════════════════════════════════════════════════════ -->
+  <div class="bv2-right" id="bv2Right">
+
+    <!-- Live Preview -->
+    <div class="bv2-preview" id="bv2Preview" data-device="desktop">
+      <div class="bv2-preview__toolbar">
+        <div class="bv2-device-toggle">
+          <button class="bv2-device-toggle__btn is-active" data-device="desktop" onclick="bv2SetDevice('desktop',this)">Desktop</button>
+          <button class="bv2-device-toggle__btn" data-device="tablet" onclick="bv2SetDevice('tablet',this)">Tablet</button>
+          <button class="bv2-device-toggle__btn" data-device="mobile" onclick="bv2SetDevice('mobile',this)">Mobile</button>
+        </div>
+        <div class="bv2-preview__url">
+          <span class="bv2-preview__url-dot"></span>
+          <span class="bv2-preview__url-text" id="bv2PreviewURL">preview://localhost</span>
+        </div>
+        <div class="bv2-preview__actions">
+          <button class="bv2-icon-btn" onclick="bv2RefreshPreview()" title="Refresh preview">
+            <svg viewBox="0 0 12 12" fill="none" width="11" height="11">
+              <path d="M10 6A4 4 0 1 1 6 2M6 2L9 2L9 5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </button>
+          <button class="bv2-icon-btn" onclick="bv2OpenPreviewFullscreen()" title="Open in new tab">
+            <svg viewBox="0 0 12 12" fill="none" width="11" height="11">
+              <path d="M7 2H10V5M10 2L6 6M5 3H3C2.4 3 2 3.4 2 4V9C2 9.6 2.4 10 3 10H8C8.6 10 9 9.6 9 9V7" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <div class="bv2-preview__frame-wrap" id="bv2PreviewFrameWrap">
+        <!-- Empty state -->
+        <div id="bv2PreviewEmpty" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;height:100%;background:var(--bv2-void);">
+          <div style="font-size:40px;opacity:0.1;">⚡</div>
+          <div style="font-family:var(--bv2-mono);font-size:11px;color:var(--bv2-text-muted);">Your build will preview here</div>
+        </div>
+
+        <!-- Loading state -->
+        <div id="bv2PreviewLoading" class="bv2-preview__loading" style="display:none;">
+          <div class="bv2-preview__spinner"></div>
+          <div class="bv2-preview__loading-text" id="bv2PreviewLoadingText">Rendering preview...</div>
+        </div>
+
+        <!-- Preview iframe -->
+        <iframe
+          id="bv2PreviewIframe"
+          class="bv2-preview__iframe"
+          style="display:none;"
+          sandbox="allow-scripts allow-same-origin allow-forms allow-modals"
+          title="Live Preview"
+        ></iframe>
+      </div>
+    </div><!-- /.bv2-preview -->
+
+    <!-- Design Panel (Stitch output) -->
+    <div class="bv2-design-panel" id="bv2DesignPanel">
+      <div class="bv2-design-panel__header" onclick="bv2ToggleDesignPanel()">
+        <div class="bv2-design-panel__title">
+          <span class="bv2-design-panel__name">🎨 DESIGN</span>
+          <span class="bv2-design-panel__sub" id="bv2DesignAgent">Stitch by Google</span>
+        </div>
+        <button class="bv2-design-panel__toggle" id="bv2DesignPanelToggle" aria-label="Toggle design panel">▼</button>
+      </div>
+      <div class="bv2-design-panel__body" id="bv2DesignPanelBody">
+
+        <!-- Color palette section -->
+        <div class="bv2-design-section" id="bv2PaletteSection">
+          <div class="bv2-design-section__label">COLOR PALETTE</div>
+          <div class="bv2-palette" id="bv2DesignColors">
+            <!-- Swatches rendered by JS from design_tokens -->
+            <div style="font-family:var(--bv2-mono);font-size:9px;color:var(--bv2-text-muted);padding:8px 0;">Awaiting Stitch design output...</div>
+          </div>
+        </div>
+
+        <!-- Stitch notes / design notes -->
+        <div class="bv2-design-section" id="bv2NotesSection">
+          <div class="bv2-design-section__label">DESIGN NOTES</div>
+          <div id="bv2DesignNotes" style="font-family:var(--bv2-ui);font-size:11px;color:var(--bv2-text-dim);line-height:1.6;padding:4px 0;">
+            Stitch design output will appear here after a Pro+ build...
+          </div>
+          <div id="bv2StitchLink" style="display:none;margin-top:6px;">
+            <a id="bv2StitchURL" href="#" target="_blank" rel="noopener" style="font-family:var(--bv2-mono);font-size:9px;color:var(--bv2-cyan);text-decoration:none;display:inline-flex;align-items:center;gap:4px;">
+              ↗ View in Stitch
+            </a>
+          </div>
+        </div>
+
+        <!-- Typography preview -->
+        <div class="bv2-design-section" id="bv2TypeSection" style="display:none;">
+          <div class="bv2-design-section__label">TYPOGRAPHY</div>
+          <div class="bv2-type-preview" id="bv2TypePreview"></div>
+        </div>
+
+      </div><!-- /.bv2-design-panel__body -->
+    </div><!-- /.bv2-design-panel -->
+
+  </div><!-- /.bv2-right -->
+
+
+  <!-- ═══════════════════════════════════════════════════════
+       TERMINAL BAR — Status log at bottom
+       ═══════════════════════════════════════════════════════ -->
+  <div class="bv2-terminal" id="bv2Terminal" onclick="bv2ToggleTerminal()">
+    <div class="bv2-terminal__header">
+      <span class="bv2-terminal__prefix">
+        <span style="color:var(--bv2-neon);font-weight:700;">❯</span>
+        <span style="color:var(--bv2-text-dim);margin-left:4px;">SAL Builder v2</span>
+      </span>
+      <div class="bv2-terminal__chips">
+        <span class="bv2-terminal-chip bv2-terminal-chip--deploy" id="bv2MetaDeploy">
+          <span class="bv2-terminal-chip__dot"></span>
+          <span id="bv2MetaDeployText">READY</span>
+        </span>
+        <span class="bv2-terminal-chip" id="bv2MetaIteration">Iter: #0</span>
+        <span class="bv2-terminal-chip" id="bv2MetaFiles">Files: 0</span>
+        <span class="bv2-terminal-chip bv2-meta-timer" id="bv2MetaTimer">00:00</span>
+      </div>
+    </div>
+    <div class="bv2-terminal__content" id="bv2TerminalContent" onclick="event.stopPropagation()">
+      <div class="bv2-terminal__log" id="bv2TerminalLog">
+        <div class="bv2-terminal__line bv2-terminal__line--info">[00:00:00] [SYSTEM] SAL Builder v2 ready — 5-agent pipeline initialized</div>
+      </div>
+      <div class="bv2-terminal__cursor" id="bv2TerminalCursor"></div>
+    </div>
+  </div><!-- /.bv2-terminal -->
+
+
+  <!-- ═══════════════════════════════════════════════════════
+       MOBILE NAV (PWA)
+       ═══════════════════════════════════════════════════════ -->
+  <div class="bv2-mobile-nav" id="bv2MobileNav">
+    <button class="bv2-mobile-nav__tab is-active" data-panel="chat" onclick="bv2MobileSwitch('chat',this)">
+      <span class="bv2-mobile-nav__icon">💬</span>
+      <span class="bv2-mobile-nav__label">Chat</span>
+    </button>
+    <button class="bv2-mobile-nav__tab" data-panel="code" onclick="bv2MobileSwitch('code',this)">
+      <span class="bv2-mobile-nav__icon">📝</span>
+      <span class="bv2-mobile-nav__label">Code</span>
+    </button>
+    <button class="bv2-mobile-nav__tab" data-panel="preview" onclick="bv2MobileSwitch('preview',this)">
+      <span class="bv2-mobile-nav__icon">👁</span>
+      <span class="bv2-mobile-nav__label">Preview</span>
+    </button>
+    <button class="bv2-mobile-nav__tab" data-panel="deploy" onclick="bv2MobileSwitch('deploy',this)">
+      <span class="bv2-mobile-nav__icon">🚀</span>
+      <span class="bv2-mobile-nav__label">Deploy</span>
+    </button>
+  </div><!-- /.bv2-mobile-nav -->
+
+</div><!-- /.bv2-shell -->
+
+      </div>
+
+      <!-- ═══ LEGACY IDE BODY — hidden, kept for JS compat ═══ -->
       <div class="builder-ide" id="builderIDE" style="display:none">
+
 
         <!-- ═══ LEFT: Chat Panel ═══ -->
         <div class="builder-ide-chat">

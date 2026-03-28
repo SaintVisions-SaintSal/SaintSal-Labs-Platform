@@ -99,6 +99,20 @@ function setView(view) {
   }
   if (view === 'studio') {
     setTimeout(function() { loadStudioModels(); renderStudioControls(); renderStudioGallery(); loadStudioGallery(); }, 50);
+    // Builder v2: Show 4-panel IDE by default, hide legacy kb states
+    setTimeout(function() {
+      var v2 = document.getElementById('builderIDEv2');
+      if (v2) {
+        v2.style.display = 'block';
+        // Hide legacy Kinetic Blueprint states
+        ['kbStateInput','kbStatePlanning','kbStateBuilding','kbStateComplete'].forEach(function(id) {
+          var el = document.getElementById(id);
+          if (el) el.style.display = 'none';
+        });
+        // Initialize v2 if not already done
+        if (typeof bv2Init === 'function') bv2Init();
+      }
+    }, 60);
   }
   // v8.8.1: Hide legacy mobile nav (replaced by new bottom-nav)
   var mobileNav = document.getElementById('mobileBottomNav');
@@ -6729,6 +6743,1818 @@ async function kbBuild() {
 }
 
 // ── END KINETIC BLUEPRINT BUILDER ──
+
+// ════════════════════════════════════════════════════════
+// BUILDER IDE v2 — 5-Agent Pipeline Frontend
+// 4-Panel Layout: Chat+Agents | FileTree+Editor | Preview+Design | Terminal
+// ════════════════════════════════════════════════════════
+
+/* ============================================================
+   SaintSalLabs Builder IDE v2 — builder-v2-js.js
+   Complete vanilla JS module — all functions global (no ES modules)
+   All v2 functions prefixed with bv2
+   Backend: https://www.saintsallabs.com
+   ============================================================ */
+
+// ─── Agent Definitions ─────────────────────────────────────
+var BV2_AGENTS = {
+  architect:   { name: 'Grok 4.20',        role: 'Architect',    color: '#F59E0B', dotClass: 'bv2-agent-dot--deployer', cssAgent: 'deployer' },
+  designer:    { name: 'Google Stitch',     role: 'Designer',     color: '#60A5FA', dotClass: 'bv2-agent-dot--designer', cssAgent: 'designer' },
+  engineer:    { name: 'Claude Sonnet 4.6', role: 'Engineer',     color: '#A78BFA', dotClass: 'bv2-agent-dot--builder',  cssAgent: 'builder'  },
+  synthesizer: { name: 'Claude Opus 4.6',   role: 'Synthesizer',  color: '#8B5CF6', dotClass: 'bv2-agent-dot--planner',  cssAgent: 'planner'  },
+  validator:   { name: 'GPT-5 Core',        role: 'Validator',    color: '#00FF88', dotClass: 'bv2-agent-dot--tester',   cssAgent: 'tester'   },
+};
+
+// Tiers that unlock Pro+ agents
+var BV2_PRO_TIERS = ['pro', 'teams', 'enterprise'];
+
+// ─── Global State ──────────────────────────────────────────
+var bv2State = {
+  generating:           false,
+  files:                [],
+  activeFile:           -1,
+  openTabs:             [],
+  projectId:            null,
+  iteration:            0,
+  model:                'grok-4.20',
+  modelLabel:           'Grok 4.20',
+  modelDotClass:        'bv2-model-dot--grok',
+  framework:            'auto',
+  frameworkLabel:       'Auto Detect',
+  frameworkDotColor:    'var(--bv2-gold)',
+  tier:                 'pro',
+  terminalExpanded:     false,
+  designPanelCollapsed: false,
+  mobilePanel:          'chat',
+  timer:                null,
+  timerStart:           null,
+  micActive:            false,
+  recognition:          null,
+  abortController:      null,
+  agents: {
+    architect:   { status: 'standby', message: '', progress: 0 },
+    designer:    { status: 'standby', message: '', progress: 0 },
+    engineer:    { status: 'standby', message: '', progress: 0 },
+    synthesizer: { status: 'standby', message: '', progress: 0 },
+    validator:   { status: 'standby', message: '', progress: 0 },
+  },
+  designTokens: null,
+  previewSrcdoc: '',
+};
+
+// ─── Init ──────────────────────────────────────────────────
+
+/**
+ * bv2Init — Initialize the v2 builder.
+ * Called when builder tab is activated.
+ */
+function bv2Init() {
+  // Detect tier from user profile if available
+  try {
+    if (window.currentUser && window.currentUser.tier) {
+      bv2State.tier = window.currentUser.tier.toLowerCase();
+    } else if (window.userProfile && window.userProfile.tier) {
+      bv2State.tier = window.userProfile.tier.toLowerCase();
+    }
+  } catch (e) { /* use default */ }
+
+  bv2RenderAgentStrip();
+  bv2UpdatePipelineBadge();
+  bv2SetupFileTreeResize();
+  bv2Log('SAL Builder v2 initialized — tier: ' + bv2State.tier.toUpperCase(), 'info');
+
+  // Set initial mobile panel
+  bv2MobileSwitch('chat', document.querySelector('.bv2-mobile-nav__tab[data-panel="chat"]'));
+
+  // Close dropdowns on outside click
+  document.addEventListener('click', function(e) {
+    if (!e.target.closest('#bv2ModelPicker')) {
+      var d = document.getElementById('bv2ModelDropdown');
+      if (d) d.classList.remove('is-open');
+    }
+    if (!e.target.closest('#bv2FrameworkPicker')) {
+      var d2 = document.getElementById('bv2FwDropdown');
+      if (d2) d2.classList.remove('is-open');
+    }
+  });
+}
+
+// ─── Agent Strip ───────────────────────────────────────────
+
+/**
+ * bv2RenderAgentStrip — Renders all 5 agent cards into #bv2AgentStrip.
+ */
+function bv2RenderAgentStrip() {
+  var strip = document.getElementById('bv2AgentStrip');
+  if (!strip) return;
+
+  var isPro = BV2_PRO_TIERS.indexOf(bv2State.tier) !== -1;
+
+  // Clear existing cards (keep header)
+  var header = strip.querySelector('.bv2-agent-strip__header');
+  strip.innerHTML = '';
+  if (header) strip.appendChild(header);
+
+  var agentOrder = ['architect', 'designer', 'engineer', 'synthesizer', 'validator'];
+  var proOnlyAgents = ['designer', 'synthesizer', 'validator'];
+
+  agentOrder.forEach(function(agentId) {
+    var agent = BV2_AGENTS[agentId];
+    var state = bv2State.agents[agentId];
+    var isLocked = !isPro && proOnlyAgents.indexOf(agentId) !== -1;
+
+    var card = document.createElement('div');
+    card.className = 'bv2-agent-card';
+    card.setAttribute('data-agent', agent.cssAgent);
+    card.setAttribute('data-status', isLocked ? 'standby' : state.status);
+    card.setAttribute('id', 'bv2AgentCard-' + agentId);
+
+    card.innerHTML = [
+      '<span class="bv2-agent-dot ' + agent.dotClass + '" style="background:' + agent.color + ';"></span>',
+      '<div class="bv2-agent-info">',
+        '<div class="bv2-agent-name">' + agent.name + (isLocked ? ' 🔒' : '') + '</div>',
+        '<div class="bv2-agent-status-text" id="bv2AgentStatus-' + agentId + '">' + (isLocked ? 'Pro+ required' : bv2_statusLabel(state.status)) + '</div>',
+      '</div>',
+      '<div class="bv2-agent-progress">',
+        '<span class="bv2-agent-progress__pct" id="bv2AgentPct-' + agentId + '">' + (state.status === 'complete' ? '100%' : (state.status === 'active' ? '...' : (isLocked ? '—' : '0%'))) + '</span>',
+        '<div class="bv2-agent-progress__bar">',
+          '<div class="bv2-agent-progress__fill" id="bv2AgentBar-' + agentId + '" style="width:' + (state.status === 'complete' ? 100 : state.progress) + '%;"></div>',
+        '</div>',
+      '</div>',
+    ].join('');
+
+    strip.appendChild(card);
+  });
+}
+
+function bv2_statusLabel(status) {
+  var labels = { standby: 'STANDBY', active: 'ACTIVE', complete: 'COMPLETE', error: 'ERROR' };
+  return labels[status] || status.toUpperCase();
+}
+
+/**
+ * bv2SetAgentStatus — Update a single agent card.
+ * agentId: 'architect'|'designer'|'engineer'|'synthesizer'|'validator'
+ * status: 'standby'|'active'|'complete'|'error'
+ */
+function bv2SetAgentStatus(agentId, status, message, progress) {
+  var agent = BV2_AGENTS[agentId];
+  if (!agent) return;
+
+  bv2State.agents[agentId].status = status;
+  bv2State.agents[agentId].message = message || '';
+  if (typeof progress === 'number') bv2State.agents[agentId].progress = progress;
+
+  var card = document.getElementById('bv2AgentCard-' + agentId);
+  if (!card) return;
+
+  card.setAttribute('data-status', status);
+
+  var statusEl = document.getElementById('bv2AgentStatus-' + agentId);
+  var pctEl    = document.getElementById('bv2AgentPct-' + agentId);
+  var barEl    = document.getElementById('bv2AgentBar-' + agentId);
+
+  if (statusEl) statusEl.textContent = message || bv2_statusLabel(status);
+
+  if (pctEl) {
+    if (status === 'complete') pctEl.textContent = '100%';
+    else if (status === 'active') pctEl.textContent = (typeof progress === 'number' ? progress + '%' : '...');
+    else if (status === 'error') pctEl.textContent = 'ERR';
+    else pctEl.textContent = '0%';
+  }
+
+  if (barEl) {
+    if (status === 'complete') barEl.style.width = '100%';
+    else if (typeof progress === 'number') barEl.style.width = progress + '%';
+    else if (status === 'active') barEl.style.width = '60%';
+    else barEl.style.width = '0%';
+  }
+
+  // Log to terminal
+  var logType = status === 'error' ? 'error' : (status === 'complete' ? 'success' : (status === 'active' ? 'info' : 'normal'));
+  var logMsg = '[' + agent.role.toUpperCase() + '] ' + (message || bv2_statusLabel(status));
+  bv2Log(logMsg, logType);
+}
+
+/**
+ * bv2UpdatePipelineBadge — Update topbar pipeline badge text based on tier.
+ */
+function bv2UpdatePipelineBadge() {
+  var badge = document.getElementById('bv2PipelineBadge');
+  if (!badge) return;
+  var isPro = BV2_PRO_TIERS.indexOf(bv2State.tier) !== -1;
+  badge.textContent = isPro ? '5-AGENT PIPELINE' : '2-AGENT PIPELINE';
+}
+
+// ─── Build ─────────────────────────────────────────────────
+
+/**
+ * bv2Build — Main build function.
+ * If files exist (iteration > 0), sends iterate request.
+ * Otherwise sends fresh build request.
+ */
+function bv2Build() {
+  var promptEl = document.getElementById('bv2Prompt');
+  if (!promptEl) return;
+
+  var prompt = promptEl.value.trim();
+  if (!prompt) {
+    showToast('Enter a prompt first', 'warn');
+    return;
+  }
+
+  if (bv2State.generating) {
+    showToast('Build already in progress', 'warn');
+    return;
+  }
+
+  // Decide: fresh build or iterate
+  if (bv2State.files.length > 0 && bv2State.iteration > 0) {
+    bv2Iterate(prompt);
+    return;
+  }
+
+  bv2StartFreshBuild(prompt);
+}
+
+function bv2StartFreshBuild(prompt) {
+  bv2State.generating = true;
+
+  // UI: reset & show welcome off
+  promptEl_clear();
+  bv2HideWelcome();
+  bv2ResetAgentStatuses();
+  bv2StartTimer();
+  bv2SetBuildingUI(true);
+
+  // Show user message
+  bv2AddMessage('user', prompt);
+
+  // Reset files
+  bv2State.files = [];
+  bv2State.activeFile = -1;
+  bv2State.openTabs = [];
+  bv2RenderFileTree();
+  bv2RenderEditorEmpty();
+
+  // Reset preview
+  bv2ShowPreviewEmpty();
+
+  // Abort controller
+  bv2State.abortController = new AbortController();
+
+  bv2Log('Starting fresh build: "' + prompt.substring(0, 60) + (prompt.length > 60 ? '...' : '') + '"', 'cmd');
+
+  var body = JSON.stringify({
+    prompt:     prompt,
+    framework:  bv2State.framework === 'auto' ? 'auto' : bv2State.framework,
+    tier:       bv2State.tier,
+    project_id: bv2State.projectId || undefined,
+  });
+
+  fetch((typeof API !== 'undefined' ? API : 'https://www.saintsallabs.com') + '/api/builder/agent/v2', {
+    method:  'POST',
+    headers: Object.assign({ 'Content-Type': 'application/json' }, (typeof authHeaders === 'function' ? authHeaders() : {})),
+    body:    body,
+    signal:  bv2State.abortController.signal,
+  })
+  .then(function(res) {
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    return bv2_processSSEStream(res);
+  })
+  .catch(function(err) {
+    if (err.name === 'AbortError') {
+      bv2Log('Build stopped by user.', 'warn');
+    } else {
+      bv2Log('Build error: ' + err.message, 'error');
+      bv2AddMessage('system', '⚠️ Build failed: ' + err.message);
+      showToast('Build failed: ' + err.message, 'error');
+    }
+    bv2FinalizeBuild(false);
+  });
+}
+
+/**
+ * bv2Iterate — Send iteration request using /api/builder/iterate.
+ */
+function bv2Iterate(prompt) {
+  bv2State.generating = true;
+
+  promptEl_clear();
+  bv2ResetAgentStatuses();
+  bv2StartTimer();
+  bv2SetBuildingUI(true);
+
+  bv2AddMessage('user', '🔄 ' + prompt);
+  bv2Log('Iterating on project: "' + prompt.substring(0, 60) + '"', 'cmd');
+
+  bv2State.abortController = new AbortController();
+
+  var body = JSON.stringify({
+    prompt:       prompt,
+    files:        bv2State.files,
+    project_id:   bv2State.projectId,
+    target_files: null,
+  });
+
+  fetch((typeof API !== 'undefined' ? API : 'https://www.saintsallabs.com') + '/api/builder/iterate', {
+    method:  'POST',
+    headers: Object.assign({ 'Content-Type': 'application/json' }, (typeof authHeaders === 'function' ? authHeaders() : {})),
+    body:    body,
+    signal:  bv2State.abortController.signal,
+  })
+  .then(function(res) {
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    return bv2_processSSEStream(res);
+  })
+  .catch(function(err) {
+    if (err.name === 'AbortError') {
+      bv2Log('Iteration stopped by user.', 'warn');
+    } else {
+      bv2Log('Iteration error: ' + err.message, 'error');
+      bv2AddMessage('system', '⚠️ Iteration failed: ' + err.message);
+      showToast('Iteration failed: ' + err.message, 'error');
+    }
+    bv2FinalizeBuild(false);
+  });
+}
+
+/**
+ * bv2StopBuild — Abort current SSE stream.
+ */
+function bv2StopBuild() {
+  if (bv2State.abortController) {
+    bv2State.abortController.abort();
+  }
+  bv2FinalizeBuild(false);
+}
+
+/**
+ * bv2_processSSEStream — Read and dispatch SSE events from a fetch response.
+ */
+function bv2_processSSEStream(response) {
+  var reader = response.body.getReader();
+  var decoder = new TextDecoder();
+  var buffer = '';
+
+  function read() {
+    return reader.read().then(function(result) {
+      if (result.done) {
+        // Process any remaining buffer
+        if (buffer.trim()) bv2_parseSSEBuffer(buffer);
+        return;
+      }
+      buffer += decoder.decode(result.value, { stream: true });
+      var lines = buffer.split('\n');
+      buffer = lines.pop(); // keep incomplete line
+      lines.forEach(function(line) {
+        bv2_parseSSELine(line);
+      });
+      return read();
+    });
+  }
+
+  return read();
+}
+
+var _sseEvent = '';
+var _sseData  = '';
+
+function bv2_parseSSELine(line) {
+  line = line.trim();
+  if (!line) {
+    // Blank line = dispatch event
+    if (_sseData) {
+      bv2_dispatchSSEEvent(_sseEvent || 'message', _sseData);
+    }
+    _sseEvent = '';
+    _sseData  = '';
+    return;
+  }
+  if (line.startsWith('event:')) {
+    _sseEvent = line.substring(6).trim();
+  } else if (line.startsWith('data:')) {
+    _sseData = line.substring(5).trim();
+  }
+}
+
+function bv2_parseSSEBuffer(buf) {
+  var lines = buf.split('\n');
+  lines.forEach(function(l) { bv2_parseSSELine(l); });
+  if (_sseData) bv2_dispatchSSEEvent(_sseEvent || 'message', _sseData);
+  _sseEvent = '';
+  _sseData  = '';
+}
+
+/**
+ * bv2_dispatchSSEEvent — Route SSE events to handlers.
+ */
+function bv2_dispatchSSEEvent(eventName, rawData) {
+  var data;
+  try {
+    data = JSON.parse(rawData);
+  } catch (e) {
+    data = { message: rawData };
+  }
+
+  switch (eventName) {
+    case 'planning':
+      bv2SetAgentStatus('architect', 'active', data.message || 'Planning your app...', 20);
+      bv2_showTypingIndicator('architect');
+      break;
+
+    case 'plan_ready':
+      bv2SetAgentStatus('architect', 'complete', 'Plan complete', 100);
+      bv2_hideTypingIndicator();
+      if (data.plan) bv2ShowPlan(data.plan, data.model_used);
+      break;
+
+    case 'designing':
+      bv2SetAgentStatus('designer', 'active', data.message || 'Designing with Stitch...', 20);
+      bv2_showTypingIndicator('designer');
+      break;
+
+    case 'scaffolding':
+      bv2SetAgentStatus('engineer', 'active', data.message || 'Scaffolding project...', 20);
+      bv2_showTypingIndicator('engineer');
+      break;
+
+    case 'building':
+      var buildAgent = (data.agent && BV2_AGENTS[data.agent]) ? data.agent : 'engineer';
+      bv2SetAgentStatus(buildAgent, 'active', data.message || 'Building...', 50);
+      break;
+
+    case 'design_ready':
+      bv2SetAgentStatus('designer', 'complete', 'Design ready', 100);
+      bv2_hideTypingIndicator();
+      if (data.design || data.stitch_url) {
+        bv2ShowDesign(data.design || {}, null, data.stitch_url);
+      }
+      break;
+
+    case 'scaffold_ready':
+      bv2SetAgentStatus('engineer', 'complete', 'Scaffold ready', 100);
+      bv2Log('[ENGINEER] Scaffold complete — ' + (data.model_used || ''), 'success');
+      break;
+
+    case 'synthesizing':
+      bv2SetAgentStatus('synthesizer', 'active', data.message || 'Synthesizing final code...', 30);
+      bv2_showTypingIndicator('synthesizer');
+      break;
+
+    case 'files_ready':
+      bv2_hideTypingIndicator();
+      var agentId = data.agent || 'engineer';
+      if (BV2_AGENTS[agentId]) bv2SetAgentStatus(agentId, 'complete', 'Files generated', 100);
+      if (data.files && data.files.length > 0) {
+        bv2State.files = data.files;
+        bv2RenderFileTree();
+        bv2OpenFile(0);
+        bv2_updateFileCount();
+        bv2RenderPreview();
+        bv2Log('[FILES] ' + data.files.length + ' files generated', 'success');
+      }
+      if (data.design_tokens) {
+        bv2State.designTokens = data.design_tokens;
+        bv2ShowDesign(null, data.design_tokens, null);
+      }
+      break;
+
+    case 'validating':
+      bv2SetAgentStatus('validator', 'active', data.message || 'Validating code...', 30);
+      bv2_showTypingIndicator('validator');
+      break;
+
+    case 'validation_ready':
+      bv2SetAgentStatus('validator', 'complete', 'Validation complete', 100);
+      bv2_hideTypingIndicator();
+      if (data.validation) bv2ShowValidation(data.validation);
+      // If validator returned fixed files, update them
+      if (data.files && data.files.length > 0) {
+        var activeIdx = bv2State.activeFile;
+        bv2State.files = data.files;
+        bv2RenderFileTree();
+        if (activeIdx >= 0 && activeIdx < bv2State.files.length) bv2OpenFile(activeIdx);
+        bv2RenderPreview();
+        bv2_updateFileCount();
+        bv2Log('[VALIDATOR] Applied ' + data.files.length + ' fixed files', 'success');
+      }
+      break;
+
+    case 'complete':
+      if (data.project_id) bv2State.projectId = data.project_id;
+      bv2State.iteration += 1;
+      bv2_allAgentsComplete();
+      bv2FinalizeBuild(true);
+      bv2AddMessage('complete', data.message || 'Build complete! ' + (data.file_count || bv2State.files.length) + ' files generated via ' + (data.pipeline || 'v2') + ' pipeline.');
+      bv2Log('[COMPLETE] ' + (data.file_count || bv2State.files.length) + ' files · ' + (data.framework || bv2State.framework) + ' · agents: ' + (data.agents_used ? data.agents_used.join(', ') : 'all'), 'success');
+      bv2_updateIterationBadge();
+      break;
+
+    default:
+      if (rawData && rawData !== '[DONE]') {
+        bv2Log('[SSE] ' + eventName + ': ' + rawData.substring(0, 80), 'normal');
+      }
+      break;
+  }
+}
+
+function bv2_allAgentsComplete() {
+  // Mark all active agents as complete
+  Object.keys(bv2State.agents).forEach(function(id) {
+    if (bv2State.agents[id].status === 'active') {
+      bv2SetAgentStatus(id, 'complete', 'Done', 100);
+    }
+  });
+}
+
+function bv2FinalizeBuild(success) {
+  bv2State.generating = false;
+  bv2StopTimer();
+  bv2SetBuildingUI(false);
+  if (success) showToast('Build complete! ' + bv2State.files.length + ' files generated.', 'success');
+}
+
+// ─── UI State Helpers ──────────────────────────────────────
+
+function promptEl_clear() {
+  var el = document.getElementById('bv2Prompt');
+  if (el) { el.value = ''; el.style.height = 'auto'; }
+}
+
+function bv2HideWelcome() {
+  var w = document.getElementById('bv2Welcome');
+  if (w) w.style.display = 'none';
+}
+
+function bv2ResetAgentStatuses() {
+  Object.keys(bv2State.agents).forEach(function(id) {
+    bv2State.agents[id].status   = 'standby';
+    bv2State.agents[id].message  = '';
+    bv2State.agents[id].progress = 0;
+  });
+  bv2RenderAgentStrip();
+}
+
+function bv2SetBuildingUI(isBuilding) {
+  var sendBtn   = document.getElementById('bv2SendBtn');
+  var labelEl   = document.getElementById('bv2SendBtnLabel');
+  var stopChip  = document.getElementById('bv2StopChip');
+
+  if (sendBtn) sendBtn.disabled = isBuilding;
+
+  if (!isBuilding) {
+    // After first build, change label to ITERATE
+    if (labelEl) labelEl.textContent = bv2State.files.length > 0 ? 'ITERATE' : 'BUILD';
+    if (stopChip) stopChip.style.display = 'none';
+  } else {
+    if (labelEl) labelEl.textContent = 'BUILDING...';
+    if (stopChip) stopChip.style.display = 'inline-flex';
+  }
+}
+
+function bv2_updateIterationBadge() {
+  var badge = document.getElementById('bv2IterationBadge');
+  if (badge) badge.textContent = 'Iter #' + bv2State.iteration;
+  var meta = document.getElementById('bv2MetaIteration');
+  if (meta) meta.textContent = 'Iter: #' + bv2State.iteration;
+}
+
+function bv2_updateFileCount() {
+  var count = bv2State.files.length;
+  var el = document.getElementById('bv2FileCount');
+  if (el) el.textContent = count + ' file' + (count !== 1 ? 's' : '');
+  var meta = document.getElementById('bv2MetaFiles');
+  if (meta) meta.textContent = 'Files: ' + count;
+  // Update compat
+  if (typeof builderChatState !== 'undefined') {
+    builderChatState.files = bv2State.files;
+    if (typeof builderRenderFiles === 'function') builderRenderFiles();
+    if (typeof builderUpdateIDEFileTree === 'function') builderUpdateIDEFileTree();
+  }
+}
+
+// ─── Typing Indicator ──────────────────────────────────────
+
+function bv2_showTypingIndicator(agentId) {
+  var existing = document.getElementById('bv2TypingIndicator');
+  if (existing) existing.remove();
+  var agent = BV2_AGENTS[agentId] || BV2_AGENTS.engineer;
+  var msgs = document.getElementById('bv2Messages');
+  if (!msgs) return;
+  var div = document.createElement('div');
+  div.id = 'bv2TypingIndicator';
+  div.className = 'bv2-message bv2-message--agent';
+  div.innerHTML = [
+    '<div class="bv2-message__meta">',
+      '<span class="bv2-message__agent-dot" style="background:' + agent.color + ';"></span>',
+      '<span class="bv2-message__sender">' + agent.role + '</span>',
+    '</div>',
+    '<div class="bv2-typing">',
+      '<div class="bv2-typing__dot"></div>',
+      '<div class="bv2-typing__dot"></div>',
+      '<div class="bv2-typing__dot"></div>',
+    '</div>',
+  ].join('');
+  msgs.appendChild(div);
+  div.scrollIntoView({ behavior: 'smooth', block: 'end' });
+}
+
+function bv2_hideTypingIndicator() {
+  var el = document.getElementById('bv2TypingIndicator');
+  if (el) el.remove();
+}
+
+// ─── Chat Messages ─────────────────────────────────────────
+
+/**
+ * bv2AddMessage — Render a styled message bubble into #bv2Messages.
+ * type: 'user' | 'system' | 'plan' | 'validation' | 'complete'
+ */
+function bv2AddMessage(type, content, agentId) {
+  var msgs = document.getElementById('bv2Messages');
+  if (!msgs) return;
+
+  var div = document.createElement('div');
+
+  if (type === 'user') {
+    div.className = 'bv2-message bv2-message--user';
+    div.innerHTML = [
+      '<div class="bv2-message__bubble">' + bv2_escapeHtml(content) + '</div>',
+      '<div class="bv2-message__meta"><span class="bv2-message__sender">You</span><span class="bv2-message__time">' + bv2_timeNow() + '</span></div>',
+    ].join('');
+
+  } else if (type === 'system') {
+    div.className = 'bv2-message bv2-message--agent';
+    div.innerHTML = [
+      '<div class="bv2-message__meta">',
+        '<span class="bv2-message__agent-dot" style="background:var(--bv2-text-muted);"></span>',
+        '<span class="bv2-message__sender">System</span>',
+        '<span class="bv2-message__time">' + bv2_timeNow() + '</span>',
+      '</div>',
+      '<div class="bv2-message__bubble">' + bv2_escapeHtml(content) + '</div>',
+    ].join('');
+
+  } else if (type === 'complete') {
+    div.className = 'bv2-message bv2-message--agent';
+    div.innerHTML = [
+      '<div class="bv2-message__meta">',
+        '<span class="bv2-message__agent-dot" style="background:var(--bv2-neon);"></span>',
+        '<span class="bv2-message__sender" style="color:var(--bv2-neon);">Pipeline Complete</span>',
+        '<span class="bv2-message__time">' + bv2_timeNow() + '</span>',
+      '</div>',
+      '<div class="bv2-message__bubble" style="border-color:rgba(0,255,136,0.25);background:rgba(0,255,136,0.04);">',
+        '<span style="color:var(--bv2-neon);">✓</span> ' + bv2_escapeHtml(content),
+      '</div>',
+    ].join('');
+
+  } else if (type === 'plan') {
+    // content is the plan object — handled by bv2ShowPlan
+    div.className = 'bv2-message bv2-message--agent';
+    div.innerHTML = content; // trusted HTML
+
+  } else if (type === 'validation') {
+    div.className = 'bv2-message bv2-message--agent';
+    div.innerHTML = content; // trusted HTML
+  } else {
+    div.className = 'bv2-message bv2-message--agent';
+    div.innerHTML = [
+      '<div class="bv2-message__bubble">' + bv2_escapeHtml(String(content)) + '</div>',
+    ].join('');
+  }
+
+  msgs.appendChild(div);
+  div.scrollIntoView({ behavior: 'smooth', block: 'end' });
+}
+
+// ─── Plan Card ─────────────────────────────────────────────
+
+/**
+ * bv2ShowPlan — Render architect plan in chat.
+ */
+function bv2ShowPlan(plan, modelUsed) {
+  var agentInfo = BV2_AGENTS.architect;
+  var complexityColor = { low: 'var(--bv2-neon)', medium: 'var(--bv2-gold)', high: 'var(--bv2-error)' }[plan.complexity] || 'var(--bv2-text-dim)';
+
+  var componentsHtml = (plan.components || []).slice(0, 8).map(function(c) {
+    return '<span style="display:inline-block;padding:2px 7px;background:var(--bv2-surface-high);border:1px solid var(--bv2-border);font-family:var(--bv2-mono);font-size:9px;color:var(--bv2-cyan);margin:2px;">' + bv2_escapeHtml(c) + '</span>';
+  }).join('');
+
+  var pagesHtml = (plan.pages || []).slice(0, 6).map(function(p) {
+    var name = typeof p === 'string' ? p : (p.name || p);
+    return '<span style="display:inline-block;padding:2px 7px;background:var(--bv2-surface-high);border:1px solid var(--bv2-border);font-family:var(--bv2-mono);font-size:9px;color:var(--bv2-text-dim);margin:2px;">' + bv2_escapeHtml(name) + '</span>';
+  }).join('');
+
+  var stepsHtml = (plan.steps || []).slice(0, 5).map(function(s, i) {
+    return '<div style="display:flex;gap:6px;align-items:flex-start;padding:3px 0;"><span style="color:var(--bv2-gold);font-family:var(--bv2-mono);font-size:9px;min-width:16px;">' + (i + 1) + '.</span><span style="font-size:11px;color:var(--bv2-text-dim);line-height:1.4;">' + bv2_escapeHtml(typeof s === 'string' ? s : (s.title || s.description || String(s))) + '</span></div>';
+  }).join('');
+
+  var html = [
+    '<div class="bv2-message__meta">',
+      '<span class="bv2-message__agent-dot" style="background:' + agentInfo.color + ';"></span>',
+      '<span class="bv2-message__sender">' + agentInfo.role + '</span>',
+      (modelUsed ? '<span class="bv2-message__time">' + bv2_escapeHtml(modelUsed) + '</span>' : ''),
+      '<span class="bv2-message__time">' + bv2_timeNow() + '</span>',
+    '</div>',
+    '<div class="bv2-message__bubble" style="max-width:100%;border-color:rgba(245,158,11,0.2);background:rgba(245,158,11,0.04);">',
+      '<div style="font-family:var(--bv2-display);font-size:11px;font-weight:700;color:var(--bv2-gold);letter-spacing:0.5px;margin-bottom:4px;">' + bv2_escapeHtml(plan.title || 'Build Plan') + '</div>',
+      (plan.description ? '<div style="font-size:11px;color:var(--bv2-text-dim);line-height:1.5;margin-bottom:8px;">' + bv2_escapeHtml(plan.description) + '</div>' : ''),
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;">',
+        (plan.framework ? '<span style="font-family:var(--bv2-mono);font-size:9px;padding:2px 7px;background:var(--bv2-surface-high);border:1px solid var(--bv2-border);color:var(--bv2-text-dim);">⚙ ' + bv2_escapeHtml(plan.framework) + '</span>' : ''),
+        (plan.complexity ? '<span style="font-family:var(--bv2-mono);font-size:9px;padding:2px 7px;background:var(--bv2-surface-high);border:1px solid var(--bv2-border);color:' + complexityColor + ';">● ' + plan.complexity.toUpperCase() + '</span>' : ''),
+        (plan.estimated_time ? '<span style="font-family:var(--bv2-mono);font-size:9px;padding:2px 7px;background:var(--bv2-surface-high);border:1px solid var(--bv2-border);color:var(--bv2-text-dim);">⏱ ~' + bv2_escapeHtml(plan.estimated_time) + '</span>' : ''),
+      '</div>',
+      (componentsHtml ? '<div style="margin-bottom:6px;"><div style="font-family:var(--bv2-display);font-size:8px;font-weight:700;letter-spacing:1.5px;color:var(--bv2-text-muted);text-transform:uppercase;margin-bottom:4px;">Components</div>' + componentsHtml + '</div>' : ''),
+      (pagesHtml ? '<div style="margin-bottom:6px;"><div style="font-family:var(--bv2-display);font-size:8px;font-weight:700;letter-spacing:1.5px;color:var(--bv2-text-muted);text-transform:uppercase;margin-bottom:4px;">Pages</div>' + pagesHtml + '</div>' : ''),
+      (stepsHtml ? '<div><div style="font-family:var(--bv2-display);font-size:8px;font-weight:700;letter-spacing:1.5px;color:var(--bv2-text-muted);text-transform:uppercase;margin-bottom:4px;">Build Steps</div>' + stepsHtml + '</div>' : ''),
+    '</div>',
+  ].join('');
+
+  bv2AddMessage('plan', html);
+}
+
+// ─── Design Panel ──────────────────────────────────────────
+
+/**
+ * bv2ShowDesign — Populate design panel with Stitch output.
+ */
+function bv2ShowDesign(design, designTokens, stitchUrl) {
+  // Update design agent label
+  var agentLabel = document.getElementById('bv2DesignAgent');
+  if (agentLabel) agentLabel.textContent = 'Stitch by Google';
+
+  // Stitch URL
+  if (stitchUrl) {
+    var linkDiv = document.getElementById('bv2StitchLink');
+    var linkEl  = document.getElementById('bv2StitchURL');
+    if (linkDiv) linkDiv.style.display = 'block';
+    if (linkEl)  linkEl.href = stitchUrl;
+  }
+
+  // Design tokens → color swatches
+  var tokens = designTokens || bv2State.designTokens;
+  if (tokens) {
+    var colorsEl = document.getElementById('bv2DesignColors');
+    if (colorsEl) {
+      var swatchMap = {
+        primary:   'Primary',
+        secondary: 'Secondary',
+        accent:    'Accent',
+        bg:        'Background',
+        text:      'Text',
+      };
+      colorsEl.innerHTML = Object.keys(swatchMap).map(function(key) {
+        var value = tokens[key];
+        if (!value) return '';
+        return [
+          '<div class="bv2-swatch" style="position:relative;" title="' + swatchMap[key] + ': ' + value + '">',
+            '<div style="width:28px;height:28px;background:' + value + ';border:1px solid rgba(255,255,255,0.1);cursor:pointer;" onclick="navigator.clipboard&&navigator.clipboard.writeText(\'' + value + '\')"></div>',
+            '<div class="bv2-swatch__tooltip">' + swatchMap[key] + '<br>' + value + '</div>',
+          '</div>',
+        ].join('');
+      }).join('');
+    }
+  }
+
+  // Design notes
+  if (design && design.note) {
+    var notesEl = document.getElementById('bv2DesignNotes');
+    if (notesEl) notesEl.textContent = design.note;
+  }
+
+  // Show design panel if collapsed
+  if (bv2State.designPanelCollapsed) bv2ToggleDesignPanel();
+}
+
+/**
+ * bv2ToggleDesignPanel — Toggle design panel collapsed/expanded.
+ */
+function bv2ToggleDesignPanel() {
+  var panel  = document.getElementById('bv2DesignPanel');
+  var toggle = document.getElementById('bv2DesignPanelToggle');
+  if (!panel) return;
+
+  bv2State.designPanelCollapsed = !bv2State.designPanelCollapsed;
+  if (bv2State.designPanelCollapsed) {
+    panel.classList.add('is-collapsed');
+    if (toggle) toggle.textContent = '▶';
+  } else {
+    panel.classList.remove('is-collapsed');
+    if (toggle) toggle.textContent = '▼';
+  }
+}
+
+// ─── Validation ────────────────────────────────────────────
+
+/**
+ * bv2ShowValidation — Show validation results as a styled card.
+ */
+function bv2ShowValidation(validation) {
+  var score = validation.score || 0;
+  var scoreColor = score >= 90 ? 'var(--bv2-neon)' : (score >= 70 ? 'var(--bv2-gold)' : 'var(--bv2-error)');
+  var scoreBg = score >= 90 ? 'rgba(0,255,136,0.08)' : (score >= 70 ? 'rgba(245,158,11,0.08)' : 'rgba(255,113,108,0.08)');
+  var scoreBorder = score >= 90 ? 'rgba(0,255,136,0.25)' : (score >= 70 ? 'rgba(245,158,11,0.25)' : 'rgba(255,113,108,0.25)');
+
+  var issuesHtml = (validation.issues || []).slice(0, 5).map(function(issue) {
+    var text = typeof issue === 'string' ? issue : (issue.message || issue.description || String(issue));
+    return '<div style="display:flex;gap:6px;align-items:flex-start;padding:2px 0;"><span style="color:var(--bv2-error);font-size:10px;min-width:12px;">⚠</span><span style="font-family:var(--bv2-ui);font-size:11px;color:var(--bv2-text-dim);line-height:1.4;">' + bv2_escapeHtml(text) + '</span></div>';
+  }).join('');
+
+  var optsHtml = (validation.optimizations || []).slice(0, 3).map(function(opt) {
+    var text = typeof opt === 'string' ? opt : (opt.message || opt.description || String(opt));
+    return '<div style="display:flex;gap:6px;align-items:flex-start;padding:2px 0;"><span style="color:var(--bv2-cyan);font-size:10px;min-width:12px;">↑</span><span style="font-family:var(--bv2-ui);font-size:11px;color:var(--bv2-text-dim);line-height:1.4;">' + bv2_escapeHtml(text) + '</span></div>';
+  }).join('');
+
+  var agentInfo = BV2_AGENTS.validator;
+
+  var html = [
+    '<div class="bv2-message__meta">',
+      '<span class="bv2-message__agent-dot" style="background:' + agentInfo.color + ';"></span>',
+      '<span class="bv2-message__sender">' + agentInfo.role + '</span>',
+      '<span class="bv2-message__time">' + bv2_timeNow() + '</span>',
+    '</div>',
+    '<div class="bv2-message__bubble" style="max-width:100%;border-color:' + scoreBorder + ';background:' + scoreBg + ';">',
+      '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">',
+        '<div style="font-family:var(--bv2-display);font-size:11px;font-weight:700;color:var(--bv2-text);">Validation Report</div>',
+        '<div style="margin-left:auto;display:inline-flex;align-items:center;gap:4px;padding:3px 10px;background:' + scoreBg + ';border:1px solid ' + scoreBorder + ';">',
+          '<span style="font-family:var(--bv2-mono);font-size:14px;font-weight:700;color:' + scoreColor + ';">' + score + '</span>',
+          '<span style="font-family:var(--bv2-mono);font-size:9px;color:' + scoreColor + ';">/100</span>',
+        '</div>',
+      '</div>',
+      (validation.summary ? '<div style="font-size:11px;color:var(--bv2-text-dim);line-height:1.5;margin-bottom:8px;">' + bv2_escapeHtml(validation.summary) + '</div>' : ''),
+      (issuesHtml ? '<div style="margin-bottom:6px;"><div style="font-family:var(--bv2-display);font-size:8px;font-weight:700;letter-spacing:1.5px;color:var(--bv2-text-muted);text-transform:uppercase;margin-bottom:4px;">Issues</div>' + issuesHtml + '</div>' : ''),
+      (optsHtml ? '<div><div style="font-family:var(--bv2-display);font-size:8px;font-weight:700;letter-spacing:1.5px;color:var(--bv2-text-muted);text-transform:uppercase;margin-bottom:4px;">Optimizations</div>' + optsHtml + '</div>' : ''),
+    '</div>',
+  ].join('');
+
+  bv2AddMessage('validation', html);
+}
+
+// ─── File Tree ─────────────────────────────────────────────
+
+/**
+ * bv2RenderFileTree — Render file tree from bv2State.files.
+ * Groups files by folder path.
+ */
+function bv2RenderFileTree() {
+  var container = document.getElementById('bv2FileList');
+  if (!container) return;
+
+  var files = bv2State.files;
+  if (!files || files.length === 0) {
+    container.innerHTML = '<div class="bv2-editor__empty" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;height:80px;"><div style="font-size:18px;opacity:0.15;">📁</div><span style="font-family:var(--bv2-mono);font-size:9px;color:var(--bv2-text-muted);">No files yet...</span></div>';
+    return;
+  }
+
+  // Build folder tree structure
+  var tree = {};
+  files.forEach(function(file, idx) {
+    var name = file.name || ('file_' + idx);
+    var parts = name.split('/');
+    if (parts.length === 1) {
+      tree['__root__'] = tree['__root__'] || [];
+      tree['__root__'].push({ name: parts[0], fullName: name, idx: idx });
+    } else {
+      var folder = parts.slice(0, -1).join('/');
+      tree[folder] = tree[folder] || [];
+      tree[folder].push({ name: parts[parts.length - 1], fullName: name, idx: idx });
+    }
+  });
+
+  var html = '';
+
+  // Root files first
+  if (tree['__root__']) {
+    tree['__root__'].forEach(function(f) {
+      html += bv2_renderFileItem(f.name, f.idx, f.fullName);
+    });
+    delete tree['__root__'];
+  }
+
+  // Folders
+  Object.keys(tree).sort().forEach(function(folder) {
+    html += '<div class="bv2-tree-folder is-open" id="bv2Folder-' + bv2_escapeAttr(folder) + '">';
+    html += '<div class="bv2-tree-folder__label" onclick="bv2ToggleFolder(this.parentElement)">';
+    html += '<svg class="bv2-tree-folder__icon" viewBox="0 0 12 12" fill="none" width="12" height="12"><path d="M2 3h3l1 1h4v6H2V3z" fill="var(--bv2-gold-dim)" fill-opacity="0.5"/></svg>';
+    html += bv2_escapeHtml(folder);
+    html += '</div>';
+    html += '<div class="bv2-tree-folder__children">';
+    tree[folder].forEach(function(f) {
+      html += bv2_renderFileItem(f.name, f.idx, f.fullName);
+    });
+    html += '</div></div>';
+  });
+
+  container.innerHTML = html;
+  bv2_updateFileCount();
+}
+
+function bv2_renderFileItem(fileName, idx, fullName) {
+  var ext = fileName.split('.').pop().toLowerCase();
+  var extLabel = ext.substring(0, 3).toUpperCase();
+  var isActive = idx === bv2State.activeFile;
+  return [
+    '<div class="bv2-tree-file' + (isActive ? ' is-active' : '') + '" data-ext="' + ext + '" onclick="bv2OpenFile(' + idx + ')" title="' + bv2_escapeAttr(fullName || fileName) + '">',
+      '<span class="bv2-tree-file__ext-icon">' + bv2_escapeHtml(extLabel) + '</span>',
+      '<span>' + bv2_escapeHtml(fileName) + '</span>',
+    '</div>',
+  ].join('');
+}
+
+function bv2ToggleFolder(folderEl) {
+  if (folderEl) folderEl.classList.toggle('is-open');
+}
+
+function bv2CollapseAllFolders() {
+  document.querySelectorAll('.bv2-tree-folder.is-open').forEach(function(f) {
+    f.classList.remove('is-open');
+  });
+}
+
+// ─── Code Editor ───────────────────────────────────────────
+
+/**
+ * bv2OpenFile — Open a file in the editor.
+ */
+function bv2OpenFile(idx) {
+  if (idx < 0 || idx >= bv2State.files.length) return;
+
+  bv2State.activeFile = idx;
+
+  // Add to open tabs if not present
+  if (bv2State.openTabs.indexOf(idx) === -1) {
+    bv2State.openTabs.push(idx);
+  }
+
+  bv2RenderEditorTabs();
+  bv2RenderEditorContent(idx);
+  bv2RenderFileTree(); // Re-render to update active highlight
+}
+
+/**
+ * bv2CloseTab — Close a tab.
+ */
+function bv2CloseTab(idx, e) {
+  if (e) e.stopPropagation();
+
+  var tabIdx = bv2State.openTabs.indexOf(idx);
+  if (tabIdx === -1) return;
+
+  bv2State.openTabs.splice(tabIdx, 1);
+
+  if (bv2State.activeFile === idx) {
+    if (bv2State.openTabs.length > 0) {
+      var newIdx = Math.min(tabIdx, bv2State.openTabs.length - 1);
+      bv2State.activeFile = bv2State.openTabs[newIdx];
+      bv2RenderEditorContent(bv2State.activeFile);
+    } else {
+      bv2State.activeFile = -1;
+      bv2RenderEditorEmpty();
+    }
+  }
+
+  bv2RenderEditorTabs();
+}
+
+function bv2RenderEditorTabs() {
+  var tabsEl = document.getElementById('bv2EditorTabs');
+  if (!tabsEl) return;
+
+  if (bv2State.openTabs.length === 0) {
+    tabsEl.innerHTML = '';
+    return;
+  }
+
+  tabsEl.innerHTML = bv2State.openTabs.map(function(fileIdx) {
+    var file = bv2State.files[fileIdx];
+    if (!file) return '';
+    var name = (file.name || 'file').split('/').pop();
+    var isActive = fileIdx === bv2State.activeFile;
+    return [
+      '<div class="bv2-editor-tab' + (isActive ? ' is-active' : '') + '" onclick="bv2OpenFile(' + fileIdx + ')">',
+        '<span class="bv2-editor-tab__dot"></span>',
+        bv2_escapeHtml(name),
+        '<span class="bv2-editor-tab__close" onclick="bv2CloseTab(' + fileIdx + ',event)">×</span>',
+      '</div>',
+    ].join('');
+  }).join('');
+}
+
+function bv2RenderEditorContent(idx) {
+  var contentEl = document.getElementById('bv2EditorContent');
+  if (!contentEl) return;
+
+  var file = bv2State.files[idx];
+  if (!file) { bv2RenderEditorEmpty(); return; }
+
+  var code   = file.content || '';
+  var lang   = bv2_detectLang(file.name || '', file.language);
+  var lines  = code.split('\n');
+
+  // Build line numbers + code
+  var gutterHtml = lines.map(function(_, i) {
+    return '<div class="bv2-editor__line-num">' + (i + 1) + '</div>';
+  }).join('');
+
+  var codeHtml = bv2_syntaxHighlight(code, lang);
+
+  contentEl.innerHTML = [
+    '<div class="bv2-editor__gutter">' + gutterHtml + '</div>',
+    '<div class="bv2-editor__code"><pre>' + codeHtml + '</pre></div>',
+  ].join('');
+
+  // Status bar
+  var langEl  = document.getElementById('bv2EditorLang');
+  var fileEl  = document.getElementById('bv2EditorFile');
+  var linesEl = document.getElementById('bv2EditorLines');
+  var sizeEl  = document.getElementById('bv2EditorSize');
+
+  if (langEl)  langEl.textContent  = lang.toUpperCase();
+  if (fileEl)  fileEl.textContent  = file.name || 'untitled';
+  if (linesEl) linesEl.textContent = lines.length + ' lines';
+  if (sizeEl)  sizeEl.textContent  = bv2_formatBytes(code.length);
+}
+
+function bv2RenderEditorEmpty() {
+  var contentEl = document.getElementById('bv2EditorContent');
+  if (!contentEl) return;
+  contentEl.innerHTML = [
+    '<div class="bv2-editor__empty" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;height:100%;">',
+      '<div class="bv2-editor__empty-icon" style="font-size:32px;opacity:0.1;">💻</div>',
+      '<span style="font-family:var(--bv2-mono);font-size:11px;color:var(--bv2-text-muted);">Select a file to view code</span>',
+    '</div>',
+  ].join('');
+  var langEl  = document.getElementById('bv2EditorLang');
+  var fileEl  = document.getElementById('bv2EditorFile');
+  var linesEl = document.getElementById('bv2EditorLines');
+  var sizeEl  = document.getElementById('bv2EditorSize');
+  if (langEl)  langEl.textContent  = '—';
+  if (fileEl)  fileEl.textContent  = 'No file open';
+  if (linesEl) linesEl.textContent = '0 lines';
+  if (sizeEl)  sizeEl.textContent  = '0 B';
+}
+
+function bv2_detectLang(filename, hint) {
+  if (hint) return hint;
+  var ext = filename.split('.').pop().toLowerCase();
+  var map = { js: 'javascript', jsx: 'javascript', ts: 'typescript', tsx: 'typescript', html: 'html', htm: 'html', css: 'css', scss: 'css', py: 'python', json: 'json', md: 'markdown', sh: 'shell', yml: 'yaml', yaml: 'yaml', env: 'shell', txt: 'text' };
+  return map[ext] || ext || 'text';
+}
+
+function bv2_formatBytes(n) {
+  if (n < 1024) return n + ' B';
+  if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
+  return (n / (1024 * 1024)).toFixed(1) + ' MB';
+}
+
+/**
+ * bv2_syntaxHighlight — Basic syntax highlighting.
+ * Returns HTML string with span tokens.
+ */
+function bv2_syntaxHighlight(code, lang) {
+  // Escape first
+  var esc = bv2_escapeHtml(code);
+
+  if (lang === 'json') {
+    return esc
+      .replace(/"([^"]+)"(\s*:)/g, '<span class="bv2-tok-prop">"$1"</span>$2')
+      .replace(/:\s*"([^"]*)"/g, ': <span class="bv2-tok-string">"$1"</span>')
+      .replace(/:\s*(\d+\.?\d*)/g, ': <span class="bv2-tok-number">$1</span>')
+      .replace(/:\s*(true|false|null)/g, ': <span class="bv2-tok-keyword">$1</span>');
+  }
+
+  if (lang === 'html') {
+    return esc
+      .replace(/(&lt;\/?)([\w-]+)/g, '$1<span class="bv2-tok-tag">$2</span>')
+      .replace(/([\w-]+)=/g, '<span class="bv2-tok-attr">$1</span>=')
+      .replace(/=&quot;([^&]*)&quot;/g, '=<span class="bv2-tok-string">&quot;$1&quot;</span>')
+      .replace(/(&lt;!--[\s\S]*?--&gt;)/g, '<span class="bv2-tok-comment">$1</span>');
+  }
+
+  if (lang === 'css' || lang === 'scss') {
+    return esc
+      .replace(/(\/\*[\s\S]*?\*\/)/g, '<span class="bv2-tok-comment">$1</span>')
+      .replace(/([.#]?[\w-]+)(\s*\{)/g, '<span class="bv2-tok-tag">$1</span>$2')
+      .replace(/([\w-]+)\s*:/g, '<span class="bv2-tok-prop">$1</span>:')
+      .replace(/:\s*([^;{}\n]+)/g, ': <span class="bv2-tok-string">$1</span>')
+      .replace(/(#[0-9a-fA-F]{3,8})/g, '<span class="bv2-tok-number">$1</span>');
+  }
+
+  if (lang === 'python') {
+    return esc
+      .replace(/(#[^\n]*)/g, '<span class="bv2-tok-comment">$1</span>')
+      .replace(/\b(def|class|import|from|return|if|elif|else|for|while|in|not|and|or|try|except|with|as|pass|break|continue|yield|lambda|None|True|False|global|nonlocal|del|raise|assert)\b/g, '<span class="bv2-tok-keyword">$1</span>')
+      .replace(/("""[\s\S]*?"""|\'\'\'[\s\S]*?\'\'\'|"[^"]*"|'[^']*')/g, '<span class="bv2-tok-string">$1</span>')
+      .replace(/\b(\d+\.?\d*)\b/g, '<span class="bv2-tok-number">$1</span>');
+  }
+
+  // JavaScript / TypeScript (default)
+  return esc
+    .replace(/(\/\/[^\n]*)/g, '<span class="bv2-tok-comment">$1</span>')
+    .replace(/(\/\*[\s\S]*?\*\/)/g, '<span class="bv2-tok-comment">$1</span>')
+    .replace(/\b(var|let|const|function|return|if|else|for|while|switch|case|break|continue|new|class|extends|import|export|default|from|async|await|try|catch|finally|throw|typeof|instanceof|in|of|delete|void|yield|static|get|set|this|super|null|undefined|true|false|NaN|Infinity)\b/g, '<span class="bv2-tok-keyword">$1</span>')
+    .replace(/(`[^`]*`|"[^"]*"|'[^']*')/g, '<span class="bv2-tok-string">$1</span>')
+    .replace(/\b(\d+\.?\d*)\b/g, '<span class="bv2-tok-number">$1</span>')
+    .replace(/\b([A-Za-z_$][\w$]*)\s*\(/g, '<span class="bv2-tok-fn">$1</span>(');
+}
+
+// ─── Live Preview ──────────────────────────────────────────
+
+/**
+ * bv2RenderPreview — Build and render preview in iframe.
+ * Finds index.html, inlines CSS and JS, writes via srcdoc.
+ */
+function bv2RenderPreview() {
+  var files = bv2State.files;
+  if (!files || files.length === 0) return;
+
+  // Find main HTML file
+  var htmlFile = null;
+  var priorities = ['index.html', 'app.html', 'main.html'];
+  for (var i = 0; i < priorities.length; i++) {
+    htmlFile = files.find(function(f) { return f.name === priorities[i] || (f.name || '').endsWith('/' + priorities[i]); });
+    if (htmlFile) break;
+  }
+  if (!htmlFile) {
+    htmlFile = files.find(function(f) { return (f.name || '').endsWith('.html'); });
+  }
+
+  if (!htmlFile) {
+    // No HTML — try to wrap in basic page
+    var jsFile  = files.find(function(f) { return (f.name || '').endsWith('.js') && !(f.name || '').includes('test'); });
+    var cssFile = files.find(function(f) { return (f.name || '').endsWith('.css'); });
+    if (!jsFile && !cssFile) {
+      bv2Log('[PREVIEW] No HTML file found — cannot render preview', 'warn');
+      return;
+    }
+    var wrapHtml = '<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">';
+    if (cssFile) wrapHtml += '<style>' + (cssFile.content || '') + '</style>';
+    wrapHtml += '</head><body>';
+    if (jsFile) wrapHtml += '<script>' + (jsFile.content || '') + '<\/script>';
+    wrapHtml += '</body></html>';
+    bv2_writePreviewSrcdoc(wrapHtml);
+    return;
+  }
+
+  var htmlContent = htmlFile.content || '';
+
+  // Inline CSS files
+  files.forEach(function(f) {
+    if (!(f.name || '').endsWith('.css')) return;
+    var fileName = (f.name || '').split('/').pop();
+    // Replace <link> tags referencing this file with <style>
+    var re = new RegExp('<link[^>]+href=["\'][^"\']*' + bv2_escapeRegex(fileName) + '["\'][^>]*>', 'gi');
+    htmlContent = htmlContent.replace(re, '<style>' + (f.content || '') + '</style>');
+  });
+
+  // Inline JS files (non-module)
+  files.forEach(function(f) {
+    if (!(f.name || '').endsWith('.js')) return;
+    if ((f.name || '').endsWith('.min.js')) return;
+    var fileName = (f.name || '').split('/').pop();
+    var re = new RegExp('<script[^>]+src=["\'][^"\']*' + bv2_escapeRegex(fileName) + '["\'][^>]*><\\/script>', 'gi');
+    htmlContent = htmlContent.replace(re, '<script>' + (f.content || '') + '<\/script>');
+  });
+
+  bv2_writePreviewSrcdoc(htmlContent);
+  bv2Log('[PREVIEW] Preview rendered — ' + (htmlFile.name || 'index.html'), 'success');
+
+  // Compat hook
+  if (typeof builderRenderPreview === 'function') {
+    try { builderRenderPreview(); } catch (e) {}
+  }
+}
+
+function bv2_writePreviewSrcdoc(html) {
+  bv2State.previewSrcdoc = html;
+  var iframe   = document.getElementById('bv2PreviewIframe');
+  var emptyEl  = document.getElementById('bv2PreviewEmpty');
+  var loadEl   = document.getElementById('bv2PreviewLoading');
+
+  if (!iframe) return;
+
+  // Show loading
+  if (emptyEl)  emptyEl.style.display  = 'none';
+  if (loadEl)   loadEl.style.display   = 'flex';
+  iframe.style.display = 'none';
+
+  iframe.onload = function() {
+    if (loadEl)  loadEl.style.display  = 'none';
+    iframe.style.display = 'block';
+    iframe.onload = null;
+  };
+
+  iframe.srcdoc = html;
+
+  // Fallback: show after 1.5s
+  setTimeout(function() {
+    if (loadEl)  loadEl.style.display  = 'none';
+    iframe.style.display = 'block';
+  }, 1500);
+}
+
+function bv2ShowPreviewEmpty() {
+  var iframe   = document.getElementById('bv2PreviewIframe');
+  var emptyEl  = document.getElementById('bv2PreviewEmpty');
+  var loadEl   = document.getElementById('bv2PreviewLoading');
+  if (iframe)  { iframe.style.display = 'none'; iframe.srcdoc = ''; }
+  if (emptyEl) emptyEl.style.display = 'flex';
+  if (loadEl)  loadEl.style.display  = 'none';
+}
+
+/**
+ * bv2RefreshPreview — Re-render preview.
+ */
+function bv2RefreshPreview() {
+  if (bv2State.previewSrcdoc) {
+    bv2_writePreviewSrcdoc(bv2State.previewSrcdoc);
+  } else {
+    bv2RenderPreview();
+  }
+}
+
+/**
+ * bv2OpenPreviewFullscreen — Open preview srcdoc in new tab.
+ */
+function bv2OpenPreviewFullscreen() {
+  if (!bv2State.previewSrcdoc) return;
+  var blob = new Blob([bv2State.previewSrcdoc], { type: 'text/html' });
+  var url  = URL.createObjectURL(blob);
+  var win  = window.open(url, '_blank');
+  if (!win) showToast('Pop-up blocked — allow pop-ups to open preview', 'warn');
+  setTimeout(function() { URL.revokeObjectURL(url); }, 10000);
+}
+
+/**
+ * bv2SetDevice — Set preview device size.
+ */
+function bv2SetDevice(device, btn) {
+  var preview = document.getElementById('bv2Preview');
+  if (!preview) return;
+
+  preview.setAttribute('data-device', device);
+
+  document.querySelectorAll('.bv2-device-toggle__btn').forEach(function(b) {
+    b.classList.remove('is-active');
+  });
+  if (btn) btn.classList.add('is-active');
+
+  var urlEl = document.getElementById('bv2PreviewURL');
+  if (urlEl) {
+    var labels = { desktop: 'preview://localhost', tablet: 'preview://tablet (768px)', mobile: 'preview://mobile (375px)' };
+    urlEl.textContent = labels[device] || 'preview://localhost';
+  }
+}
+
+// ─── Terminal ──────────────────────────────────────────────
+
+/**
+ * bv2Log — Add a line to the terminal log.
+ * type: 'info'|'success'|'warn'|'error'|'cmd'|'normal'
+ */
+function bv2Log(text, type) {
+  var log = document.getElementById('bv2TerminalLog');
+  if (!log) return;
+
+  var typeClass = {
+    info:    'bv2-terminal__line--info',
+    success: 'bv2-terminal__line--success',
+    warn:    'bv2-terminal__line--warn',
+    error:   'bv2-terminal__line--error',
+    cmd:     'bv2-terminal__line--cmd',
+    normal:  'bv2-terminal__line--normal',
+  }[type] || 'bv2-terminal__line--normal';
+
+  var line = document.createElement('div');
+  line.className = 'bv2-terminal__line ' + typeClass;
+  line.textContent = '[' + bv2_clockNow() + '] ' + text;
+  log.appendChild(line);
+
+  // Keep max 200 lines
+  while (log.children.length > 200) {
+    log.removeChild(log.firstChild);
+  }
+
+  // Auto-scroll if expanded
+  if (bv2State.terminalExpanded) {
+    var content = document.getElementById('bv2TerminalContent');
+    if (content) content.scrollTop = content.scrollHeight;
+  }
+}
+
+/**
+ * bv2ToggleTerminal — Toggle terminal expanded/collapsed.
+ */
+function bv2ToggleTerminal() {
+  var terminal = document.getElementById('bv2Terminal');
+  if (!terminal) return;
+  bv2State.terminalExpanded = !bv2State.terminalExpanded;
+  terminal.classList.toggle('is-expanded', bv2State.terminalExpanded);
+  if (bv2State.terminalExpanded) {
+    var content = document.getElementById('bv2TerminalContent');
+    if (content) content.scrollTop = content.scrollHeight;
+  }
+}
+
+// ─── Timer ─────────────────────────────────────────────────
+
+/**
+ * bv2StartTimer — Start the build timer.
+ */
+function bv2StartTimer() {
+  bv2StopTimer();
+  bv2State.timerStart = Date.now();
+  bv2State.timer = setInterval(function() {
+    var elapsed = Math.floor((Date.now() - bv2State.timerStart) / 1000);
+    var m = Math.floor(elapsed / 60);
+    var s = elapsed % 60;
+    var display = (m < 10 ? '0' : '') + m + ':' + (s < 10 ? '0' : '') + s;
+    var el = document.getElementById('bv2MetaTimer');
+    if (el) el.textContent = display;
+  }, 1000);
+}
+
+/**
+ * bv2StopTimer — Stop the build timer.
+ */
+function bv2StopTimer() {
+  if (bv2State.timer) {
+    clearInterval(bv2State.timer);
+    bv2State.timer = null;
+  }
+}
+
+// ─── Deploy ────────────────────────────────────────────────
+
+/**
+ * bv2Deploy — Deploy to target.
+ * target: 'render'|'github'|'cloudflare'
+ */
+function bv2Deploy(target) {
+  if (!bv2State.files || bv2State.files.length === 0) {
+    showToast('Nothing to deploy — build first', 'warn');
+    return;
+  }
+
+  var deployChip = document.getElementById('bv2MetaDeploy');
+  var deployText = document.getElementById('bv2MetaDeployText');
+  var deployBtn  = document.getElementById('bv2DeployRender');
+  var spinner    = document.getElementById('bv2DeploySpinner');
+
+  if (deployChip) deployChip.classList.add('is-building');
+  if (deployText) deployText.textContent = target.toUpperCase() + '...';
+  if (deployBtn)  deployBtn.disabled = true;
+  if (spinner)    spinner.style.display = 'inline-block';
+
+  bv2Log('[DEPLOY] Deploying to ' + target + '...', 'cmd');
+
+  var projectName = 'sal-builder-' + (bv2State.projectId ? bv2State.projectId.substring(0, 8) : Date.now());
+
+  fetch((typeof API !== 'undefined' ? API : 'https://www.saintsallabs.com') + '/api/builder/deploy', {
+    method:  'POST',
+    headers: Object.assign({ 'Content-Type': 'application/json' }, (typeof authHeaders === 'function' ? authHeaders() : {})),
+    body: JSON.stringify({
+      files:      bv2State.files,
+      project_id: bv2State.projectId,
+      target:     target,
+      name:       projectName,
+      framework:  bv2State.framework,
+    }),
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(res) {
+    if (deployChip) deployChip.classList.remove('is-building');
+    if (deployBtn)  deployBtn.disabled = false;
+    if (spinner)    spinner.style.display = 'none';
+
+    if (res.url || res.deploy_url) {
+      var url = res.url || res.deploy_url;
+      if (deployText) deployText.textContent = target.toUpperCase() + ' ✓';
+      bv2Log('[DEPLOY] Deployed to ' + target + ': ' + url, 'success');
+      showToast('Deployed! ' + url, 'success');
+      // Update preview URL
+      var urlEl = document.getElementById('bv2PreviewURL');
+      if (urlEl) urlEl.textContent = url;
+      // Open in new tab
+      window.open(url, '_blank');
+    } else if (res.error) {
+      throw new Error(res.error);
+    } else {
+      if (deployText) deployText.textContent = target.toUpperCase() + ' ✓';
+      bv2Log('[DEPLOY] Deploy initiated on ' + target, 'success');
+      showToast('Deploy initiated on ' + target, 'success');
+    }
+  })
+  .catch(function(err) {
+    if (deployChip) { deployChip.classList.remove('is-building'); deployChip.classList.add('is-error'); }
+    if (deployText) deployText.textContent = 'FAILED';
+    if (deployBtn)  deployBtn.disabled = false;
+    if (spinner)    spinner.style.display = 'none';
+    bv2Log('[DEPLOY] Error: ' + err.message, 'error');
+    showToast('Deploy failed: ' + err.message, 'error');
+    setTimeout(function() {
+      if (deployChip) deployChip.classList.remove('is-error');
+      if (deployText) deployText.textContent = 'READY';
+    }, 4000);
+  });
+}
+
+/**
+ * bv2Download — Download files as ZIP using JSZip.
+ */
+function bv2Download() {
+  if (!bv2State.files || bv2State.files.length === 0) {
+    showToast('Nothing to download — build first', 'warn');
+    return;
+  }
+
+  bv2Log('[DOWNLOAD] Creating ZIP...', 'cmd');
+
+  // Try JSZip (already loaded in app)
+  if (typeof JSZip === 'undefined') {
+    showToast('JSZip not available — cannot create ZIP', 'error');
+    bv2Log('[DOWNLOAD] JSZip not loaded', 'error');
+    return;
+  }
+
+  var zip = new JSZip();
+  bv2State.files.forEach(function(f) {
+    zip.file(f.name || 'file.txt', f.content || '');
+  });
+
+  zip.generateAsync({ type: 'blob' }).then(function(blob) {
+    var url = URL.createObjectURL(blob);
+    var a   = document.createElement('a');
+    a.href = url;
+    a.download = 'sal-builder-' + (bv2State.projectId ? bv2State.projectId.substring(0, 8) : 'project') + '.zip';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    bv2Log('[DOWNLOAD] ZIP downloaded — ' + bv2State.files.length + ' files', 'success');
+    showToast('ZIP downloaded!', 'success');
+  }).catch(function(err) {
+    bv2Log('[DOWNLOAD] Error: ' + err.message, 'error');
+    showToast('Download failed: ' + err.message, 'error');
+  });
+}
+
+// ─── Pickers ───────────────────────────────────────────────
+
+/**
+ * bv2ToggleModelPicker — Open/close model dropdown.
+ */
+function bv2ToggleModelPicker(e) {
+  if (e) e.stopPropagation();
+  var dropdown = document.getElementById('bv2ModelDropdown');
+  if (!dropdown) return;
+  var isOpen = dropdown.classList.toggle('is-open');
+  var trigger = document.getElementById('bv2ModelTrigger');
+  if (trigger) trigger.setAttribute('aria-expanded', String(isOpen));
+}
+
+/**
+ * bv2ToggleFrameworkPicker — Open/close framework dropdown.
+ */
+function bv2ToggleFrameworkPicker(e) {
+  if (e) e.stopPropagation();
+  var dropdown = document.getElementById('bv2FwDropdown');
+  if (!dropdown) return;
+  var isOpen = dropdown.classList.toggle('is-open');
+  var trigger = document.getElementById('bv2FrameworkTrigger');
+  if (trigger) trigger.setAttribute('aria-expanded', String(isOpen));
+}
+
+/**
+ * bv2SetModel — Update selected model.
+ */
+function bv2SetModel(model, label, dotClass, itemEl) {
+  bv2State.model        = model;
+  bv2State.modelLabel   = label;
+  bv2State.modelDotClass = dotClass;
+
+  var labelEl = document.getElementById('bv2ModelLabel');
+  if (labelEl) labelEl.textContent = label;
+
+  var dotEl = document.getElementById('bv2ModelDot');
+  if (dotEl) {
+    dotEl.className = 'bv2-model-dot ' + dotClass;
+  }
+
+  // Update selected state
+  document.querySelectorAll('#bv2ModelDropdown .bv2-picker-dropdown__item').forEach(function(el) {
+    el.classList.remove('is-selected');
+  });
+  if (itemEl) itemEl.classList.add('is-selected');
+
+  // Close dropdown
+  var dropdown = document.getElementById('bv2ModelDropdown');
+  if (dropdown) dropdown.classList.remove('is-open');
+
+  bv2Log('[MODEL] Switched to ' + label, 'info');
+}
+
+/**
+ * bv2SetFramework — Update selected framework.
+ */
+function bv2SetFramework(framework, label, dotColor, itemEl) {
+  bv2State.framework         = framework;
+  bv2State.frameworkLabel    = label;
+  bv2State.frameworkDotColor = dotColor;
+
+  var labelEl = document.getElementById('bv2FwLabel');
+  if (labelEl) labelEl.textContent = label;
+
+  var dotEl = document.getElementById('bv2FwDot');
+  if (dotEl) dotEl.style.background = dotColor;
+
+  // Update selected state
+  document.querySelectorAll('#bv2FwDropdown .bv2-picker-dropdown__item').forEach(function(el) {
+    el.classList.remove('is-selected');
+  });
+  if (itemEl) itemEl.classList.add('is-selected');
+
+  // Close dropdown
+  var dropdown = document.getElementById('bv2FwDropdown');
+  if (dropdown) dropdown.classList.remove('is-open');
+
+  bv2Log('[FRAMEWORK] Switched to ' + label, 'info');
+}
+
+// ─── Mobile Nav ────────────────────────────────────────────
+
+/**
+ * bv2MobileSwitch — Switch mobile panel.
+ */
+function bv2MobileSwitch(panel, btn) {
+  bv2State.mobilePanel = panel;
+
+  // Update tab buttons
+  document.querySelectorAll('.bv2-mobile-nav__tab').forEach(function(b) {
+    b.classList.remove('is-active');
+  });
+  if (btn) btn.classList.add('is-active');
+
+  // Panel mapping
+  var panelMap = { chat: 'bv2Left', code: 'bv2Center', preview: 'bv2Right', deploy: 'bv2Right' };
+  var activeId = panelMap[panel] || 'bv2Left';
+
+  ['bv2Left', 'bv2Center', 'bv2Right'].forEach(function(id) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    if (id === activeId) {
+      el.classList.add('is-mobile-active');
+    } else {
+      el.classList.remove('is-mobile-active');
+    }
+  });
+
+  // Special: deploy panel shows right panel + scroll to deploy bar
+  if (panel === 'deploy') {
+    setTimeout(function() {
+      var deployBar = document.querySelector('.bv2-deploy-bar');
+      if (deployBar) deployBar.scrollIntoView({ behavior: 'smooth' });
+    }, 100);
+  }
+}
+
+// ─── Quick Prompt ──────────────────────────────────────────
+
+/**
+ * bv2QuickPrompt — Fill prompt textarea and trigger build.
+ */
+function bv2QuickPrompt(text) {
+  var el = document.getElementById('bv2Prompt');
+  if (el) {
+    el.value = text;
+    el.style.height = 'auto';
+    el.style.height = Math.min(el.scrollHeight, 120) + 'px';
+    el.focus();
+  }
+  // Auto-trigger build
+  bv2Build();
+}
+
+// ─── File Upload ───────────────────────────────────────────
+
+/**
+ * bv2HandleFileUpload — Handle file attachment.
+ */
+function bv2HandleFileUpload(files) {
+  if (!files || files.length === 0) return;
+  var prompt = document.getElementById('bv2Prompt');
+  var attached = [];
+
+  Array.from(files).forEach(function(f) {
+    var reader = new FileReader();
+    reader.onload = function(e) {
+      attached.push({ name: f.name, content: e.target.result });
+      if (attached.length === files.length) {
+        bv2Log('[ATTACH] ' + attached.length + ' file(s) attached: ' + attached.map(function(a) { return a.name; }).join(', '), 'info');
+        showToast(attached.length + ' file(s) attached', 'success');
+        // Prepend filenames to prompt
+        if (prompt) {
+          var names = attached.map(function(a) { return a.name; }).join(', ');
+          if (!prompt.value) prompt.value = 'Using files: ' + names + '\n';
+          prompt.focus();
+        }
+      }
+    };
+    reader.readAsText(f);
+  });
+
+  // Reset input so same file can be re-attached
+  var inputEl = document.getElementById('bv2FileInput');
+  if (inputEl) inputEl.value = '';
+}
+
+// ─── Mic / Voice Input ─────────────────────────────────────
+
+/**
+ * bv2ToggleMic — Toggle voice input (Web Speech API).
+ */
+function bv2ToggleMic() {
+  var btn = document.getElementById('bv2MicBtn');
+  if (!('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)) {
+    showToast('Voice input not supported in this browser', 'warn');
+    return;
+  }
+
+  if (bv2State.micActive) {
+    // Stop
+    if (bv2State.recognition) bv2State.recognition.stop();
+    bv2State.micActive = false;
+    if (btn) btn.style.color = '';
+    return;
+  }
+
+  var SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  var rec = new SpeechRecognition();
+  rec.lang = 'en-US';
+  rec.interimResults = false;
+  rec.maxAlternatives = 1;
+
+  rec.onresult = function(e) {
+    var transcript = e.results[0][0].transcript;
+    var promptEl = document.getElementById('bv2Prompt');
+    if (promptEl) promptEl.value += (promptEl.value ? ' ' : '') + transcript;
+    bv2Log('[MIC] Transcript: "' + transcript + '"', 'info');
+  };
+
+  rec.onerror = function(e) {
+    bv2Log('[MIC] Error: ' + e.error, 'error');
+    bv2State.micActive = false;
+    if (btn) btn.style.color = '';
+  };
+
+  rec.onend = function() {
+    bv2State.micActive = false;
+    if (btn) btn.style.color = '';
+  };
+
+  rec.start();
+  bv2State.recognition = rec;
+  bv2State.micActive = true;
+  if (btn) btn.style.color = 'var(--bv2-error)';
+  showToast('Listening... speak now', 'info');
+}
+
+// ─── Reset ─────────────────────────────────────────────────
+
+/**
+ * bv2ResetState — Full state reset.
+ */
+function bv2ResetState() {
+  bv2State.generating   = false;
+  bv2State.files        = [];
+  bv2State.activeFile   = -1;
+  bv2State.openTabs     = [];
+  bv2State.iteration    = 0;
+  bv2State.designTokens = null;
+  bv2State.previewSrcdoc = '';
+
+  if (bv2State.abortController) bv2State.abortController.abort();
+  bv2StopTimer();
+
+  bv2ResetAgentStatuses();
+  bv2RenderFileTree();
+  bv2RenderEditorEmpty();
+  bv2ShowPreviewEmpty();
+
+  var editorTabs = document.getElementById('bv2EditorTabs');
+  if (editorTabs) editorTabs.innerHTML = '';
+
+  var msgs = document.getElementById('bv2Messages');
+  if (msgs) msgs.innerHTML = '';
+
+  var welcome = document.getElementById('bv2Welcome');
+  if (welcome) welcome.style.display = 'flex';
+
+  bv2_updateIterationBadge();
+  bv2_updateFileCount();
+  bv2SetBuildingUI(false);
+  bv2Log('[SYSTEM] State reset', 'info');
+}
+
+// ─── File Tree Resize ──────────────────────────────────────
+
+/**
+ * bv2SetupFileTreeResize — Drag handle for resizing file tree.
+ */
+function bv2SetupFileTreeResize() {
+  var handle  = document.getElementById('bv2FileTreeResize');
+  var tree    = document.getElementById('bv2FileTree');
+  if (!handle || !tree) return;
+
+  var dragging = false;
+  var startY   = 0;
+  var startH   = 0;
+
+  handle.addEventListener('mousedown', function(e) {
+    dragging = true;
+    startY   = e.clientY;
+    startH   = tree.offsetHeight;
+    e.preventDefault();
+  });
+
+  document.addEventListener('mousemove', function(e) {
+    if (!dragging) return;
+    var delta = e.clientY - startY;
+    var newH = Math.max(60, Math.min(startH + delta, window.innerHeight * 0.6));
+    tree.style.height = newH + 'px';
+  });
+
+  document.addEventListener('mouseup', function() {
+    dragging = false;
+  });
+}
+
+// ─── Utilities ─────────────────────────────────────────────
+
+function bv2_escapeHtml(str) {
+  if (typeof escapeHtml === 'function') return escapeHtml(str);
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+function bv2_escapeAttr(str) {
+  return String(str).replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+}
+
+function bv2_escapeRegex(str) {
+  return String(str).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function bv2_timeNow() {
+  var d = new Date();
+  var h = d.getHours().toString().padStart(2, '0');
+  var m = d.getMinutes().toString().padStart(2, '0');
+  return h + ':' + m;
+}
+
+function bv2_clockNow() {
+  var d = new Date();
+  var h = d.getHours().toString().padStart(2, '0');
+  var m = d.getMinutes().toString().padStart(2, '0');
+  var s = d.getSeconds().toString().padStart(2, '0');
+  return h + ':' + m + ':' + s;
+}
+
+// ─── Compat Exports (connect to existing app.js hooks) ─────
+
+// If the app expects builderChatState and builderRenderFiles to work,
+// keep bv2State files in sync.
+if (typeof builderChatState !== 'undefined') {
+  Object.defineProperty(builderChatState, 'files', {
+    get: function() { return bv2State.files; },
+    set: function(v) { bv2State.files = v; },
+    configurable: true,
+  });
+}
+
+// ─── Auto-Init on DOMContentLoaded ─────────────────────────
+// bv2Init() should be called explicitly when builder tab activates.
+// If document is already loaded and bv2Shell exists, init now.
+(function() {
+  function tryInit() {
+    if (document.getElementById('bv2Shell')) {
+      bv2Init();
+    }
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', tryInit);
+  } else {
+    // Defer to allow HTML to be injected first
+    setTimeout(tryInit, 50);
+  }
+})();
+
+
+// ── END BUILDER IDE v2 ──
 
 function builderViewFile(index) {
   var files = builderChatState.files;
