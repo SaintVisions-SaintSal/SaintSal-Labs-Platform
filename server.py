@@ -15460,14 +15460,6 @@ async def manual_promote(request: Request):
 
 # ─── Static file serving — MUST BE LAST (catch-all mount) ────────────────────
 # WARNING: Do NOT move this above any @app routes — it will block them (returns 404)
-app.mount("/", StaticFiles(directory=str(_static_dir), html=True), name="static")
-
-if __name__ == "__main__":
-    import uvicorn
-    port = int(os.environ.get("PORT", 8000))
-    uvicorn.run(app, host="0.0.0.0", port=port)
-
-
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # CREATIVE STUDIO v3.0 — Backend Endpoints
@@ -16460,3 +16452,11 @@ async def creative_usage(request: Request):
         return JSONResponse({"tier": tier, "usage": usage, "limits": limits})
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
+
+
+app.mount("/", StaticFiles(directory=str(_static_dir), html=True), name="static")
+
+if __name__ == "__main__":
+    import uvicorn
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run(app, host="0.0.0.0", port=port)
