@@ -235,7 +235,7 @@ CORPNET_BASE_URL = os.environ.get("CORPNET_API_BASE_STAGING", "https://api.stagi
 
 # ─── FileForms API (replaces CorpNet) ────────────────────────────────────────
 FILEFORMS_API_KEY = _env("FILEFORMS_API_KEY")
-FILEFORMS_BASE_URL = _env("FILEFORMS_BASE_URL", "https://api.fileforms.com")
+FILEFORMS_BASE_URL = _env("FILEFORMS_BASE_URL", "https://api.staging.fileforms.dev/v1")
 FILEFORMS_WEBHOOK_SECRET = _env("FILEFORMS_WEBHOOK_SECRET")
 
 # ─── Real Estate API Keys ────────────────────────────────────────────────────
@@ -2543,51 +2543,118 @@ async def get_compliance_info(state: str):
     return compliance
 
 
+async def _fileforms_api(method: str, path: str, body: dict = None) -> dict:
+    """Call FileForms REST API. Auth via x-api-key header."""
+    if not FILEFORMS_API_KEY:
+        return {"error": "FileForms API key not configured", "_error": True}
+    base = FILEFORMS_BASE_URL.rstrip("/")
+    url = f"{base}{path}"
+    headers = {"x-api-key": FILEFORMS_API_KEY, "Content-Type": "application/json", "Accept": "application/json"}
+    try:
+        async with httpx.AsyncClient(timeout=30) as hc:
+            if method.upper() == "GET":
+                resp = await hc.get(url, headers=headers)
+            elif method.upper() == "POST":
+                resp = await hc.post(url, headers=headers, json=body or {})
+            elif method.upper() == "PATCH":
+                resp = await hc.patch(url, headers=headers, json=body or {})
+            else:
+                return {"error": f"Unsupported method: {method}", "_error": True}
+            try:
+                data = resp.json()
+            except Exception:
+                data = {"raw": resp.text[:500]}
+            if resp.status_code not in (200, 201):
+                data["_status_code"] = resp.status_code
+                data["_error"] = True
+                print(f"[FileForms API] {method} {path} → {resp.status_code}: {resp.text[:200]}")
+            else:
+                print(f"[FileForms API] {method} {path} → {resp.status_code} OK")
+            return data
+    except Exception as e:
+        print(f"[FileForms API] {method} {path} EXCEPTION: {e}")
+        return {"error": str(e), "_error": True}
+
+
 # ─── FileForms Webhook + API (Business Formations) ───────────────────────────
 
 @app.post("/api/webhooks/fileforms")
 async def fileforms_webhook(request: Request):
-    """Receive webhook events from FileForms for order status updates."""
-    try:
-        payload = await request.body()
-        body = await request.json()
-    except Exception:
-        return JSONResponse({"error": "Invalid payload"}, status_code=400)
+    """Receive webhook events from FileForms. Verifies FileForms-Signature."""
+    import hmac, hashlib
 
-    # Optional: verify webhook signature if FILEFORMS_WEBHOOK_SECRET is set
+    payload = await request.body()
+
+    # Verify signature if secret is configured
     if FILEFORMS_WEBHOOK_SECRET:
-        sig = request.headers.get("x-fileforms-signature", request.headers.get("x-webhook-signature", ""))
-        if sig:
-            import hmac, hashlib
-            expected = hmac.new(FILEFORMS_WEBHOOK_SECRET.encode(), payload, hashlib.sha256).hexdigest()
-            if not hmac.compare_digest(sig, expected):
-                print(f"[FileForms Webhook] Signature mismatch")
-                return JSONResponse({"error": "Invalid signature"}, status_code=401)
+        sig_header = request.headers.get("FileForms-Signature", "")
+        if sig_header:
+            parts = {}
+            for part in sig_header.split(","):
+                if "=" in part:
+                    k, v = part.split("=", 1)
+                    parts[k.strip()] = v.strip()
+            timestamp = parts.get("t", "")
+            received_sig = parts.get("v1", "")
+            if timestamp and received_sig:
+                expected_sig = hmac.new(
+                    FILEFORMS_WEBHOOK_SECRET.encode(),
+                    f"{timestamp}.{payload.decode()}".encode(),
+                    hashlib.sha256
+                ).hexdigest()
+                if not hmac.compare_digest(received_sig, expected_sig):
+                    print(f"[FileForms Webhook] Signature mismatch")
+                    return JSONResponse({"error": "Invalid signature"}, status_code=401)
 
-    event_type = body.get("event", body.get("type", body.get("eventType", "unknown")))
-    order_id = body.get("orderId", body.get("order_id", body.get("id", "")))
-    status = body.get("status", body.get("orderStatus", ""))
-    data = body.get("data", body)
+    try:
+        body = json.loads(payload)
+    except Exception:
+        return JSONResponse({"error": "Invalid JSON"}, status_code=400)
 
-    print(f"[FileForms Webhook] Event: {event_type}, Order: {order_id}, Status: {status}")
+    event_type = body.get("type", "unknown")
+    event_id = body.get("id", "")
+    event_data = body.get("data", {})
 
-    # Store event in Supabase for tracking
-    if supabase_admin:
-        try:
-            supabase_admin.table("business_formations").upsert({
-                "fileforms_order_id": str(order_id),
-                "status": status or event_type,
-                "event_type": event_type,
-                "raw_data": json.dumps(data) if isinstance(data, dict) else str(data),
-                "updated_at": datetime.now().isoformat(),
-            }, on_conflict="fileforms_order_id").execute()
-        except Exception as db_err:
-            print(f"[FileForms Webhook] DB error: {db_err}")
-            # Table might not have fileforms columns yet — log and continue
+    print(f"[FileForms Webhook] Event: {event_type}, ID: {event_id}")
 
-    # Notify Cap of important events
-    important_events = ["order.completed", "order.filed", "order.error", "filing.approved", "filing.rejected"]
-    if event_type in important_events and RESEND_API_KEY:
+    if event_type == "document.uploaded":
+        order_id = event_data.get("orderId", "")
+        doc_id = event_data.get("documentId", "")
+        doc_type = event_data.get("documentType", "")
+        file_name = event_data.get("fileName", "")
+        file_url = event_data.get("fileUrl", "")
+        print(f"[FileForms Webhook] Document uploaded: {file_name} (type={doc_type}) for order {order_id}")
+
+        # Store in DB
+        if supabase_admin:
+            try:
+                supabase_admin.table("launch_pad_orders").update({
+                    "status": "document_uploaded",
+                    "document_id": doc_id,
+                    "document_url": file_url,
+                    "updated_at": datetime.now().isoformat(),
+                }).eq("fileforms_order_id", order_id).execute()
+            except Exception as e:
+                print(f"[FileForms Webhook] DB update error: {e}")
+
+    elif event_type == "filing.status_changed":
+        print(f"[FileForms Webhook] Filing status changed: {json.dumps(event_data)[:300]}")
+        # Update order status in DB
+        if supabase_admin and event_data:
+            try:
+                order_id = event_data.get("orderId", event_data.get("id", ""))
+                new_status = event_data.get("filingStatus", event_data.get("status", "updated"))
+                if order_id:
+                    supabase_admin.table("launch_pad_orders").update({
+                        "status": new_status,
+                        "raw_data": json.dumps(event_data),
+                        "updated_at": datetime.now().isoformat(),
+                    }).eq("fileforms_order_id", order_id).execute()
+            except Exception as e:
+                print(f"[FileForms Webhook] DB update error: {e}")
+
+    # Email Cap for all events
+    if RESEND_API_KEY:
         try:
             async with httpx.AsyncClient(timeout=10) as ec:
                 await ec.post("https://api.resend.com/emails", headers={
@@ -2595,13 +2662,13 @@ async def fileforms_webhook(request: Request):
                 }, json={
                     "from": "SaintSal Labs <support@cookin.io>",
                     "to": [os.environ.get("CAP_EMAIL", "ryan@hacpglobal.ai")],
-                    "subject": f"[FileForms] {event_type} — Order {order_id}",
-                    "html": f"<div><h3>FileForms Event: {event_type}</h3><p>Order: {order_id}</p><p>Status: {status}</p><pre>{json.dumps(data, indent=2)[:2000]}</pre></div>",
+                    "subject": f"[FileForms] {event_type}",
+                    "html": f"<pre>{json.dumps(body, indent=2)[:3000]}</pre>",
                 })
         except Exception:
             pass
 
-    return {"received": True, "event": event_type, "orderId": order_id}
+    return {"received": True}
 
 
 @app.get("/api/fileforms/status")
@@ -2613,6 +2680,196 @@ async def fileforms_integration_status():
         "webhook_url": "https://www.saintsallabs.com/api/webhooks/fileforms",
         "webhook_secret_configured": bool(FILEFORMS_WEBHOOK_SECRET),
     }
+
+
+# ─── Launch Pad Endpoints (FileForms) ─────────────────────────────────────────
+
+@app.post("/api/launchpad/user")
+async def launchpad_create_user(request: Request):
+    """Create a FileForms user for the current SAL user."""
+    user = await get_current_user(request.headers.get("authorization"))
+    if not user:
+        return JSONResponse({"error": "Authentication required"}, status_code=401)
+    body = await request.json()
+    result = await _fileforms_api("POST", "/users", {
+        "fullName": body.get("fullName", user.get("full_name", "")),
+        "email": body.get("email", user.get("email", "")),
+        "phoneNumber": body.get("phoneNumber", ""),
+    })
+    # Store fileforms_user_id in profile
+    if not result.get("_error") and result.get("id"):
+        if supabase_admin:
+            try:
+                supabase_admin.table("profiles").update({
+                    "metadata": json.dumps({"fileforms_user_id": result["id"]})
+                }).eq("id", user["id"]).execute()
+            except Exception:
+                pass
+    return result
+
+
+@app.post("/api/launchpad/company")
+async def launchpad_create_company(request: Request):
+    """Create a company entity in FileForms."""
+    user = await get_current_user(request.headers.get("authorization"))
+    if not user:
+        return JSONResponse({"error": "Authentication required"}, status_code=401)
+    body = await request.json()
+    result = await _fileforms_api("POST", "/companies", body)
+    # Store in launch_pad_orders table
+    if not result.get("_error") and result.get("id"):
+        if supabase_admin:
+            try:
+                supabase_admin.table("launch_pad_orders").insert({
+                    "user_id": user["id"],
+                    "order_type": "company_creation",
+                    "fileforms_company_id": result["id"],
+                    "company_name": body.get("legalName", ""),
+                    "entity_type": body.get("entityType", ""),
+                    "state": body.get("formationState", ""),
+                    "status": "created",
+                    "raw_data": json.dumps(result),
+                    "created_at": datetime.now().isoformat(),
+                }).execute()
+            except Exception as e:
+                print(f"[FileForms] DB error storing company: {e}")
+    return result
+
+
+@app.get("/api/launchpad/company/{company_id}")
+async def launchpad_get_company(company_id: str, request: Request):
+    """Get company details from FileForms."""
+    user = await get_current_user(request.headers.get("authorization"))
+    if not user:
+        return JSONResponse({"error": "Authentication required"}, status_code=401)
+    return await _fileforms_api("GET", f"/companies/{company_id}")
+
+
+@app.patch("/api/launchpad/company/{company_id}")
+async def launchpad_update_company(company_id: str, request: Request):
+    """Update company details in FileForms."""
+    user = await get_current_user(request.headers.get("authorization"))
+    if not user:
+        return JSONResponse({"error": "Authentication required"}, status_code=401)
+    body = await request.json()
+    return await _fileforms_api("PATCH", f"/companies/{company_id}", body)
+
+
+@app.post("/api/launchpad/order")
+async def launchpad_create_order(request: Request):
+    """Create a filing order (formation, annual report, registered agent)."""
+    user = await get_current_user(request.headers.get("authorization"))
+    if not user:
+        return JSONResponse({"error": "Authentication required"}, status_code=401)
+    body = await request.json()
+    result = await _fileforms_api("POST", "/orders", body)
+    if not result.get("_error"):
+        if supabase_admin:
+            try:
+                supabase_admin.table("launch_pad_orders").insert({
+                    "user_id": user["id"],
+                    "order_type": "filing",
+                    "fileforms_order_id": result.get("id", ""),
+                    "fileforms_company_id": body.get("companyId", result.get("companyId", "")),
+                    "status": "submitted",
+                    "state": body.get("filingState", ""),
+                    "raw_data": json.dumps(result),
+                    "created_at": datetime.now().isoformat(),
+                }).execute()
+            except Exception as e:
+                print(f"[FileForms] DB error storing order: {e}")
+    return result
+
+
+@app.get("/api/launchpad/documents/{document_id}")
+async def launchpad_get_document(document_id: str, request: Request):
+    """Get document details and download URL from FileForms."""
+    user = await get_current_user(request.headers.get("authorization"))
+    if not user:
+        return JSONResponse({"error": "Authentication required"}, status_code=401)
+    return await _fileforms_api("GET", f"/documents/{document_id}")
+
+
+@app.post("/api/launchpad/magic-link")
+async def launchpad_magic_link(request: Request):
+    """Generate a FileForms portal magic link for the user."""
+    user = await get_current_user(request.headers.get("authorization"))
+    if not user:
+        return JSONResponse({"error": "Authentication required"}, status_code=401)
+    body = await request.json()
+    ff_payload = {"userId": body.get("userId", "")}
+    if body.get("companyId"):
+        ff_payload["companyId"] = body["companyId"]
+    return await _fileforms_api("POST", "/auth/magic-link", ff_payload)
+
+
+@app.post("/api/launchpad/test")
+async def launchpad_test_submission(request: Request):
+    """Submit a test formation to FileForms staging. Admin only."""
+    user = await get_current_user(request.headers.get("authorization"))
+    cap_email = os.environ.get("CAP_EMAIL", "ryan@hacpglobal.ai")
+    if not user or user.get("email") != cap_email:
+        return JSONResponse({"error": "Admin only"}, status_code=403)
+
+    results = {}
+
+    # Step 1: Create test user
+    user_result = await _fileforms_api("POST", "/users", {
+        "fullName": "Test User",
+        "email": "test@saintsallabs.com",
+        "phoneNumber": "+15555550100",
+    })
+    results["user"] = user_result
+    if user_result.get("_error"):
+        return {"success": False, "step": "create_user", "results": results}
+
+    ff_user_id = user_result.get("id", "")
+
+    # Step 2: Create test company
+    company_result = await _fileforms_api("POST", "/companies", {
+        "legalName": "Test LLC",
+        "entityType": "LLC",
+        "structureType": "MEMBER",
+        "formationState": "DE",
+        "addressStreet": "123 Test Street",
+        "addressCity": "Wilmington",
+        "addressState": "DE",
+        "addressZip": "19801",
+    })
+    results["company"] = company_result
+    if company_result.get("_error"):
+        return {"success": False, "step": "create_company", "results": results}
+
+    ff_company_id = company_result.get("id", "")
+
+    # Step 3: Create test formation order
+    order_result = await _fileforms_api("POST", "/orders", {
+        "userId": ff_user_id,
+        "companyId": ff_company_id,
+        "filingState": "DE",
+    })
+    results["order"] = order_result
+
+    # Store in launch_pad_orders
+    if supabase_admin and not order_result.get("_error"):
+        try:
+            supabase_admin.table("launch_pad_orders").insert({
+                "user_id": user["id"],
+                "order_type": "test_filing",
+                "fileforms_user_id": ff_user_id,
+                "fileforms_company_id": ff_company_id,
+                "fileforms_order_id": order_result.get("id", ""),
+                "company_name": "Test LLC",
+                "entity_type": "LLC",
+                "state": "DE",
+                "status": "test_submitted",
+                "raw_data": json.dumps(results),
+                "created_at": datetime.now().isoformat(),
+            }).execute()
+        except Exception as e:
+            results["db_error"] = str(e)
+
+    return {"success": not order_result.get("_error"), "results": results}
 
 
 # ─── Ticker Banners per Vertical ──────────────────────────────────────────────
