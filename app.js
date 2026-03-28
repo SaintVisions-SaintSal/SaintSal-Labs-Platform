@@ -8630,966 +8630,3450 @@ function toggleBuilderMic() {
    Brand DNA · Campaigns · Content Gen · Media Library · Connected Platforms
    ============================================ */
 
-var socialStudioState = {
-  tab: 'brand-dna',
-  brandDNA: null,
+/* ════════════════════════════════════════════════════════════════════
+   CREATIVE STUDIO v3.0 — Full 8-Module Creative Platform
+   Content Engine · Image Gen · Video · Social · Ad Creative
+   Brand Profiles · Marketing Auto · Tiering
+   ════════════════════════════════════════════════════════════════════ */
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// CREATIVE STUDIO — SaintSal Labs Platform
+// Complete replacement for Social Studio (~920 lines) with 8-module Creative Studio
+// ES5-compatible, global functions, no modules/classes/IIFE
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// ─── Global State ─────────────────────────────────────────────────────────────
+var creativeStudioState = {
+  tab: 'content-engine',
+  brand: null,
+  brandProfiles: [],
+  templates: [],
+  calendar: { month: null, year: null, posts: [] },
+  media: { items: [], loading: false, loaded: false },
+  imageGen: { model: 'dalle3', generating: false, results: [], prompt: '', size: '1024x1024' },
+  videoGen: { tier: 'quick', generating: false, progress: 0, storyboard: [] },
   campaigns: [],
-  mediaItems: [],
-  connectedPlatforms: [],
-  generating: false,
-  loadingBrand: false,
-  loadingCampaigns: false,
-  loadingMedia: false
+  adCreative: { packages: [], generating: false },
+  platforms: { accounts: [], loading: false },
+  marketing: { workflows: [], loading: false },
+  tierInfo: { current: 'free', usage: {}, limits: {} },
+  _loadedTabs: {}
 };
 
-function renderSocialStudio() {
+// ─── Template Data ─────────────────────────────────────────────────────────────
+var CS_TEMPLATES = [
+  { id: 'just-listed', category: 'real-estate', name: 'Just Listed', icon: '\uD83C\uDFE0', desc: 'New property listing announcement', vars: ['address', 'price', 'beds', 'baths', 'sqft'] },
+  { id: 'open-house', category: 'real-estate', name: 'Open House', icon: '\uD83D\uDEAA', desc: 'Open house invitation', vars: ['address', 'date', 'time'] },
+  { id: 'market-update', category: 'real-estate', name: 'Market Update', icon: '\uD83D\uDCCA', desc: 'Monthly market analysis', vars: ['market', 'trend'] },
+  { id: 'loan-spotlight', category: 'lending', name: 'Loan Product Spotlight', icon: '\uD83D\uDCB0', desc: 'Feature a loan product', vars: ['product_name', 'rates', 'terms'] },
+  { id: 'success-story', category: 'lending', name: 'Success Story', icon: '\u2B50', desc: 'Client success story', vars: ['client_name', 'deal_type', 'amount'] },
+  { id: 'thought-leadership', category: 'professional', name: 'Thought Leadership', icon: '\uD83D\uDCA1', desc: 'Expert opinion piece', vars: ['topic', 'angle'] },
+  { id: 'case-study', category: 'professional', name: 'Case Study', icon: '\uD83D\uDCCB', desc: 'Detailed case study', vars: ['client', 'challenge', 'result'] },
+  { id: 'product-launch', category: 'ecommerce', name: 'Product Launch', icon: '\uD83D\uDE80', desc: 'New product announcement', vars: ['product_name', 'price', 'features'] },
+  { id: 'flash-sale', category: 'ecommerce', name: 'Flash Sale', icon: '\u26A1', desc: 'Limited time offer', vars: ['discount', 'duration', 'products'] },
+  { id: 'community-event', category: 'faith', name: 'Community Event', icon: '\uD83D\uDE4F', desc: 'Event promotion', vars: ['event_name', 'date', 'location'] },
+  { id: 'ministry-update', category: 'faith', name: 'Ministry Update', icon: '\u271D\uFE0F', desc: 'Ministry news and updates', vars: ['topic', 'message'] }
+];
+
+// ─── Platform Color Map ────────────────────────────────────────────────────────
+var CS_PLATFORM_COLORS = {
+  facebook: '#1877F2',
+  instagram: '#E4405F',
+  linkedin: '#0A66C2',
+  tiktok: '#000000',
+  twitter: '#1DA1F2',
+  google: '#4285F4'
+};
+
+// ─── Helper: API Wrapper ───────────────────────────────────────────────────────
+function csAPI(path, opts) {
+  var options = opts || {};
+  options.headers = Object.assign({ 'Content-Type': 'application/json' }, authHeaders(), options.headers || {});
+  return fetch(API + path, options).then(function(r) { return r.json(); });
+}
+
+// ─── Helper: Format Date ───────────────────────────────────────────────────────
+function csFormatDate(date) {
+  if (!date) return '';
+  var d = (date instanceof Date) ? date : new Date(date);
+  var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  return months[d.getMonth()] + ' ' + d.getDate() + ', ' + d.getFullYear();
+}
+
+// ─── Helper: Format Number ─────────────────────────────────────────────────────
+function csFormatNumber(n) {
+  if (n === null || n === undefined) return '0';
+  return Number(n).toLocaleString();
+}
+
+// ─── Helper: Days in Month ────────────────────────────────────────────────────
+function getDaysInMonth(month, year) {
+  return new Date(year, month + 1, 0).getDate();
+}
+
+// ─── Helper: First Day of Month ───────────────────────────────────────────────
+function getFirstDayOfMonth(month, year) {
+  return new Date(year, month, 1).getDay();
+}
+
+// ─── Helper: Modal ────────────────────────────────────────────────────────────
+function csModal(title, bodyHtml, actions) {
+  var existing = document.getElementById('csModalOverlay');
+  if (existing) existing.remove();
+
+  var actHtml = '';
+  if (actions && actions.length) {
+    actHtml = '<div style="display:flex;gap:10px;justify-content:flex-end;margin-top:20px;">';
+    for (var i = 0; i < actions.length; i++) {
+      var a = actions[i];
+      actHtml += '<button class="' + (a.cls || 'cs-btn-secondary') + '" onclick="' + escHTML(a.onclick) + '">' + escHTML(a.label) + '</button>';
+    }
+    actHtml += '</div>';
+  }
+
+  var overlay = document.createElement('div');
+  overlay.id = 'csModalOverlay';
+  overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:center;justify-content:center;';
+  overlay.innerHTML = '<div style="background:#1a1a2e;border:1px solid rgba(212,168,67,0.3);border-radius:12px;padding:28px;max-width:600px;width:90%;max-height:80vh;overflow-y:auto;">' +
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">' +
+      '<h3 style="color:#d4a843;margin:0;font-size:18px;">' + escHTML(title) + '</h3>' +
+      '<button onclick="csCloseModal()" style="background:none;border:none;color:#999;cursor:pointer;font-size:20px;">&times;</button>' +
+    '</div>' +
+    '<div>' + bodyHtml + '</div>' +
+    actHtml +
+  '</div>';
+  document.body.appendChild(overlay);
+}
+
+function csCloseModal() {
+  var overlay = document.getElementById('csModalOverlay');
+  if (overlay) overlay.remove();
+}
+
+// ─── Helper: Loading Spinner HTML ─────────────────────────────────────────────
+function csSpinner(msg) {
+  return '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px;gap:16px;">' +
+    '<div style="width:40px;height:40px;border:3px solid rgba(212,168,67,0.2);border-top-color:#d4a843;border-radius:50%;animation:spin 0.8s linear infinite;"></div>' +
+    '<div style="color:#999;font-size:14px;">' + escHTML(msg || 'Loading...') + '</div>' +
+  '</div>';
+}
+
+// ─── Helper: Empty State ──────────────────────────────────────────────────────
+function csEmpty(icon, msg, sub) {
+  return '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:60px 20px;gap:12px;opacity:0.6;">' +
+    '<div style="font-size:40px;">' + icon + '</div>' +
+    '<div style="color:#ccc;font-size:16px;font-weight:600;">' + escHTML(msg) + '</div>' +
+    (sub ? '<div style="color:#999;font-size:13px;text-align:center;">' + escHTML(sub) + '</div>' : '') +
+  '</div>';
+}
+
+// ─── Entry Point ──────────────────────────────────────────────────────────────
+function renderCreativeStudio() {
   var root = document.getElementById('socialStudioRoot');
   if (!root) return;
 
-  root.innerHTML = '<div class="social-studio-container">' +
-    '<div class="social-studio-header">' +
-      '<div style="display:flex;align-items:center;gap:12px;">' +
-        '<svg width="28" height="28" fill="none" viewBox="0 0 24 24"><path d="M17 2H7a5 5 0 00-5 5v10a5 5 0 005 5h10a5 5 0 005-5V7a5 5 0 00-5-5z" stroke="var(--accent-gold)" stroke-width="1.5"/><circle cx="12" cy="12" r="3" stroke="var(--accent-gold)" stroke-width="1.5"/><circle cx="17.5" cy="6.5" r="1.5" fill="var(--accent-gold)"/></svg>' +
-        '<div><div class="social-studio-title">Social Studio</div>' +
-        '<div class="social-studio-subtitle">Brand DNA · Content Generation · Campaign Management</div></div>' +
-      '</div>' +
-    '</div>' +
-    '<div class="social-studio-tabs" id="socialStudioTabs"></div>' +
-    '<div class="social-studio-body" id="socialStudioBody"></div>' +
-  '</div>';
+  var tabs = [
+    { id: 'content-engine', label: 'Content Engine', icon: '\u270D\uFE0F' },
+    { id: 'image-gen', label: 'Image Gen', icon: '\uD83C\uDFA8' },
+    { id: 'video-prod', label: 'Video Studio', icon: '\uD83C\uDFAC' },
+    { id: 'social-posting', label: 'Social Calendar', icon: '\uD83D\uDCC5' },
+    { id: 'ad-creative', label: 'Ad Creative', icon: '\uD83D\uDCE2' },
+    { id: 'brand-profiles', label: 'Brand Profiles', icon: '\uD83C\uDFF7\uFE0F' },
+    { id: 'marketing-auto', label: 'Marketing Auto', icon: '\u26A1' },
+    { id: 'tiering', label: 'Plans & Usage', icon: '\uD83D\uDCCA' }
+  ];
 
-  renderSocialStudioTabs();
-  renderSocialStudioTab(socialStudioState.tab);
+  var tabsHtml = tabs.map(function(t) {
+    var isActive = creativeStudioState.tab === t.id;
+    return '<div class="cs-tab' + (isActive ? ' active' : '') + '" onclick="switchCSTab(\'' + t.id + '\')" data-tab="' + t.id + '">' +
+      '<span style="font-size:14px;">' + t.icon + '</span>' +
+      '<span style="font-size:12px;">' + t.label + '</span>' +
+    '</div>';
+  }).join('');
+
+  root.innerHTML =
+    '<div class="social-studio-container">' +
+      '<div class="social-studio-header">' +
+        '<div style="display:flex;align-items:center;gap:12px;">' +
+          '<svg width="28" height="28" fill="none" viewBox="0 0 24 24">' +
+            '<path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" stroke="#d4a843" stroke-width="1.5" fill="none"/>' +
+          '</svg>' +
+          '<div>' +
+            '<div class="social-studio-title">Creative Studio</div>' +
+            '<div class="social-studio-subtitle">Content Engine &middot; Image &amp; Video &middot; Social Calendar &middot; Ad Creative &middot; Brand Profiles</div>' +
+          '</div>' +
+        '</div>' +
+        '<div style="display:flex;align-items:center;gap:8px;">' +
+          '<div style="background:rgba(212,168,67,0.15);border:1px solid rgba(212,168,67,0.3);border-radius:20px;padding:4px 12px;font-size:12px;color:#d4a843;">' +
+            '\u2B50 ' + (creativeStudioState.tierInfo.current || 'Free') +
+          '</div>' +
+        '</div>' +
+      '</div>' +
+      '<div class="social-studio-tabs" id="csTabs" style="display:flex;overflow-x:auto;gap:4px;padding:0 16px;">' +
+        tabsHtml +
+      '</div>' +
+      '<div class="social-studio-body" id="csBody" style="padding:20px;"></div>' +
+    '</div>';
+
+  // Inject Creative Studio tab styles if not already present
+  if (!document.getElementById('csTabStyles')) {
+    var style = document.createElement('style');
+    style.id = 'csTabStyles';
+    style.textContent = '.cs-tab{display:flex;flex-direction:column;align-items:center;gap:3px;padding:10px 14px;border-radius:8px 8px 0 0;cursor:pointer;color:#999;transition:all 0.2s;white-space:nowrap;border-bottom:2px solid transparent;}.cs-tab:hover{color:#ccc;background:rgba(255,255,255,0.05);}.cs-tab.active{color:#d4a843;background:rgba(212,168,67,0.08);border-bottom-color:#d4a843;}.cs-btn-gold{background:#d4a843;color:#000;border:none;border-radius:8px;padding:10px 20px;font-size:14px;font-weight:600;cursor:pointer;transition:all 0.2s;}.cs-btn-gold:hover{background:#e6b84d;}.cs-btn-secondary{background:rgba(255,255,255,0.08);color:#ccc;border:1px solid rgba(255,255,255,0.15);border-radius:8px;padding:10px 20px;font-size:14px;cursor:pointer;transition:all 0.2s;}.cs-btn-secondary:hover{background:rgba(255,255,255,0.12);color:#fff;}.cs-card{background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:10px;padding:16px;}.cs-input{width:100%;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.15);border-radius:8px;color:#fff;padding:10px 14px;font-size:14px;box-sizing:border-box;outline:none;font-family:inherit;}.cs-input:focus{border-color:rgba(212,168,67,0.5);}.cs-textarea{width:100%;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.15);border-radius:8px;color:#fff;padding:10px 14px;font-size:14px;box-sizing:border-box;outline:none;resize:vertical;font-family:inherit;}.cs-textarea:focus{border-color:rgba(212,168,67,0.5);}.cs-select{width:100%;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.15);border-radius:8px;color:#fff;padding:10px 14px;font-size:14px;box-sizing:border-box;outline:none;font-family:inherit;}.cs-select option{background:#1a1a2e;color:#fff;}.cs-label{display:block;font-size:12px;color:#999;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.5px;}@keyframes spin{to{transform:rotate(360deg);}}.cs-grid-2{display:grid;grid-template-columns:1fr 1fr;gap:16px;}.cs-grid-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;}@media(max-width:768px){.cs-grid-2,.cs-grid-3{grid-template-columns:1fr;}}';
+    document.head.appendChild(style);
+  }
+
+  renderCSTab(creativeStudioState.tab);
 }
 
-function renderSocialStudioTabs() {
-  var tabs = [
-    { id: 'brand-dna', label: 'Brand DNA', icon: '🧬' },
-    { id: 'create', label: 'Create', icon: '✨' },
-    { id: 'campaigns', label: 'Campaigns', icon: '📋' },
-    { id: 'media', label: 'Media Library', icon: '🖼' },
-    { id: 'platforms', label: 'Platforms', icon: '🔗' }
+// ─── Tab Navigation ───────────────────────────────────────────────────────────
+function switchCSTab(tab) {
+  creativeStudioState.tab = tab;
+  var allTabs = document.querySelectorAll('[data-tab]');
+  for (var i = 0; i < allTabs.length; i++) {
+    if (allTabs[i].getAttribute('data-tab') === tab) {
+      allTabs[i].className = 'cs-tab active';
+    } else {
+      allTabs[i].className = 'cs-tab';
+    }
+  }
+  renderCSTab(tab);
+}
+
+function renderCSTab(tab) {
+  var body = document.getElementById('csBody');
+  if (!body) return;
+  body.innerHTML = csSpinner('Loading...');
+  switch (tab) {
+    case 'content-engine': renderContentEngine(body); break;
+    case 'image-gen': renderImageGen(body); break;
+    case 'video-prod': renderVideoStudio(body); break;
+    case 'social-posting': renderSocialCalendar(body); break;
+    case 'ad-creative': renderAdCreative(body); break;
+    case 'brand-profiles': renderBrandProfiles(body); break;
+    case 'marketing-auto': renderMarketingAuto(body); break;
+    case 'tiering': renderTieringDashboard(body); break;
+    default: body.innerHTML = csEmpty('\uD83D\uDCC1', 'Unknown Tab', tab);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// TAB 0: CONTENT ENGINE
+// ═══════════════════════════════════════════════════════════════════════════════
+
+var csContentState = {
+  platform: 'instagram',
+  contentType: 'post',
+  topic: '',
+  tone: 'professional',
+  seoEnabled: false,
+  templateId: null,
+  generating: false,
+  result: null,
+  calendarPlan: null,
+  generatingPlan: false,
+  batchGenerating: false,
+  templateVars: {}
+};
+
+function renderContentEngine(container) {
+  container.innerHTML =
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;min-height:600px;">' +
+      '<div>' +
+        '<div class="cs-card" style="margin-bottom:16px;">' +
+          '<div style="font-size:16px;font-weight:700;color:#fff;margin-bottom:16px;">\u270D\uFE0F Content Builder</div>' +
+          renderContentBuilderForm() +
+          '<div style="margin-top:16px;">' +
+            '<button class="cs-btn-gold" onclick="generateCSContent()" style="width:100%;" id="csGenerateBtn">' +
+              '\u2728 Generate Content' +
+            '</button>' +
+          '</div>' +
+        '</div>' +
+        '<div class="cs-card">' +
+          '<div style="font-size:14px;font-weight:600;color:#d4a843;margin-bottom:12px;">\uD83D\uDCC5 30-Day Calendar Plan</div>' +
+          renderCalendarAIPlanForm() +
+        '</div>' +
+      '</div>' +
+      '<div>' +
+        '<div class="cs-card" style="margin-bottom:16px;min-height:300px;" id="csPreviewPanel">' +
+          renderContentPreview() +
+        '</div>' +
+        '<div class="cs-card">' +
+          '<div style="font-size:14px;font-weight:600;color:#d4a843;margin-bottom:12px;">\uD83D\uDCC2 Templates</div>' +
+          renderTemplateGrid() +
+        '</div>' +
+      '</div>' +
+    '</div>';
+}
+
+function renderContentBuilderForm() {
+  var platforms = [
+    { id: 'instagram', label: 'Instagram', color: '#E4405F' },
+    { id: 'facebook', label: 'Facebook', color: '#1877F2' },
+    { id: 'linkedin', label: 'LinkedIn', color: '#0A66C2' },
+    { id: 'twitter', label: 'Twitter/X', color: '#1DA1F2' },
+    { id: 'tiktok', label: 'TikTok', color: '#000' },
+    { id: 'google', label: 'Google Business', color: '#4285F4' }
   ];
-  var el = document.getElementById('socialStudioTabs');
-  if (!el) return;
-  el.innerHTML = tabs.map(function(t) {
-    return '<div class="social-tab' + (socialStudioState.tab === t.id ? ' active' : '') + '" onclick="switchSocialTab(\'' + t.id + '\')">' +
-      '<span>' + t.icon + '</span> ' + t.label + '</div>';
+
+  var platformBtns = platforms.map(function(p) {
+    var isActive = csContentState.platform === p.id;
+    return '<button onclick="csSelectPlatform(\'' + p.id + '\')" style="' +
+      'padding:6px 12px;border-radius:20px;border:1px solid ' + p.color + ';' +
+      'background:' + (isActive ? p.color : 'transparent') + ';' +
+      'color:' + (isActive ? '#fff' : p.color) + ';' +
+      'cursor:pointer;font-size:11px;font-weight:600;transition:all 0.2s;">' +
+      p.label + '</button>';
+  }).join('');
+
+  var contentTypes = [
+    { id: 'post', label: 'Post' },
+    { id: 'story', label: 'Story' },
+    { id: 'reel-script', label: 'Reel Script' },
+    { id: 'carousel', label: 'Carousel' },
+    { id: 'blog', label: 'Blog Post' },
+    { id: 'email', label: 'Email' }
+  ];
+
+  var contentTypeOpts = contentTypes.map(function(c) {
+    return '<option value="' + c.id + '"' + (csContentState.contentType === c.id ? ' selected' : '') + '>' + c.label + '</option>';
+  }).join('');
+
+  var tones = ['professional', 'casual', 'bold', 'inspirational', 'humorous', 'educational', 'faith-forward', 'luxury'];
+  var toneOpts = tones.map(function(t) {
+    return '<option value="' + t + '"' + (csContentState.tone === t ? ' selected' : '') + '>' + t.charAt(0).toUpperCase() + t.slice(1) + '</option>';
+  }).join('');
+
+  return '<div style="display:flex;flex-direction:column;gap:14px;">' +
+    '<div>' +
+      '<label class="cs-label">Platform</label>' +
+      '<div style="display:flex;flex-wrap:wrap;gap:6px;" id="csPlatformBtns">' + platformBtns + '</div>' +
+    '</div>' +
+    '<div class="cs-grid-2">' +
+      '<div>' +
+        '<label class="cs-label">Content Type</label>' +
+        '<select class="cs-select" id="csContentType" onchange="csContentState.contentType=this.value">' + contentTypeOpts + '</select>' +
+      '</div>' +
+      '<div>' +
+        '<label class="cs-label">Tone Override</label>' +
+        '<select class="cs-select" id="csTone" onchange="csContentState.tone=this.value">' + toneOpts + '</select>' +
+      '</div>' +
+    '</div>' +
+    '<div>' +
+      '<label class="cs-label">Topic / Prompt</label>' +
+      '<textarea class="cs-textarea" id="csTopic" rows="3" placeholder="Describe the content topic, key message, or specific details..." onchange="csContentState.topic=this.value" oninput="csContentState.topic=this.value">' + escHTML(csContentState.topic) + '</textarea>' +
+    '</div>' +
+    '<div style="display:flex;align-items:center;gap:10px;">' +
+      '<label style="display:flex;align-items:center;gap:8px;cursor:pointer;">' +
+        '<input type="checkbox" id="csSEO"' + (csContentState.seoEnabled ? ' checked' : '') + ' onchange="csContentState.seoEnabled=this.checked" style="accent-color:#d4a843;">' +
+        '<span style="font-size:13px;color:#ccc;">SEO Optimize</span>' +
+      '</label>' +
+    '</div>' +
+    (csContentState.templateId ? '<div style="background:rgba(212,168,67,0.1);border:1px solid rgba(212,168,67,0.3);border-radius:8px;padding:10px;font-size:12px;color:#d4a843;">\uD83D\uDCCB Template active: ' + escHTML(csContentState.templateId) + ' <button onclick="csContentState.templateId=null;csContentState.templateVars={};renderContentEngine(document.getElementById(\'csBody\'))" style="background:none;border:none;color:#999;cursor:pointer;margin-left:8px;">&times;</button></div>' : '') +
+  '</div>';
+}
+
+function csSelectPlatform(platformId) {
+  csContentState.platform = platformId;
+  var btns = document.getElementById('csPlatformBtns');
+  if (!btns) return;
+  var platforms = [
+    { id: 'instagram', label: 'Instagram', color: '#E4405F' },
+    { id: 'facebook', label: 'Facebook', color: '#1877F2' },
+    { id: 'linkedin', label: 'LinkedIn', color: '#0A66C2' },
+    { id: 'twitter', label: 'Twitter/X', color: '#1DA1F2' },
+    { id: 'tiktok', label: 'TikTok', color: '#000' },
+    { id: 'google', label: 'Google Business', color: '#4285F4' }
+  ];
+  btns.innerHTML = platforms.map(function(p) {
+    var isActive = csContentState.platform === p.id;
+    return '<button onclick="csSelectPlatform(\'' + p.id + '\')" style="' +
+      'padding:6px 12px;border-radius:20px;border:1px solid ' + p.color + ';' +
+      'background:' + (isActive ? p.color : 'transparent') + ';' +
+      'color:' + (isActive ? '#fff' : p.color) + ';' +
+      'cursor:pointer;font-size:11px;font-weight:600;transition:all 0.2s;">' +
+      p.label + '</button>';
   }).join('');
 }
 
-function switchSocialTab(tab) {
-  socialStudioState.tab = tab;
-  renderSocialStudioTabs();
-  renderSocialStudioTab(tab);
+function renderContentPreview() {
+  if (csContentState.generating) {
+    return '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:250px;gap:16px;">' +
+      '<div style="width:36px;height:36px;border:3px solid rgba(212,168,67,0.2);border-top-color:#d4a843;border-radius:50%;animation:spin 0.8s linear infinite;"></div>' +
+      '<div style="color:#d4a843;font-size:14px;">Generating content with AI...</div>' +
+    '</div>';
+  }
+  if (!csContentState.result) {
+    return '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:250px;gap:12px;opacity:0.5;">' +
+      '<div style="font-size:36px;">\u270D\uFE0F</div>' +
+      '<div style="color:#ccc;font-size:14px;">Generated content will appear here</div>' +
+      '<div style="color:#999;font-size:12px;">Set your platform, topic, and click Generate</div>' +
+    '</div>';
+  }
+  var res = csContentState.result;
+  return '<div>' +
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">' +
+      '<div style="font-size:14px;font-weight:600;color:#d4a843;">\u2728 Generated Content</div>' +
+      '<div style="display:flex;gap:8px;">' +
+        '<button class="cs-btn-secondary" onclick="csCopyResult()" style="padding:6px 12px;font-size:12px;">\uD83D\uDCCB Copy</button>' +
+        '<button class="cs-btn-secondary" onclick="csSaveResult()" style="padding:6px 12px;font-size:12px;">\uD83D\uDCBE Save</button>' +
+        '<button class="cs-btn-gold" onclick="csPublishResult()" style="padding:6px 12px;font-size:12px;">\uD83D\uDE80 Publish</button>' +
+      '</div>' +
+    '</div>' +
+    '<div style="background:rgba(255,255,255,0.04);border-radius:8px;padding:14px;font-size:14px;color:#e0e0e0;line-height:1.7;white-space:pre-wrap;word-break:break-word;">' +
+      escHTML(res.content || '') +
+    '</div>' +
+    (res.hashtags ? '<div style="margin-top:10px;font-size:12px;color:#d4a843;">' + escHTML(res.hashtags) + '</div>' : '') +
+    (res.character_count ? '<div style="margin-top:8px;font-size:11px;color:#666;">' + csFormatNumber(res.character_count) + ' chars</div>' : '') +
+  '</div>';
 }
 
-function renderSocialStudioTab(tab) {
-  var body = document.getElementById('socialStudioBody');
-  if (!body) return;
+function generateCSContent() {
+  var topic = document.getElementById('csTopic');
+  if (topic) csContentState.topic = topic.value;
+  var contentType = document.getElementById('csContentType');
+  if (contentType) csContentState.contentType = contentType.value;
+  var tone = document.getElementById('csTone');
+  if (tone) csContentState.tone = tone.value;
+  var seo = document.getElementById('csSEO');
+  if (seo) csContentState.seoEnabled = seo.checked;
 
-  if (tab === 'brand-dna') { renderBrandDNATab(body); }
-  else if (tab === 'create') { renderCreateTab(body); }
-  else if (tab === 'campaigns') { renderCampaignsTab(body); }
-  else if (tab === 'media') { renderMediaTab(body); }
-  else if (tab === 'platforms') { renderPlatformsTab(body); }
-}
-
-/* ---- BRAND DNA TAB ---- */
-function renderBrandDNATab(container) {
-  if (socialStudioState.loadingBrand) {
-    container.innerHTML = '<div class="social-loading">Loading Brand DNA...</div>';
+  if (!csContentState.topic || !csContentState.topic.trim()) {
+    showToast('Please enter a topic or prompt', 'error');
     return;
   }
 
-  if (!socialStudioState.brandDNA) {
-    loadBrandDNA(container);
-    return;
-  }
+  csContentState.generating = true;
+  csContentState.result = null;
+  var panel = document.getElementById('csPreviewPanel');
+  if (panel) panel.innerHTML = renderContentPreview();
 
-  var b = socialStudioState.brandDNA;
-  container.innerHTML = '<div class="brand-dna-grid">' +
-    '<div class="brand-card">' +
-      '<div class="brand-card-title">Brand Identity</div>' +
-      '<div class="brand-field"><label>Brand Name</label><input type="text" id="brandName" value="' + escHTML(b.brand_name || '') + '" placeholder="Your brand name" /></div>' +
-      '<div class="brand-field"><label>Tagline</label><input type="text" id="brandTagline" value="' + escHTML(b.tagline || '') + '" placeholder="Your tagline" /></div>' +
-      '<div class="brand-field"><label>Mission</label><textarea id="brandMission" rows="3" placeholder="What drives your brand?">' + escHTML(b.mission || '') + '</textarea></div>' +
-      '<div class="brand-field"><label>Industry</label><input type="text" id="brandIndustry" value="' + escHTML(b.industry || '') + '" placeholder="e.g. AI Technology" /></div>' +
-    '</div>' +
-    '<div class="brand-card">' +
-      '<div class="brand-card-title">Voice & Tone</div>' +
-      '<div class="brand-field"><label>Voice</label><input type="text" id="brandVoice" value="' + escHTML(b.voice || '') + '" placeholder="e.g. Professional, Bold, Approachable" /></div>' +
-      '<div class="brand-field"><label>Tone Keywords</label><input type="text" id="brandToneKeywords" value="' + escHTML((b.tone_keywords || []).join(', ')) + '" placeholder="e.g. innovative, trustworthy, bold" /></div>' +
-      '<div class="brand-field"><label>Key Phrases</label><textarea id="brandPhrases" rows="2" placeholder="Signature phrases your brand uses">' + escHTML((b.key_phrases || []).join('\n')) + '</textarea></div>' +
-    '</div>' +
-    '<div class="brand-card">' +
-      '<div class="brand-card-title">Audience & Strategy</div>' +
-      '<div class="brand-field"><label>Target Audience</label><textarea id="brandAudience" rows="2" placeholder="Who are you speaking to?">' + escHTML(b.target_audience || '') + '</textarea></div>' +
-      '<div class="brand-field"><label>Content Pillars</label><input type="text" id="brandPillars" value="' + escHTML((b.content_pillars || []).join(', ')) + '" placeholder="e.g. Education, Innovation, Community" /></div>' +
-      '<div class="brand-field"><label>Hashtag Strategy</label><input type="text" id="brandHashtags" value="' + escHTML((b.hashtag_strategy || []).join(', ')) + '" placeholder="#yourbrand #innovation" /></div>' +
-    '</div>' +
-    '<div class="brand-card">' +
-      '<div class="brand-card-title">Visual Identity</div>' +
-      '<div class="brand-field"><label>Primary Color</label><div style="display:flex;gap:8px;align-items:center;"><input type="color" id="brandColorPrimary" value="' + (b.color_palette && b.color_palette.primary ? b.color_palette.primary : '#d4a843') + '" style="width:40px;height:32px;border:none;background:transparent;cursor:pointer;" /><span id="brandColorPrimaryLabel" style="font-size:13px;color:var(--text-secondary);">' + (b.color_palette && b.color_palette.primary ? b.color_palette.primary : '#d4a843') + '</span></div></div>' +
-      '<div class="brand-field"><label>Secondary Color</label><div style="display:flex;gap:8px;align-items:center;"><input type="color" id="brandColorSecondary" value="' + (b.color_palette && b.color_palette.secondary ? b.color_palette.secondary : '#2ecc71') + '" style="width:40px;height:32px;border:none;background:transparent;cursor:pointer;" /><span id="brandColorSecondaryLabel" style="font-size:13px;color:var(--text-secondary);">' + (b.color_palette && b.color_palette.secondary ? b.color_palette.secondary : '#2ecc71') + '</span></div></div>' +
-      '<div class="brand-field"><label>Font Preferences</label><input type="text" id="brandFonts" value="' + escHTML(b.font_preferences || '') + '" placeholder="e.g. Orbitron, Inter" /></div>' +
-    '</div>' +
-  '</div>' +
-  '<div style="display:flex;gap:12px;margin-top:20px;">' +
-    '<button class="social-btn primary" onclick="saveBrandDNA()">Save Brand DNA</button>' +
-    '<button class="social-btn secondary" onclick="analyzeBrandDNA()">AI Analyze & Enhance</button>' +
-  '</div>' +
-  '<div id="brandDNAStatus" style="margin-top:12px;font-size:13px;"></div>';
-}
-
-function loadBrandDNA(container) {
-  socialStudioState.loadingBrand = true;
-  if (container) container.innerHTML = '<div class="social-loading">Loading Brand DNA...</div>';
-  fetch(API + '/api/social-studio/brand-dna', { headers: authHeaders() })
-    .then(function(r) { return r.json(); })
-    .then(function(data) {
-      socialStudioState.loadingBrand = false;
-      if (data.brand_dna) {
-        socialStudioState.brandDNA = data.brand_dna;
-      } else {
-        socialStudioState.brandDNA = { brand_name: '', tagline: '', mission: '', industry: '', voice: '', tone_keywords: [], key_phrases: [], target_audience: '', content_pillars: [], hashtag_strategy: [], color_palette: { primary: '#d4a843', secondary: '#2ecc71' }, font_preferences: '' };
-      }
-      renderBrandDNATab(container || document.getElementById('socialStudioBody'));
-    })
-    .catch(function() {
-      socialStudioState.loadingBrand = false;
-      socialStudioState.brandDNA = { brand_name: '', tagline: '', mission: '', industry: '', voice: '', tone_keywords: [], key_phrases: [], target_audience: '', content_pillars: [], hashtag_strategy: [], color_palette: { primary: '#d4a843', secondary: '#2ecc71' }, font_preferences: '' };
-      renderBrandDNATab(container || document.getElementById('socialStudioBody'));
-    });
-}
-
-function collectBrandDNA() {
-  return {
-    brand_name: (document.getElementById('brandName') || {}).value || '',
-    tagline: (document.getElementById('brandTagline') || {}).value || '',
-    mission: (document.getElementById('brandMission') || {}).value || '',
-    industry: (document.getElementById('brandIndustry') || {}).value || '',
-    voice: (document.getElementById('brandVoice') || {}).value || '',
-    tone_keywords: ((document.getElementById('brandToneKeywords') || {}).value || '').split(',').map(function(s) { return s.trim(); }).filter(Boolean),
-    key_phrases: ((document.getElementById('brandPhrases') || {}).value || '').split('\n').map(function(s) { return s.trim(); }).filter(Boolean),
-    target_audience: (document.getElementById('brandAudience') || {}).value || '',
-    content_pillars: ((document.getElementById('brandPillars') || {}).value || '').split(',').map(function(s) { return s.trim(); }).filter(Boolean),
-    hashtag_strategy: ((document.getElementById('brandHashtags') || {}).value || '').split(',').map(function(s) { return s.trim(); }).filter(Boolean),
-    color_palette: {
-      primary: (document.getElementById('brandColorPrimary') || {}).value || '#d4a843',
-      secondary: (document.getElementById('brandColorSecondary') || {}).value || '#2ecc71'
-    },
-    font_preferences: (document.getElementById('brandFonts') || {}).value || ''
+  var body = {
+    platform: csContentState.platform,
+    content_type: csContentState.contentType,
+    topic: csContentState.topic,
+    tone: csContentState.tone,
+    seo: csContentState.seoEnabled,
+    template_id: csContentState.templateId,
+    template_vars: csContentState.templateVars,
+    brand_id: creativeStudioState.brand ? creativeStudioState.brand.id : null
   };
-}
 
-function saveBrandDNA() {
-  var status = document.getElementById('brandDNAStatus');
-  if (status) status.innerHTML = '<span style="color:var(--text-muted);">Saving...</span>';
-  var data = collectBrandDNA();
-  // Persist to localStorage + sessionStorage immediately so chat context picks it up
-  var dnaInterests = [data.industry, data.brand_name, data.voice].filter(Boolean);
-  if (dnaInterests.length) {
-    localStorage.setItem('sal_dna', JSON.stringify(dnaInterests));
-    localStorage.setItem('sal_dna_primary', dnaInterests[0]);
-    sessionStorage.setItem('sal_dna', JSON.stringify(dnaInterests));
-  }
-  if (data.brand_name) localStorage.setItem('sal_brand_name', data.brand_name);
-  if (data.industry)   localStorage.setItem('sal_industry', data.industry);
-  fetch(API + '/api/social-studio/brand-dna', {
+  csAPI('/api/social-studio/generate', {
     method: 'POST',
-    headers: Object.assign({ 'Content-Type': 'application/json' }, authHeaders()),
-    body: JSON.stringify(data)
-  })
-    .then(function(r) { return r.json(); })
-    .then(function(res) {
-      if (res.brand_dna) socialStudioState.brandDNA = res.brand_dna;
-      if (status) status.innerHTML = '<span style="color:var(--accent-gold);">Brand DNA saved ✓</span>';
-      setTimeout(function() { if (status) status.innerHTML = ''; }, 3000);
-    })
-    .catch(function() {
-      if (status) status.innerHTML = '<span style="color:#ff6b6b;">Failed to save.</span>';
-    });
-}
-
-function analyzeBrandDNA() {
-  var status = document.getElementById('brandDNAStatus');
-  if (status) status.innerHTML = '<span style="color:var(--text-muted);">AI analyzing your brand...</span>';
-  var data = collectBrandDNA();
-  fetch(API + '/api/social-studio/brand-dna/analyze', {
-    method: 'POST',
-    headers: Object.assign({ 'Content-Type': 'application/json' }, authHeaders()),
-    body: JSON.stringify(data)
-  })
-    .then(function(r) { return r.json(); })
-    .then(function(res) {
-      if (res.enhanced_profile) {
-        socialStudioState.brandDNA = Object.assign(socialStudioState.brandDNA || {}, res.enhanced_profile);
-        renderBrandDNATab(document.getElementById('socialStudioBody'));
-      }
-      if (status) status.innerHTML = '<span style="color:var(--accent-gold);">Brand DNA enhanced by AI.</span>';
-    })
-    .catch(function() {
-      if (status) status.innerHTML = '<span style="color:#ff6b6b;">Analysis failed.</span>';
-    });
-}
-
-/* ---- CREATE (Content Gen) TAB ---- */
-function renderCreateTab(container) {
-  container.innerHTML = '<div class="create-content-grid">' +
-    '<div class="create-left">' +
-      '<div class="brand-card">' +
-        '<div class="brand-card-title">Generate Content</div>' +
-        '<div class="brand-field"><label>Platform</label>' +
-          '<select id="genPlatform" class="social-select">' +
-            '<option value="twitter">Twitter / X</option>' +
-            '<option value="instagram">Instagram</option>' +
-            '<option value="linkedin">LinkedIn</option>' +
-            '<option value="facebook">Facebook</option>' +
-            '<option value="tiktok">TikTok</option>' +
-            '<option value="youtube">YouTube</option>' +
-          '</select>' +
-        '</div>' +
-        '<div class="brand-field"><label>Content Type</label>' +
-          '<select id="genContentType" class="social-select">' +
-            '<option value="post">Post / Caption</option>' +
-            '<option value="thread">Thread / Carousel</option>' +
-            '<option value="story">Story Script</option>' +
-            '<option value="reel">Reel / Short Script</option>' +
-            '<option value="article">Long-form Article</option>' +
-          '</select>' +
-        '</div>' +
-        '<div class="brand-field"><label>Topic / Prompt</label><textarea id="genTopic" rows="3" placeholder="What do you want to post about?"></textarea></div>' +
-        '<div class="brand-field"><label>Tone Override (optional)</label><input type="text" id="genTone" placeholder="e.g. casual, urgent, celebratory" /></div>' +
-        '<button class="social-btn primary" onclick="generateSocialContent()" id="genBtn" style="margin-top:8px;">Generate</button>' +
-      '</div>' +
-    '</div>' +
-    '<div class="create-right">' +
-      '<div class="brand-card" style="min-height:300px;">' +
-        '<div class="brand-card-title">Preview</div>' +
-        '<div id="genPreview" class="gen-preview-area"><div style="color:var(--text-muted);font-size:14px;text-align:center;padding:60px 20px;">Your generated content will appear here</div></div>' +
-      '</div>' +
-    '</div>' +
-  '</div>';
-}
-
-function generateSocialContent() {
-  var btn = document.getElementById('genBtn');
-  var preview = document.getElementById('genPreview');
-  if (!preview) return;
-
-  var platform = (document.getElementById('genPlatform') || {}).value || 'twitter';
-  var contentType = (document.getElementById('genContentType') || {}).value || 'post';
-  var topic = (document.getElementById('genTopic') || {}).value || '';
-  var tone = (document.getElementById('genTone') || {}).value || '';
-
-  if (!topic.trim()) {
-    preview.innerHTML = '<div style="color:#ff6b6b;">Please enter a topic or prompt.</div>';
-    return;
-  }
-
-  if (btn) btn.disabled = true;
-  if (btn) btn.textContent = 'Generating...';
-  socialStudioState.generating = true;
-  preview.innerHTML = '<div class="social-loading">Generating content...</div>';
-
-  fetch(API + '/api/social-studio/generate', {
-    method: 'POST',
-    headers: Object.assign({ 'Content-Type': 'application/json' }, authHeaders()),
-    body: JSON.stringify({ platform: platform, content_type: contentType, topic: topic, tone: tone })
-  })
-    .then(function(r) { return r.json(); })
-    .then(function(data) {
-      socialStudioState.generating = false;
-      if (btn) { btn.disabled = false; btn.textContent = 'Generate'; }
-      if (data.error) {
-        preview.innerHTML = '<div style="color:#ff6b6b;">' + escHTML(data.error) + '</div>';
-        return;
-      }
-      var content = data.content || data.generated_content || '';
-      var hashtags = data.hashtags || [];
-      preview.innerHTML = '<div class="gen-result">' +
-        '<div class="gen-platform-badge">' + platform.toUpperCase() + ' · ' + contentType.toUpperCase() + '</div>' +
-        '<div class="gen-content-text">' + escHTML(content).replace(/\n/g, '<br>') + '</div>' +
-        (hashtags.length ? '<div class="gen-hashtags">' + hashtags.map(function(h) { return '<span class="gen-tag">' + escHTML(h) + '</span>'; }).join(' ') + '</div>' : '') +
-        '<div class="gen-actions">' +
-          '<button class="social-btn small" onclick="copyGenContent()">Copy</button>' +
-          '<button class="social-btn small secondary" onclick="saveToMediaLibrary(\'' + escHTML(platform) + '\', \'' + escHTML(contentType) + '\')">Save to Library</button>' +
-          '<button class="social-btn small primary" onclick="showPublishPanel()">Publish to Socials</button>' +
-        '</div>' +
-      '</div>';
-    })
-    .catch(function(err) {
-      socialStudioState.generating = false;
-      if (btn) { btn.disabled = false; btn.textContent = 'Generate'; }
-      preview.innerHTML = '<div style="color:#ff6b6b;">Generation failed. Check your connection.</div>';
-    });
-}
-
-function copyGenContent() {
-  var el = document.querySelector('.gen-content-text');
-  if (el) {
-    navigator.clipboard.writeText(el.innerText).then(function() {
-      showToast('Content copied to clipboard');
-    });
-  }
-}
-
-function saveToMediaLibrary(platform, contentType) {
-  var el = document.querySelector('.gen-content-text');
-  if (!el) return;
-  var content = el.innerText;
-  fetch(API + '/api/social-studio/media', {
-    method: 'POST',
-    headers: Object.assign({ 'Content-Type': 'application/json' }, authHeaders()),
-    body: JSON.stringify({
-      media_type: 'text',
-      title: content.substring(0, 60) + '...',
-      description: 'Generated for ' + platform + ' (' + contentType + ')',
-      content_text: content,
-      tags: [platform, contentType, 'ai-generated']
-    })
-  })
-    .then(function(r) { return r.json(); })
-    .then(function() { showToast('Saved to Media Library'); })
-    .catch(function() { showToast('Failed to save'); });
-}
-
-function publishGenContent(platform) {
-  showPublishPanel();
-}
-
-function showPublishPanel() {
-  var actionsEl = document.querySelector('.gen-actions');
-  if (!actionsEl) return;
-
-  actionsEl.innerHTML = '<div style="padding:8px 0;"><div style="font-size:11px;color:var(--text-muted);margin-bottom:8px;">Loading platforms...</div></div>';
-
-  fetch(API + '/api/social-studio/accounts', { headers: authHeaders() })
-    .then(function(r) { return r.json(); })
-    .then(function(data) {
-      var accounts = data.accounts || [];
-      var fallbackPlatforms = [
-        { id: 'facebook', name: 'Facebook' },
-        { id: 'instagram', name: 'Instagram' },
-        { id: 'linkedin', name: 'LinkedIn' },
-        { id: 'google_business', name: 'Google Business' },
-        { id: 'tiktok', name: 'TikTok' },
-      ];
-      var platforms = accounts.length ? accounts.map(function(a) {
-        return { id: a.platform || a.type || a.id, name: a.name || a.platform || a.type || 'Account' };
-      }) : fallbackPlatforms;
-
-      var checkboxes = platforms.map(function(p) {
-        return '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:4px 0;">' +
-          '<input type="checkbox" class="publish-platform-cb" value="' + escHTML(p.id) + '" checked style="accent-color:var(--accent-gold);"> ' +
-          '<span style="font-size:12px;color:var(--text-secondary);">' + escHTML(p.name) + '</span></label>';
-      }).join('');
-
-      var noAccountsMsg = (!accounts.length && data.provisioned === false) ?
-        '<div style="font-size:11px;color:var(--accent-gold);margin-bottom:8px;">Connect accounts at <a href="https://app.saintsallabs.com" target="_blank" style="color:var(--accent-gold);">app.saintsallabs.com</a> for direct posting.</div>' : '';
-
-      actionsEl.innerHTML = '<div style="border-top:1px solid rgba(255,255,255,0.06);padding-top:12px;margin-top:8px;">' +
-        '<div style="font-size:12px;font-weight:600;color:var(--text-primary);margin-bottom:8px;">Publish to Platforms</div>' +
-        noAccountsMsg +
-        '<div style="margin-bottom:10px;">' + checkboxes + '</div>' +
-        '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">' +
-          '<button class="social-btn small primary" onclick="executePublish(false)" id="publishNowBtn">Post Now</button>' +
-          '<input type="datetime-local" id="publishScheduleDate" style="background:var(--bg-surface-2);border:1px solid rgba(255,255,255,0.1);border-radius:6px;padding:4px 8px;font-size:11px;color:var(--text-secondary);outline:none;">' +
-          '<button class="social-btn small secondary" onclick="executePublish(true)">Schedule</button>' +
-          '<button class="social-btn small" onclick="cancelPublishPanel()">Cancel</button>' +
-        '</div>' +
-      '</div>';
-    })
-    .catch(function() {
-      actionsEl.innerHTML = '<div style="color:#ff6b6b;font-size:12px;">Failed to load platforms. <button class="social-btn small" onclick="showPublishPanel()">Retry</button></div>';
-    });
-}
-
-function executePublish(isScheduled) {
-  var el = document.querySelector('.gen-content-text');
-  if (!el) return;
-  var content = el.innerText;
-  var selectedPlatforms = [];
-  document.querySelectorAll('.publish-platform-cb:checked').forEach(function(cb) {
-    selectedPlatforms.push(cb.value);
-  });
-  if (!selectedPlatforms.length) { showToast('Select at least one platform'); return; }
-
-  var scheduleDate = null;
-  if (isScheduled) {
-    var dateInput = document.getElementById('publishScheduleDate');
-    if (!dateInput || !dateInput.value) { showToast('Pick a date and time to schedule'); return; }
-    scheduleDate = new Date(dateInput.value).toISOString();
-  }
-
-  var btn = document.getElementById('publishNowBtn');
-  if (btn) { btn.disabled = true; btn.textContent = isScheduled ? 'Scheduling...' : 'Publishing...'; }
-
-
-  fetch(API + '/api/social-studio/publish', {
-    method: 'POST',
-    headers: Object.assign({ 'Content-Type': 'application/json' }, authHeaders()),
-    body: JSON.stringify({
-      content: content,
-      platforms: selectedPlatforms,
-      mediaUrls: [],
-      scheduleDate: scheduleDate,
-      type: 'post',
-      ghl_location_id: ''
-    })
-  })
-    .then(function(r) { return r.json(); })
-    .then(function(data) {
-      if (data.success) {
-        showToast(data.message || ('Published to ' + selectedPlatforms.join(', ')));
-        cancelPublishPanel();
-      } else {
-        showToast(data.error || 'Publish failed', 'error');
-        if (btn) { btn.disabled = false; btn.textContent = isScheduled ? 'Schedule' : 'Post Now'; }
-      }
-    })
-    .catch(function() {
-      showToast('Network error — please try again');
-      if (btn) { btn.disabled = false; btn.textContent = isScheduled ? 'Schedule' : 'Post Now'; }
-    });
-}
-
-function cancelPublishPanel() {
-  var actionsEl = document.querySelector('.gen-actions');
-  if (!actionsEl) return;
-  var platform = document.querySelector('.gen-platform-badge');
-  var platformName = platform ? platform.textContent.split(' \u00B7 ')[0].toLowerCase() : '';
-  actionsEl.innerHTML = '<button class="social-btn small" onclick="copyGenContent()">Copy</button>' +
-    '<button class="social-btn small secondary" onclick="saveToMediaLibrary(\'' + escHTML(platformName) + '\', \'\')">Save to Library</button>' +
-    '<button class="social-btn small primary" onclick="showPublishPanel()">Publish to Socials</button>';
-}
-
-function scheduleGenContent(platform) {
-  var el = document.querySelector('.gen-content-text');
-  if (!el) return;
-  var content = el.innerText;
-  var dateStr = prompt('Enter schedule date/time (e.g. 2026-04-01T10:00):');
-  if (!dateStr) return;
-  var scheduleDate = new Date(dateStr).toISOString();
-  if (!scheduleDate || scheduleDate === 'Invalid Date') {
-    showToast('Invalid date. Please use format: 2026-04-01T10:00');
-    return;
-  }
-  fetch(API + '/api/social-studio/publish', {
-    method: 'POST',
-    headers: Object.assign({ 'Content-Type': 'application/json' }, authHeaders()),
-    body: JSON.stringify({
-      content: content,
-      mediaUrls: [],
-      platforms: [platform],
-      scheduleDate: scheduleDate,
-      type: 'post',
-      ghl_location_id: ''
-    })
-  })
-    .then(function(r) { return r.json(); })
-    .then(function(data) {
-      if (data.error) { showToast(data.error); }
-      else { showToast('Scheduled successfully!'); }
-    })
-    .catch(function() { showToast('Schedule failed'); });
-}
-
-/* ---- CAMPAIGNS TAB ---- */
-function renderCampaignsTab(container) {
-  if (socialStudioState.loadingCampaigns) {
-    container.innerHTML = '<div class="social-loading">Loading campaigns...</div>';
-    return;
-  }
-  if (!socialStudioState.campaigns.length && !socialStudioState._campaignsLoaded) {
-    loadCampaigns(container);
-    return;
-  }
-
-  var camps = socialStudioState.campaigns;
-  container.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">' +
-    '<div style="font-size:15px;color:var(--text-secondary);">' + camps.length + ' Campaign' + (camps.length !== 1 ? 's' : '') + '</div>' +
-    '<button class="social-btn primary" onclick="showNewCampaignForm()">+ New Campaign</button>' +
-  '</div>' +
-  '<div id="newCampaignForm" style="display:none;"></div>' +
-  '<div class="campaigns-list" id="campaignsList">' +
-    (camps.length === 0 ? '<div class="social-empty">No campaigns yet. Create your first campaign to organize your content.</div>' :
-    camps.map(function(c) {
-      var statusColor = c.status === 'active' ? 'var(--accent-gold)' : c.status === 'draft' ? 'var(--text-muted)' : '#2ecc71';
-      return '<div class="campaign-card" onclick="viewCampaign(\'' + c.id + '\')">' +
-        '<div style="display:flex;justify-content:space-between;align-items:center;">' +
-          '<div class="campaign-name">' + escHTML(c.name) + '</div>' +
-          '<span class="campaign-status" style="color:' + statusColor + ';">' + (c.status || 'draft').toUpperCase() + '</span>' +
-        '</div>' +
-        '<div class="campaign-desc">' + escHTML(c.description || 'No description') + '</div>' +
-        '<div class="campaign-meta">' +
-          (c.platforms ? '<span>' + (c.platforms || []).join(', ') + '</span>' : '') +
-          (c.start_date ? '<span> · Starts ' + new Date(c.start_date).toLocaleDateString() + '</span>' : '') +
-        '</div>' +
-      '</div>';
-    }).join('')) +
-  '</div>';
-}
-
-function loadCampaigns(container) {
-  socialStudioState.loadingCampaigns = true;
-  if (container) container.innerHTML = '<div class="social-loading">Loading campaigns...</div>';
-  fetch(API + '/api/social-studio/campaigns', { headers: authHeaders() })
-    .then(function(r) { return r.json(); })
-    .then(function(data) {
-      socialStudioState.loadingCampaigns = false;
-      socialStudioState._campaignsLoaded = true;
-      socialStudioState.campaigns = data.campaigns || [];
-      renderCampaignsTab(container || document.getElementById('socialStudioBody'));
-    })
-    .catch(function() {
-      socialStudioState.loadingCampaigns = false;
-      socialStudioState._campaignsLoaded = true;
-      socialStudioState.campaigns = [];
-      renderCampaignsTab(container || document.getElementById('socialStudioBody'));
-    });
-}
-
-function showNewCampaignForm() {
-  var form = document.getElementById('newCampaignForm');
-  if (!form) return;
-  form.style.display = form.style.display === 'none' ? 'block' : 'none';
-  form.innerHTML = '<div class="brand-card" style="margin-bottom:16px;">' +
-    '<div class="brand-card-title">New Campaign</div>' +
-    '<div class="brand-field"><label>Name</label><input type="text" id="newCampName" placeholder="Campaign name" /></div>' +
-    '<div class="brand-field"><label>Description</label><textarea id="newCampDesc" rows="2" placeholder="What is this campaign about?"></textarea></div>' +
-    '<div class="brand-field"><label>Platforms</label><input type="text" id="newCampPlatforms" placeholder="twitter, instagram, linkedin" /></div>' +
-    '<div class="brand-field"><label>Start Date</label><input type="date" id="newCampStart" /></div>' +
-    '<div class="brand-field"><label>End Date</label><input type="date" id="newCampEnd" /></div>' +
-    '<div style="display:flex;gap:8px;">' +
-      '<button class="social-btn primary" onclick="createCampaign()">Create</button>' +
-      '<button class="social-btn secondary" onclick="document.getElementById(\'newCampaignForm\').style.display=\'none\'">Cancel</button>' +
-    '</div>' +
-  '</div>';
-}
-
-function createCampaign() {
-  var name = (document.getElementById('newCampName') || {}).value;
-  var desc = (document.getElementById('newCampDesc') || {}).value;
-  var platforms = ((document.getElementById('newCampPlatforms') || {}).value || '').split(',').map(function(s) { return s.trim(); }).filter(Boolean);
-  var startDate = (document.getElementById('newCampStart') || {}).value;
-  var endDate = (document.getElementById('newCampEnd') || {}).value;
-
-  if (!name) { showToast('Campaign name is required'); return; }
-
-  fetch(API + '/api/social-studio/campaigns', {
-    method: 'POST',
-    headers: Object.assign({ 'Content-Type': 'application/json' }, authHeaders()),
-    body: JSON.stringify({ name: name, description: desc, platforms: platforms, start_date: startDate || null, end_date: endDate || null })
-  })
-    .then(function(r) { return r.json(); })
-    .then(function(data) {
-      if (data.campaign) {
-        socialStudioState.campaigns.unshift(data.campaign);
-        document.getElementById('newCampaignForm').style.display = 'none';
-        renderCampaignsTab(document.getElementById('socialStudioBody'));
-        showToast('Campaign created');
-      }
-    })
-    .catch(function() { showToast('Failed to create campaign'); });
-}
-
-function viewCampaign(campaignId) {
-  var body = document.getElementById('socialStudioBody');
-  if (!body) return;
-  var camp = socialStudioState.campaigns.find(function(c) { return c.id === campaignId; });
-  if (!camp) return;
-
-  body.innerHTML = '<div class="campaign-detail">' +
-    '<button class="social-btn secondary" onclick="switchSocialTab(\'campaigns\')" style="margin-bottom:16px;">&larr; Back to Campaigns</button>' +
-    '<div class="brand-card">' +
-      '<div style="display:flex;justify-content:space-between;align-items:center;">' +
-        '<div class="brand-card-title">' + escHTML(camp.name) + '</div>' +
-        '<div style="display:flex;gap:8px;">' +
-          '<button class="social-btn small" onclick="addCampaignItem(\'' + campaignId + '\')">+ Add Content</button>' +
-          '<button class="social-btn small danger" onclick="deleteCampaign(\'' + campaignId + '\')">Delete</button>' +
-        '</div>' +
-      '</div>' +
-      '<div style="color:var(--text-secondary);margin-bottom:16px;">' + escHTML(camp.description || '') + '</div>' +
-      '<div id="campaignItems" class="social-loading">Loading content items...</div>' +
-    '</div>' +
-  '</div>';
-
-  fetch(API + '/api/social-studio/campaigns/' + campaignId + '/items', { headers: authHeaders() })
-    .then(function(r) { return r.json(); })
-    .then(function(data) {
-      var items = data.items || [];
-      var el = document.getElementById('campaignItems');
-      if (!el) return;
-      if (items.length === 0) {
-        el.innerHTML = '<div class="social-empty">No content items yet. Click "+ Add Content" to create one.</div>';
-        return;
-      }
-      el.innerHTML = items.map(function(item) {
-        return '<div class="campaign-item">' +
-          '<div style="display:flex;justify-content:space-between;align-items:start;">' +
-            '<div><div style="font-weight:600;color:var(--text-primary);margin-bottom:4px;">' + escHTML(item.platform || 'general') + ' · ' + escHTML(item.content_type || 'post') + '</div>' +
-            '<div style="font-size:13px;color:var(--text-secondary);max-width:600px;white-space:pre-wrap;">' + escHTML((item.content || '').substring(0, 200)) + (item.content && item.content.length > 200 ? '...' : '') + '</div></div>' +
-            '<div style="display:flex;gap:8px;">' +
-              '<span style="font-size:12px;color:var(--text-muted);">' + (item.status || 'draft') + '</span>' +
-              '<button class="social-btn small danger" onclick="deleteCampaignItem(\'' + item.id + '\',\'' + campaignId + '\')">×</button>' +
-            '</div>' +
-          '</div>' +
-        '</div>';
-      }).join('');
-    });
-}
-
-function addCampaignItem(campaignId) {
-  var el = document.getElementById('campaignItems');
-  if (!el) return;
-  var existingForm = document.getElementById('addItemForm');
-  if (existingForm) { existingForm.remove(); return; }
-
-  var formDiv = document.createElement('div');
-  formDiv.id = 'addItemForm';
-  formDiv.className = 'brand-card';
-  formDiv.style.marginBottom = '16px';
-  formDiv.innerHTML = '<div class="brand-card-title">Add Content Item</div>' +
-    '<div class="brand-field"><label>Platform</label><select id="itemPlatform" class="social-select"><option value="twitter">Twitter</option><option value="instagram">Instagram</option><option value="linkedin">LinkedIn</option><option value="facebook">Facebook</option><option value="tiktok">TikTok</option></select></div>' +
-    '<div class="brand-field"><label>Content Type</label><select id="itemContentType" class="social-select"><option value="post">Post</option><option value="story">Story</option><option value="reel">Reel</option><option value="article">Article</option></select></div>' +
-    '<div class="brand-field"><label>Content</label><textarea id="itemContent" rows="3" placeholder="Write or paste your content..."></textarea></div>' +
-    '<div class="brand-field"><label>Scheduled Date (optional)</label><input type="datetime-local" id="itemScheduled" /></div>' +
-    '<div style="display:flex;gap:8px;"><button class="social-btn primary" onclick="submitCampaignItem(\'' + campaignId + '\')">Add</button><button class="social-btn secondary" onclick="document.getElementById(\'addItemForm\').remove()">Cancel</button></div>';
-  el.parentNode.insertBefore(formDiv, el);
-}
-
-function submitCampaignItem(campaignId) {
-  var platform = (document.getElementById('itemPlatform') || {}).value;
-  var contentType = (document.getElementById('itemContentType') || {}).value;
-  var content = (document.getElementById('itemContent') || {}).value;
-  var scheduled = (document.getElementById('itemScheduled') || {}).value;
-
-  if (!content) { showToast('Content is required'); return; }
-
-  fetch(API + '/api/social-studio/campaigns/' + campaignId + '/items', {
-    method: 'POST',
-    headers: Object.assign({ 'Content-Type': 'application/json' }, authHeaders()),
-    body: JSON.stringify({ platform: platform, content_type: contentType, content: content, scheduled_at: scheduled || null })
-  })
-    .then(function(r) { return r.json(); })
-    .then(function() {
-      viewCampaign(campaignId);
-      showToast('Item added');
-    })
-    .catch(function() { showToast('Failed to add item'); });
-}
-
-function deleteCampaignItem(itemId, campaignId) {
-  if (!confirm('Delete this content item?')) return;
-  fetch(API + '/api/social-studio/campaign-items/' + itemId, {
-    method: 'DELETE',
-    headers: authHeaders()
-  }).then(function() { viewCampaign(campaignId); });
-}
-
-function deleteCampaign(campaignId) {
-  if (!confirm('Delete this entire campaign?')) return;
-  fetch(API + '/api/social-studio/campaigns/' + campaignId, {
-    method: 'DELETE',
-    headers: authHeaders()
-  }).then(function() {
-    socialStudioState.campaigns = socialStudioState.campaigns.filter(function(c) { return c.id !== campaignId; });
-    switchSocialTab('campaigns');
-    showToast('Campaign deleted');
+    body: JSON.stringify(body)
+  }).then(function(data) {
+    csContentState.generating = false;
+    if (data.error) {
+      showToast(data.error, 'error');
+      var p = document.getElementById('csPreviewPanel');
+      if (p) p.innerHTML = renderContentPreview();
+      return;
+    }
+    csContentState.result = data;
+    var p = document.getElementById('csPreviewPanel');
+    if (p) p.innerHTML = renderContentPreview();
+    showToast('Content generated!', 'success');
+  }).catch(function(e) {
+    csContentState.generating = false;
+    showToast('Generation failed: ' + (e.message || 'Network error'), 'error');
+    var p = document.getElementById('csPreviewPanel');
+    if (p) p.innerHTML = renderContentPreview();
   });
 }
 
-/* ---- MEDIA LIBRARY TAB ---- */
-function renderMediaTab(container) {
-  if (socialStudioState.loadingMedia) {
-    container.innerHTML = '<div class="social-loading">Loading media library...</div>';
-    return;
-  }
-  if (!socialStudioState.mediaItems.length && !socialStudioState._mediaLoaded) {
-    loadMediaLibrary(container);
-    return;
-  }
-
-  var items = socialStudioState.mediaItems;
-  container.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">' +
-    '<div style="font-size:15px;color:var(--text-secondary);">' + items.length + ' item' + (items.length !== 1 ? 's' : '') + '</div>' +
-    '<button class="social-btn primary" onclick="showUploadMediaForm()">+ Upload Media</button>' +
-  '</div>' +
-  '<div id="uploadMediaForm" style="display:none;"></div>' +
-  '<div class="media-grid">' +
-    (items.length === 0 ? '<div class="social-empty" style="grid-column:1/-1;">No media yet. Upload or save generated content to build your library.</div>' :
-    items.map(function(m) {
-      var icon = m.media_type === 'image' ? '🖼' : m.media_type === 'video' ? '🎬' : '📝';
-      return '<div class="media-card">' +
-        '<div class="media-card-icon">' + icon + '</div>' +
-        '<div class="media-card-title">' + escHTML(m.title || 'Untitled') + '</div>' +
-        '<div class="media-card-type">' + escHTML(m.media_type || 'text') + '</div>' +
-        (m.tags && m.tags.length ? '<div class="media-card-tags">' + m.tags.slice(0, 3).map(function(t) { return '<span class="gen-tag">' + escHTML(t) + '</span>'; }).join('') + '</div>' : '') +
-        '<button class="social-btn small danger" onclick="deleteMedia(\'' + m.id + '\')" style="margin-top:8px;">Delete</button>' +
-      '</div>';
-    }).join('')) +
-  '</div>';
-}
-
-function loadMediaLibrary(container) {
-  socialStudioState.loadingMedia = true;
-  if (container) container.innerHTML = '<div class="social-loading">Loading media...</div>';
-  fetch(API + '/api/social-studio/media', { headers: authHeaders() })
-    .then(function(r) { return r.json(); })
-    .then(function(data) {
-      socialStudioState.loadingMedia = false;
-      socialStudioState._mediaLoaded = true;
-      socialStudioState.mediaItems = data.media || [];
-      renderMediaTab(container || document.getElementById('socialStudioBody'));
-    })
-    .catch(function() {
-      socialStudioState.loadingMedia = false;
-      socialStudioState._mediaLoaded = true;
-      renderMediaTab(container || document.getElementById('socialStudioBody'));
+function csCopyResult() {
+  if (!csContentState.result) return;
+  var text = csContentState.result.content || '';
+  if (csContentState.result.hashtags) text += '\n\n' + csContentState.result.hashtags;
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(text).then(function() {
+      showToast('Copied to clipboard', 'success');
     });
-}
-
-function showUploadMediaForm() {
-  var form = document.getElementById('uploadMediaForm');
-  if (!form) return;
-  form.style.display = form.style.display === 'none' ? 'block' : 'none';
-  form.innerHTML = '<div class="brand-card" style="margin-bottom:16px;">' +
-    '<div class="brand-card-title">Upload Media</div>' +
-    '<div class="brand-field"><label>Upload from Device</label>' +
-      '<div class="media-upload-dropzone" id="mediaDropzone" onclick="document.getElementById(\'mediaFileInput\').click()" ondragover="event.preventDefault();this.classList.add(\'drag-over\')" ondragleave="this.classList.remove(\'drag-over\')" ondrop="handleMediaDrop(event)">' +
-        '<svg width="32" height="32" fill="none" viewBox="0 0 24 24" style="opacity:0.4;"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" stroke="currentColor" stroke-width="1.5"/><polyline points="17 8 12 3 7 8" stroke="currentColor" stroke-width="1.5"/><line x1="12" y1="3" x2="12" y2="15" stroke="currentColor" stroke-width="1.5"/></svg>' +
-        '<div style="margin-top:8px;font-size:14px;color:var(--text-secondary);">Click to browse or drag and drop</div>' +
-        '<div style="font-size:12px;color:var(--text-muted);margin-top:4px;">Images, videos, audio, documents — up to 50MB</div>' +
-        '<input type="file" id="mediaFileInput" style="display:none;" accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.txt,.csv" onchange="handleMediaFileSelect(event)" />' +
-      '</div>' +
-      '<div id="mediaFilePreview" style="display:none;margin-top:8px;"></div>' +
-    '</div>' +
-    '<div class="brand-field"><label>Title</label><input type="text" id="mediaTitle" placeholder="Auto-detected from filename" /></div>' +
-    '<div class="brand-field"><label>Tags (comma-separated)</label><input type="text" id="mediaTags" placeholder="e.g. announcement, product, launch" /></div>' +
-    '<div style="display:flex;gap:8px;">' +
-      '<button class="social-btn primary" onclick="uploadMedia()" id="mediaUploadBtn">Upload</button>' +
-      '<button class="social-btn secondary" onclick="uploadMediaText()">Or Add Text Content</button>' +
-      '<button class="social-btn secondary" onclick="document.getElementById(\'uploadMediaForm\').style.display=\'none\'">Cancel</button>' +
-    '</div>' +
-  '</div>';
-}
-
-var _mediaSelectedFile = null;
-
-function handleMediaFileSelect(event) {
-  var file = event.target.files[0];
-  if (!file) return;
-  _mediaSelectedFile = file;
-  var preview = document.getElementById('mediaFilePreview');
-  if (!preview) return;
-  preview.style.display = 'block';
-  var sizeStr = file.size > 1024 * 1024 ? (file.size / (1024 * 1024)).toFixed(1) + ' MB' : (file.size / 1024).toFixed(1) + ' KB';
-  preview.innerHTML = '<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:rgba(212,168,67,0.1);border-radius:10px;">' +
-    '<span style="font-size:24px;">' + (file.type.startsWith('image') ? '\ud83d\uddbc' : file.type.startsWith('video') ? '\ud83c\udfac' : file.type.startsWith('audio') ? '\ud83c\udfa7' : '\ud83d\udcc4') + '</span>' +
-    '<div><div style="font-weight:600;font-size:14px;color:var(--text-primary);">' + escHTML(file.name) + '</div>' +
-    '<div style="font-size:12px;color:var(--text-muted);">' + sizeStr + ' \u00b7 ' + escHTML(file.type || 'unknown') + '</div></div>' +
-    '<button class="social-btn small danger" onclick="clearMediaFile()" style="margin-left:auto;">\u00d7</button>' +
-  '</div>';
-  // Auto-fill title from filename
-  var titleInput = document.getElementById('mediaTitle');
-  if (titleInput && !titleInput.value) {
-    titleInput.value = file.name.replace(/\.[^.]+$/, '').replace(/[-_]/g, ' ');
+  } else {
+    var ta = document.createElement('textarea');
+    ta.value = text;
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    showToast('Copied to clipboard', 'success');
   }
 }
 
-function handleMediaDrop(event) {
-  event.preventDefault();
-  var dz = document.getElementById('mediaDropzone');
-  if (dz) dz.classList.remove('drag-over');
-  var files = event.dataTransfer.files;
-  if (files.length > 0) {
-    var input = document.getElementById('mediaFileInput');
-    // Can't set files on input, so handle directly
-    _mediaSelectedFile = files[0];
-    handleMediaFileSelect({ target: { files: files } });
-  }
-}
-
-function clearMediaFile() {
-  _mediaSelectedFile = null;
-  var preview = document.getElementById('mediaFilePreview');
-  if (preview) { preview.style.display = 'none'; preview.innerHTML = ''; }
-  var input = document.getElementById('mediaFileInput');
-  if (input) input.value = '';
-}
-
-function uploadMedia() {
-  if (!_mediaSelectedFile) {
-    showToast('Select a file to upload', 'error');
-    return;
-  }
-  var title = (document.getElementById('mediaTitle') || {}).value || _mediaSelectedFile.name;
-  var tags = (document.getElementById('mediaTags') || {}).value || '';
-  var btn = document.getElementById('mediaUploadBtn');
-  if (btn) { btn.disabled = true; btn.textContent = 'Uploading...'; }
-
-  var formData = new FormData();
-  formData.append('file', _mediaSelectedFile);
-  formData.append('title', title);
-  formData.append('tags', tags);
-
-  // Use raw headers without Content-Type (browser sets multipart boundary)
-  var headers = {};
-  if (sessionToken) headers['Authorization'] = 'Bearer ' + sessionToken;
-
-  fetch(API + '/api/social-studio/media/upload', {
+function csSaveResult() {
+  if (!csContentState.result) return;
+  csAPI('/api/social-studio/save-content', {
     method: 'POST',
-    headers: headers,
-    body: formData
-  })
-    .then(function(r) { return r.json(); })
-    .then(function(data) {
-      if (btn) { btn.disabled = false; btn.textContent = 'Upload'; }
-      if (data.error) { showToast(data.error, 'error'); return; }
-      if (data.media) socialStudioState.mediaItems.unshift(data.media);
-      _mediaSelectedFile = null;
-      document.getElementById('uploadMediaForm').style.display = 'none';
-      renderMediaTab(document.getElementById('socialStudioBody'));
-      showToast('File uploaded to Media Library');
+    body: JSON.stringify({
+      content: csContentState.result,
+      platform: csContentState.platform,
+      content_type: csContentState.contentType
     })
-    .catch(function() {
-      if (btn) { btn.disabled = false; btn.textContent = 'Upload'; }
-      showToast('Upload failed. Check your connection.', 'error');
-    });
-}
-
-function uploadMediaText() {
-  var form = document.getElementById('uploadMediaForm');
-  if (!form) return;
-  form.innerHTML = '<div class="brand-card" style="margin-bottom:16px;">' +
-    '<div class="brand-card-title">Add Text Content</div>' +
-    '<div class="brand-field"><label>Title</label><input type="text" id="mediaTitle" placeholder="Content title" /></div>' +
-    '<div class="brand-field"><label>Content</label><textarea id="mediaContent" rows="4" placeholder="Paste your text content..."></textarea></div>' +
-    '<div class="brand-field"><label>Tags (comma-separated)</label><input type="text" id="mediaTags" placeholder="e.g. announcement, product" /></div>' +
-    '<div style="display:flex;gap:8px;">' +
-      '<button class="social-btn primary" onclick="saveMediaText()">Save</button>' +
-      '<button class="social-btn secondary" onclick="document.getElementById(\'uploadMediaForm\').style.display=\'none\'">Cancel</button>' +
-    '</div>' +
-  '</div>';
-}
-
-function saveMediaText() {
-  var title = (document.getElementById('mediaTitle') || {}).value;
-  var content = (document.getElementById('mediaContent') || {}).value;
-  var tags = ((document.getElementById('mediaTags') || {}).value || '').split(',').map(function(s) { return s.trim(); }).filter(Boolean);
-  if (!title) { showToast('Title is required'); return; }
-  fetch(API + '/api/social-studio/media', {
-    method: 'POST',
-    headers: Object.assign({ 'Content-Type': 'application/json' }, authHeaders()),
-    body: JSON.stringify({ title: title, media_type: 'text', content_text: content, tags: tags })
-  })
-    .then(function(r) { return r.json(); })
-    .then(function(data) {
-      if (data.media) socialStudioState.mediaItems.unshift(data.media);
-      document.getElementById('uploadMediaForm').style.display = 'none';
-      renderMediaTab(document.getElementById('socialStudioBody'));
-      showToast('Text content saved');
-    })
-    .catch(function() { showToast('Failed to save'); });
-}
-
-function deleteMedia(mediaId) {
-  if (!confirm('Delete this media item?')) return;
-  fetch(API + '/api/social-studio/media/' + mediaId, {
-    method: 'DELETE',
-    headers: authHeaders()
-  }).then(function() {
-    socialStudioState.mediaItems = socialStudioState.mediaItems.filter(function(m) { return m.id !== mediaId; });
-    renderMediaTab(document.getElementById('socialStudioBody'));
-    showToast('Media deleted');
+  }).then(function(data) {
+    if (data.error) { showToast(data.error, 'error'); return; }
+    showToast('Content saved to library', 'success');
+  }).catch(function(e) {
+    showToast('Save failed: ' + (e.message || 'Network error'), 'error');
   });
 }
 
-/* ---- PLATFORMS TAB ---- */
-function renderPlatformsTab(container) {
-  container.innerHTML = '<div class="social-loading">Loading platform connections...</div>';
+function csPublishResult() {
+  if (!csContentState.result) return;
+  switchCSTab('social-posting');
+  showToast('Content added to posting queue', 'success');
+}
 
-  var ghlPlatforms = [
-    { id: 'facebook', name: 'Facebook', icon: '\uD83D\uDCD8', color: '#1877F2' },
-    { id: 'instagram', name: 'Instagram', icon: '\uD83D\uDCF7', color: '#E4405F' },
-    { id: 'linkedin', name: 'LinkedIn', icon: '\uD83D\uDCBC', color: '#0A66C2' },
-    { id: 'google_business', name: 'Google Business', icon: '\uD83C\uDF10', color: '#4285F4' },
-    { id: 'tiktok', name: 'TikTok', icon: '\uD83C\uDFB5', color: '#000' },
+function renderTemplateGrid() {
+  var categories = [
+    { id: 'real-estate', label: 'Real Estate', color: '#4CAF50' },
+    { id: 'lending', label: 'Commercial Lending', color: '#2196F3' },
+    { id: 'professional', label: 'Professional', color: '#9C27B0' },
+    { id: 'ecommerce', label: 'E-Commerce', color: '#FF9800' },
+    { id: 'faith', label: 'Faith-Forward', color: '#d4a843' }
   ];
 
-  fetch(API + '/api/social-studio/accounts', { headers: authHeaders() })
-    .then(function(r) { return r.json(); })
-    .then(function(data) {
-      var accounts = data.accounts || [];
-      var connected = {};
-      accounts.forEach(function(a) { connected[a.platform || a.type || a.id] = a; });
-      socialStudioState.connectedPlatforms = accounts;
-
-      if (data.provisioned === false || !accounts.length) {
-        container.innerHTML = '<div style="text-align:center;padding:40px 20px;">' +
-          '<div style="font-size:48px;margin-bottom:16px;">\uD83D\uDD17</div>' +
-          '<div style="font-size:16px;font-weight:700;color:var(--text-primary);margin-bottom:8px;">Connect Your Social Accounts</div>' +
-          '<div style="font-size:13px;color:var(--text-muted);margin-bottom:20px;max-width:400px;margin-left:auto;margin-right:auto;">' +
-            (data.message || 'Connect your social accounts at app.saintsallabs.com \u2192 Marketing \u2192 Social Planner to publish directly from SAL.') +
-          '</div>' +
-          '<a href="https://app.saintsallabs.com" target="_blank" class="social-btn primary" style="display:inline-block;text-decoration:none;padding:12px 24px;">Open CRM Dashboard \u2192</a>' +
-        '</div>' +
-        '<div style="margin-top:24px;">' +
-          '<div style="font-size:12px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:12px;">Supported Platforms</div>' +
-          '<div class="platforms-grid">' +
-            ghlPlatforms.map(function(p) {
-              return '<div class="platform-card">' +
-                '<div class="platform-icon" style="font-size:28px;">' + p.icon + '</div>' +
-                '<div class="platform-name">' + escHTML(p.name) + '</div>' +
-                '<div class="platform-status" style="color:var(--text-muted);">Connect via CRM</div>' +
-              '</div>';
-            }).join('') +
-          '</div>' +
-        '</div>';
-        return;
-      }
-
-      container.innerHTML = '<div class="platforms-grid">' +
-        ghlPlatforms.map(function(p) {
-          var isConnected = !!connected[p.id];
-          return '<div class="platform-card' + (isConnected ? ' connected' : '') + '">' +
-            '<div class="platform-icon" style="font-size:28px;">' + p.icon + '</div>' +
-            '<div class="platform-name">' + escHTML(p.name) + '</div>' +
-            '<div class="platform-status" style="color:' + (isConnected ? 'var(--accent-gold)' : 'var(--text-muted)') + ';">' + (isConnected ? 'Connected' : 'Not Connected') + '</div>' +
-          '</div>';
-        }).join('') +
-      '</div>' +
-      '<div style="margin-top:20px;padding:16px;background:rgba(212,168,67,0.08);border-radius:12px;font-size:13px;color:var(--text-secondary);">' +
-        '<strong style="color:var(--accent-gold);">' + accounts.length + ' Account' + (accounts.length !== 1 ? 's' : '') + ' Connected</strong> \u2014 Manage connections at <a href="https://app.saintsallabs.com" target="_blank" style="color:var(--accent-gold);">app.saintsallabs.com</a> \u2192 Marketing \u2192 Social Planner' +
+  var html = '';
+  for (var ci = 0; ci < categories.length; ci++) {
+    var cat = categories[ci];
+    var catTemplates = CS_TEMPLATES.filter(function(t) { return t.category === cat.id; });
+    if (!catTemplates.length) continue;
+    html += '<div style="margin-bottom:12px;">' +
+      '<div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:' + cat.color + ';margin-bottom:8px;font-weight:600;">' + cat.label + '</div>' +
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">';
+    for (var ti = 0; ti < catTemplates.length; ti++) {
+      var tmpl = catTemplates[ti];
+      html += '<div class="cs-card" style="padding:10px;cursor:pointer;transition:all 0.2s;border-color:rgba(255,255,255,0.08);" ' +
+        'onclick="useTemplate(\'' + tmpl.id + '\')" ' +
+        'onmouseover="this.style.borderColor=\'' + cat.color + '\'" ' +
+        'onmouseout="this.style.borderColor=\'rgba(255,255,255,0.08)\'">' +
+        '<div style="font-size:18px;margin-bottom:4px;">' + tmpl.icon + '</div>' +
+        '<div style="font-size:12px;font-weight:600;color:#fff;margin-bottom:2px;">' + escHTML(tmpl.name) + '</div>' +
+        '<div style="font-size:11px;color:#999;">' + escHTML(tmpl.desc) + '</div>' +
       '</div>';
-    })
-    .catch(function() {
-      socialStudioState.connectedPlatforms = [];
-      container.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-muted);">Failed to load platform connections. Please try again.</div>';
-    });
+    }
+    html += '</div></div>';
+  }
+  return html;
 }
 
-/* ---- CALENDAR VIEW (Placeholder) ---- */
-function renderCalendarView() {
-  var root = document.getElementById('calendarRoot');
-  if (!root) return;
-  root.innerHTML = '<div class="social-studio-container">' +
-    '<div class="social-studio-header">' +
-      '<div style="display:flex;align-items:center;gap:12px;">' +
-        '<svg width="28" height="28" fill="none" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" stroke="var(--accent-gold)" stroke-width="1.5"/><path d="M16 2v4M8 2v4M3 10h18" stroke="var(--accent-gold)" stroke-width="1.5"/></svg>' +
-        '<div><div class="social-studio-title">Calendar</div>' +
-        '<div class="social-studio-subtitle">Schedule content and manage your publishing calendar</div></div>' +
-      '</div>' +
+function useTemplate(templateId) {
+  var tmpl = null;
+  for (var i = 0; i < CS_TEMPLATES.length; i++) {
+    if (CS_TEMPLATES[i].id === templateId) { tmpl = CS_TEMPLATES[i]; break; }
+  }
+  if (!tmpl) return;
+
+  csContentState.templateId = templateId;
+  csContentState.templateVars = {};
+
+  var varInputs = tmpl.vars.map(function(v) {
+    return '<div style="margin-bottom:10px;">' +
+      '<label class="cs-label">' + v.replace(/_/g, ' ').toUpperCase() + '</label>' +
+      '<input class="cs-input" type="text" id="tmplVar_' + v + '" placeholder="Enter ' + v.replace(/_/g, ' ') + '" />' +
+    '</div>';
+  }).join('');
+
+  csModal(tmpl.icon + ' ' + tmpl.name, varInputs, [
+    {
+      label: 'Cancel',
+      cls: 'cs-btn-secondary',
+      onclick: 'csCloseModal()'
+    },
+    {
+      label: 'Use Template',
+      cls: 'cs-btn-gold',
+      onclick: 'applyTemplateVars(\'' + templateId + '\')'
+    }
+  ]);
+}
+
+function applyTemplateVars(templateId) {
+  var tmpl = null;
+  for (var i = 0; i < CS_TEMPLATES.length; i++) {
+    if (CS_TEMPLATES[i].id === templateId) { tmpl = CS_TEMPLATES[i]; break; }
+  }
+  if (!tmpl) return;
+
+  var vars = {};
+  var topicParts = [];
+  for (var j = 0; j < tmpl.vars.length; j++) {
+    var v = tmpl.vars[j];
+    var input = document.getElementById('tmplVar_' + v);
+    if (input && input.value) {
+      vars[v] = input.value;
+      topicParts.push(v.replace(/_/g, ' ') + ': ' + input.value);
+    }
+  }
+
+  csContentState.templateVars = vars;
+  csContentState.templateId = templateId;
+  csContentState.topic = tmpl.name + ' - ' + topicParts.join(', ');
+  csCloseModal();
+  showToast('Template applied: ' + tmpl.name, 'success');
+  var body = document.getElementById('csBody');
+  if (body) renderContentEngine(body);
+}
+
+function renderCalendarAIPlanForm() {
+  if (csContentState.generatingPlan) {
+    return csSpinner('Generating 30-day content plan...');
+  }
+  if (csContentState.calendarPlan) {
+    return renderCalendarPlanResult();
+  }
+  return '<div style="display:flex;flex-direction:column;gap:10px;">' +
+    '<div>' +
+      '<label class="cs-label">Business Description</label>' +
+      '<textarea class="cs-textarea" id="csPlanBiz" rows="2" placeholder="Describe your business, products/services, and target audience..."></textarea>' +
     '</div>' +
-    '<div class="brand-card" style="margin-top:20px;text-align:center;padding:60px 20px;">' +
-      '<div style="font-size:48px;margin-bottom:16px;">📅</div>' +
-      '<div style="font-size:18px;font-weight:600;color:var(--text-primary);margin-bottom:8px;">Calendar Coming Soon</div>' +
-      '<div style="font-size:14px;color:var(--text-secondary);max-width:400px;margin:0 auto;">Content scheduling calendar with Google Calendar and Outlook integration. Wire your publishing schedule directly into your workflow.</div>' +
+    '<div>' +
+      '<label class="cs-label">Content Goals</label>' +
+      '<textarea class="cs-textarea" id="csPlanGoals" rows="2" placeholder="e.g. Increase brand awareness, generate leads, drive website traffic..."></textarea>' +
+    '</div>' +
+    '<button class="cs-btn-gold" onclick="generateCalendarPlan()" style="width:100%;">' +
+      '\uD83D\uDCC5 Generate 30-Day Plan' +
+    '</button>' +
+  '</div>';
+}
+
+function renderCalendarPlanResult() {
+  var plan = csContentState.calendarPlan;
+  var html = '<div style="margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;">' +
+    '<div style="font-size:13px;color:#d4a843;font-weight:600;">\uD83D\uDCC5 30-Day Content Plan Ready</div>' +
+    '<button class="cs-btn-secondary" onclick="csContentState.calendarPlan=null;renderContentEngine(document.getElementById(\'csBody\'))" style="padding:4px 10px;font-size:11px;">Reset</button>' +
+  '</div>';
+
+  if (plan.weeks && plan.weeks.length) {
+    for (var wi = 0; wi < plan.weeks.length; wi++) {
+      var week = plan.weeks[wi];
+      html += '<div class="cs-card" style="margin-bottom:8px;padding:10px;">' +
+        '<div style="font-size:12px;color:#d4a843;font-weight:600;margin-bottom:6px;">Week ' + (wi + 1) + ': ' + escHTML(week.theme || '') + '</div>';
+      if (week.posts && week.posts.length) {
+        for (var pi = 0; pi < week.posts.length; pi++) {
+          var post = week.posts[pi];
+          html += '<div style="font-size:12px;color:#ccc;padding:4px 0;border-bottom:1px solid rgba(255,255,255,0.05);">' +
+            '<span style="color:#666;margin-right:8px;">Day ' + (post.day || (pi + 1)) + '</span>' +
+            escHTML(post.topic || post.title || '') +
+          '</div>';
+        }
+      }
+      html += '</div>';
+    }
+  } else if (plan.items && plan.items.length) {
+    html += '<div style="max-height:200px;overflow-y:auto;">';
+    for (var ii = 0; ii < plan.items.length; ii++) {
+      var item = plan.items[ii];
+      html += '<div style="font-size:12px;color:#ccc;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.05);">' +
+        '<span style="color:#d4a843;margin-right:8px;">Day ' + (item.day || (ii + 1)) + '</span>' +
+        escHTML(item.topic || item.title || '') +
+      '</div>';
+    }
+    html += '</div>';
+  }
+
+  html += '<button class="cs-btn-gold" onclick="batchGenerateContent()" style="width:100%;margin-top:12px;">' +
+    '\uD83D\uDE80 Batch Generate This Week\'s Content' +
+  '</button>';
+  return html;
+}
+
+function generateCalendarPlan() {
+  var biz = document.getElementById('csPlanBiz');
+  var goals = document.getElementById('csPlanGoals');
+  if (!biz || !biz.value.trim()) {
+    showToast('Please describe your business first', 'error');
+    return;
+  }
+  csContentState.generatingPlan = true;
+  var calPanel = document.getElementById('csBody');
+  if (calPanel) renderContentEngine(calPanel);
+
+  csAPI('/api/social-studio/calendar-plan', {
+    method: 'POST',
+    body: JSON.stringify({
+      business_description: biz ? biz.value : '',
+      goals: goals ? goals.value : '',
+      brand_id: creativeStudioState.brand ? creativeStudioState.brand.id : null,
+      days: 30
+    })
+  }).then(function(data) {
+    csContentState.generatingPlan = false;
+    if (data.error) { showToast(data.error, 'error'); csContentState.calendarPlan = null; }
+    else { csContentState.calendarPlan = data.plan || data; showToast('30-day plan generated!', 'success'); }
+    var body = document.getElementById('csBody');
+    if (body) renderContentEngine(body);
+  }).catch(function(e) {
+    csContentState.generatingPlan = false;
+    showToast('Plan generation failed: ' + (e.message || 'Network error'), 'error');
+    var body = document.getElementById('csBody');
+    if (body) renderContentEngine(body);
+  });
+}
+
+function batchGenerateContent() {
+  if (!csContentState.calendarPlan) {
+    showToast('Generate a calendar plan first', 'error');
+    return;
+  }
+  csContentState.batchGenerating = true;
+  showToast('Batch generating content...', 'info');
+
+  csAPI('/api/social-studio/batch-generate', {
+    method: 'POST',
+    body: JSON.stringify({
+      plan: csContentState.calendarPlan,
+      platform: csContentState.platform,
+      brand_id: creativeStudioState.brand ? creativeStudioState.brand.id : null
+    })
+  }).then(function(data) {
+    csContentState.batchGenerating = false;
+    if (data.error) { showToast(data.error, 'error'); return; }
+    showToast('Batch generation complete! ' + (data.count || '') + ' posts created', 'success');
+    switchCSTab('social-posting');
+  }).catch(function(e) {
+    csContentState.batchGenerating = false;
+    showToast('Batch generation failed: ' + (e.message || 'Network error'), 'error');
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// TAB 1: IMAGE GENERATION
+// ═══════════════════════════════════════════════════════════════════════════════
+
+var csImageState = {
+  model: 'dalle3',
+  prompt: '',
+  negativePrompt: '',
+  size: '1024x1024',
+  generating: false,
+  results: [],
+  editingUrl: null,
+  editOp: null
+};
+
+var CS_IMAGE_MODELS = [
+  {
+    id: 'dalle3',
+    name: 'DALL-E 3',
+    icon: '\uD83C\uDF1F',
+    desc: 'Photorealistic, product shots, branded content',
+    cost: '$0.04\u2013$0.08/img',
+    badge: 'OpenAI',
+    badgeColor: '#10a37f'
+  },
+  {
+    id: 'stitch',
+    name: 'Google Stitch',
+    icon: '\uD83C\uDFA8',
+    desc: 'UI design, landing pages, marketing layouts',
+    cost: 'Free (350/mo)',
+    badge: 'Google',
+    badgeColor: '#4285F4'
+  },
+  {
+    id: 'grok',
+    name: 'Grok Imagine',
+    icon: '\u26A1',
+    desc: 'Restyle scenes, fast iteration',
+    cost: 'Cost-efficient',
+    badge: 'xAI',
+    badgeColor: '#1DA1F2'
+  },
+  {
+    id: 'sdxl',
+    name: 'Replicate SDXL',
+    icon: '\uD83D\uDD2E',
+    desc: 'Style transfer, artistic, inpainting',
+    cost: '$0.003/img',
+    badge: 'Replicate',
+    badgeColor: '#9C27B0'
+  }
+];
+
+var CS_IMAGE_SIZES = [
+  { id: '1080x1080', label: 'IG Square', platform: 'Instagram' },
+  { id: '1080x1920', label: 'IG Story', platform: 'Instagram' },
+  { id: '1200x630', label: 'FB Post', platform: 'Facebook' },
+  { id: '1200x627', label: 'LinkedIn', platform: 'LinkedIn' },
+  { id: '1600x900', label: 'Twitter Banner', platform: 'Twitter/X' },
+  { id: '1000x1500', label: 'Pinterest', platform: 'Pinterest' },
+  { id: '1024x1024', label: 'Square HD', platform: 'General' },
+  { id: '1792x1024', label: 'Wide HD', platform: 'General' }
+];
+
+function renderImageGen(container) {
+  container.innerHTML =
+    '<div style="display:flex;flex-direction:column;gap:16px;">' +
+      '<div id="csModelPicker">' + renderModelPicker() + '</div>' +
+      '<div style="display:grid;grid-template-columns:380px 1fr;gap:20px;">' +
+        '<div style="display:flex;flex-direction:column;gap:14px;">' +
+          '<div class="cs-card">' +
+            '<div style="font-size:14px;font-weight:600;color:#d4a843;margin-bottom:12px;">\uD83D\uDCDD Prompt</div>' +
+            '<textarea class="cs-textarea" id="csImagePrompt" rows="4" placeholder="Describe the image you want to create... Be specific about style, lighting, composition, colors." onchange="csImageState.prompt=this.value" oninput="csImageState.prompt=this.value">' + escHTML(csImageState.prompt) + '</textarea>' +
+            '<div style="margin-top:8px;">' +
+              '<label class="cs-label">Negative Prompt (optional)</label>' +
+              '<input class="cs-input" type="text" id="csNegativePrompt" placeholder="Exclude: blurry, watermark, text..." onchange="csImageState.negativePrompt=this.value" value="' + escHTML(csImageState.negativePrompt) + '">' +
+            '</div>' +
+          '</div>' +
+          '<div class="cs-card">' +
+            '<label class="cs-label">\uD83D\uDCCF Output Size</label>' +
+            '<div id="csSizePicker" style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">' + renderSizePicker() + '</div>' +
+          '</div>' +
+          '<div class="cs-card">' +
+            '<label class="cs-label">Brand Profile</label>' +
+            '<select class="cs-select" id="csImageBrand" onchange="creativeStudioState.brand=this.value?{id:this.value}:null;">' +
+              '<option value="">No brand (generic)</option>' +
+              renderBrandOptions() +
+            '</select>' +
+          '</div>' +
+          '<button class="cs-btn-gold" onclick="generateImage()" id="csGenerateImageBtn" style="width:100%;padding:14px;">' +
+            '\u2728 Generate Image' +
+          '</button>' +
+        '</div>' +
+        '<div>' +
+          '<div class="cs-card" style="min-height:400px;" id="csImageCanvas">' +
+            renderImageCanvas() +
+          '</div>' +
+        '</div>' +
+      '</div>' +
+    '</div>';
+}
+
+function renderModelPicker() {
+  return '<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;">' +
+    CS_IMAGE_MODELS.map(function(m) {
+      var isActive = csImageState.model === m.id;
+      return '<div class="cs-card" onclick="selectImageModel(\'' + m.id + '\')" style="cursor:pointer;transition:all 0.2s;' +
+        (isActive ? 'border-color:#d4a843;background:rgba(212,168,67,0.08);' : 'border-color:rgba(255,255,255,0.08);') + '" ' +
+        'data-model="' + m.id + '">' +
+        '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;">' +
+          '<span style="font-size:20px;">' + m.icon + '</span>' +
+          '<span style="font-size:10px;background:' + m.badgeColor + ';color:#fff;border-radius:4px;padding:1px 6px;">' + m.badge + '</span>' +
+        '</div>' +
+        '<div style="font-size:13px;font-weight:600;color:' + (isActive ? '#d4a843' : '#fff') + ';margin-bottom:4px;">' + m.name + '</div>' +
+        '<div style="font-size:11px;color:#999;line-height:1.4;margin-bottom:6px;">' + m.desc + '</div>' +
+        '<div style="font-size:11px;color:#d4a843;font-weight:600;">' + m.cost + '</div>' +
+      '</div>';
+    }).join('') +
+  '</div>';
+}
+
+function selectImageModel(model) {
+  csImageState.model = model;
+  creativeStudioState.imageGen.model = model;
+  var picker = document.getElementById('csModelPicker');
+  if (picker) picker.innerHTML = renderModelPicker();
+}
+
+function renderSizePicker() {
+  return CS_IMAGE_SIZES.map(function(s) {
+    var isActive = csImageState.size === s.id;
+    return '<div onclick="selectImageSize(\'' + s.id + '\')" data-size="' + s.id + '" style="' +
+      'padding:8px;border-radius:6px;cursor:pointer;border:1px solid ' + (isActive ? '#d4a843' : 'rgba(255,255,255,0.1)') + ';' +
+      'background:' + (isActive ? 'rgba(212,168,67,0.1)' : 'transparent') + ';transition:all 0.2s;">' +
+      '<div style="font-size:11px;font-weight:600;color:' + (isActive ? '#d4a843' : '#ccc') + ';">' + s.label + '</div>' +
+      '<div style="font-size:10px;color:#666;">' + s.id + '</div>' +
+    '</div>';
+  }).join('');
+}
+
+function selectImageSize(size) {
+  csImageState.size = size;
+  creativeStudioState.imageGen.size = size;
+  var picker = document.getElementById('csSizePicker');
+  if (picker) picker.innerHTML = renderSizePicker();
+}
+
+function renderBrandOptions() {
+  var html = '';
+  for (var i = 0; i < creativeStudioState.brandProfiles.length; i++) {
+    var b = creativeStudioState.brandProfiles[i];
+    html += '<option value="' + escHTML(b.id) + '">' + escHTML(b.name || b.brand_name) + '</option>';
+  }
+  return html;
+}
+
+function renderImageCanvas() {
+  if (csImageState.generating) {
+    return '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:400px;gap:20px;">' +
+      '<div style="position:relative;">' +
+        '<div style="width:60px;height:60px;border:4px solid rgba(212,168,67,0.2);border-top-color:#d4a843;border-radius:50%;animation:spin 0.8s linear infinite;"></div>' +
+      '</div>' +
+      '<div style="color:#d4a843;font-size:14px;">Generating with ' + escHTML(csImageState.model.toUpperCase()) + '...</div>' +
+      '<div style="color:#666;font-size:12px;">This may take 15-30 seconds</div>' +
+    '</div>';
+  }
+
+  if (!csImageState.results || !csImageState.results.length) {
+    return '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:400px;gap:16px;opacity:0.5;">' +
+      '<div style="font-size:60px;">\uD83C\uDFA8</div>' +
+      '<div style="color:#ccc;font-size:16px;">Your generated images will appear here</div>' +
+      '<div style="color:#999;font-size:13px;">Choose a model, write a prompt, and click Generate</div>' +
+    '</div>';
+  }
+
+  var html = '<div style="margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;">' +
+    '<div style="font-size:14px;font-weight:600;color:#d4a843;">\uD83C\uDFDE\uFE0F ' + csImageState.results.length + ' Generated</div>' +
+    '<button class="cs-btn-secondary" onclick="csImageState.results=[];renderImageGen(document.getElementById(\'csBody\'))" style="padding:4px 10px;font-size:11px;">Clear</button>' +
+  '</div>' +
+  '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">';
+
+  for (var i = 0; i < csImageState.results.length; i++) {
+    var img = csImageState.results[i];
+    html += '<div class="cs-card" style="padding:8px;">' +
+      '<img src="' + escHTML(img.url) + '" alt="Generated image" style="width:100%;border-radius:6px;display:block;margin-bottom:8px;" />' +
+      '<div style="display:flex;gap:4px;flex-wrap:wrap;">' +
+        '<button class="cs-btn-secondary" onclick="downloadImage(\'' + escHTML(img.url) + '\',\'png\')" style="flex:1;padding:6px;font-size:11px;">\u2B07\uFE0F DL</button>' +
+        '<button class="cs-btn-secondary" onclick="saveImageToLibrary(\'' + escHTML(img.url) + '\')" style="flex:1;padding:6px;font-size:11px;">\uD83D\uDCBE Save</button>' +
+        '<button class="cs-btn-secondary" onclick="renderImageEditor(\'' + escHTML(img.url) + '\')" style="flex:1;padding:6px;font-size:11px;">\uD83D\uDD8C\uFE0F Edit</button>' +
+      '</div>' +
+    '</div>';
+  }
+  html += '</div>';
+  return html;
+}
+
+function generateImage() {
+  var promptEl = document.getElementById('csImagePrompt');
+  var negEl = document.getElementById('csNegativePrompt');
+  if (promptEl) csImageState.prompt = promptEl.value;
+  if (negEl) csImageState.negativePrompt = negEl.value;
+
+  if (!csImageState.prompt || !csImageState.prompt.trim()) {
+    showToast('Please enter an image prompt', 'error');
+    return;
+  }
+
+  csImageState.generating = true;
+  creativeStudioState.imageGen.generating = true;
+  var canvas = document.getElementById('csImageCanvas');
+  if (canvas) canvas.innerHTML = renderImageCanvas();
+
+  csAPI('/api/creative/image/generate', {
+    method: 'POST',
+    body: JSON.stringify({
+      model: csImageState.model,
+      prompt: csImageState.prompt,
+      negative_prompt: csImageState.negativePrompt,
+      size: csImageState.size,
+      brand_id: creativeStudioState.brand ? creativeStudioState.brand.id : null
+    })
+  }).then(function(data) {
+    csImageState.generating = false;
+    creativeStudioState.imageGen.generating = false;
+    if (data.error) {
+      showToast(data.error, 'error');
+      var c = document.getElementById('csImageCanvas');
+      if (c) c.innerHTML = renderImageCanvas();
+      return;
+    }
+    var urls = data.images || (data.url ? [{ url: data.url }] : []);
+    for (var i = 0; i < urls.length; i++) {
+      csImageState.results.unshift(urls[i]);
+    }
+    creativeStudioState.imageGen.results = csImageState.results;
+    var c = document.getElementById('csImageCanvas');
+    if (c) c.innerHTML = renderImageCanvas();
+    showToast('Image generated successfully!', 'success');
+  }).catch(function(e) {
+    csImageState.generating = false;
+    creativeStudioState.imageGen.generating = false;
+    showToast('Image generation failed: ' + (e.message || 'Network error'), 'error');
+    var c = document.getElementById('csImageCanvas');
+    if (c) c.innerHTML = renderImageCanvas();
+  });
+}
+
+function renderImageResults() {
+  var canvas = document.getElementById('csImageCanvas');
+  if (canvas) canvas.innerHTML = renderImageCanvas();
+}
+
+function renderImageEditor(imageUrl) {
+  csImageState.editingUrl = imageUrl;
+  var operations = [
+    { id: 'remove-bg', label: 'Remove Background', icon: '\u2702\uFE0F', endpoint: '/api/creative/image/remove-bg', desc: 'AI-powered background removal' },
+    { id: 'upscale', label: 'Upscale 4x', icon: '\uD83D\uDD0D', endpoint: '/api/creative/image/upscale', desc: 'Upscale to 4x resolution' },
+    { id: 'text-overlay', label: 'Text Overlay', icon: '\uD83C\uDFF7\uFE0F', endpoint: '/api/creative/image/text-overlay', desc: 'Add branded text overlay' },
+    { id: 'style-transfer', label: 'Style Transfer', icon: '\uD83C\uDFA8', endpoint: '/api/creative/image/style-transfer', desc: 'Apply artistic style' }
+  ];
+
+  var bodyHtml =
+    '<div style="margin-bottom:16px;">' +
+      '<img src="' + escHTML(imageUrl) + '" alt="Editing" style="width:100%;max-height:200px;object-fit:contain;border-radius:8px;background:#111;" />' +
+    '</div>' +
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">' +
+    operations.map(function(op) {
+      return '<div class="cs-card" onclick="applyImageOperation(\'' + op.id + '\',\'' + escHTML(imageUrl) + '\',\'' + escHTML(op.endpoint) + '\')" ' +
+        'style="cursor:pointer;padding:12px;text-align:center;transition:all 0.2s;border-color:rgba(255,255,255,0.08);" ' +
+        'onmouseover="this.style.borderColor=\'#d4a843\'" onmouseout="this.style.borderColor=\'rgba(255,255,255,0.08)\'">' +
+        '<div style="font-size:24px;margin-bottom:6px;">' + op.icon + '</div>' +
+        '<div style="font-size:12px;font-weight:600;color:#fff;">' + op.label + '</div>' +
+        '<div style="font-size:11px;color:#999;margin-top:2px;">' + op.desc + '</div>' +
+      '</div>';
+    }).join('') +
+    '</div>';
+
+  csModal('Image Editor', bodyHtml, [
+    { label: 'Close', cls: 'cs-btn-secondary', onclick: 'csCloseModal()' }
+  ]);
+}
+
+function applyImageOperation(opId, imageUrl, endpoint) {
+  showToast('Applying ' + opId + '...', 'info');
+  csAPI(endpoint, {
+    method: 'POST',
+    body: JSON.stringify({ image_url: imageUrl, operation: opId })
+  }).then(function(data) {
+    if (data.error) { showToast(data.error, 'error'); return; }
+    if (data.url) {
+      csImageState.results.unshift({ url: data.url, operation: opId });
+      var c = document.getElementById('csImageCanvas');
+      if (c) c.innerHTML = renderImageCanvas();
+      csCloseModal();
+      showToast(opId + ' applied!', 'success');
+    }
+  }).catch(function(e) {
+    showToast(opId + ' failed: ' + (e.message || 'Network error'), 'error');
+  });
+}
+
+function downloadImage(url, format) {
+  var a = document.createElement('a');
+  a.href = url;
+  a.download = 'saintsal-image-' + Date.now() + '.' + (format || 'png');
+  a.target = '_blank';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  showToast('Downloading image...', 'info');
+}
+
+function saveImageToLibrary(url) {
+  csAPI('/api/creative/image/save-library', {
+    method: 'POST',
+    body: JSON.stringify({ image_url: url })
+  }).then(function(data) {
+    if (data.error) { showToast(data.error, 'error'); return; }
+    showToast('Image saved to media library', 'success');
+  }).catch(function(e) {
+    showToast('Save failed: ' + (e.message || 'Network error'), 'error');
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// TAB 2: VIDEO PRODUCTION STUDIO
+// ═══════════════════════════════════════════════════════════════════════════════
+
+var csVideoState = {
+  tier: 'quick',
+  generating: false,
+  progress: 0,
+  progressMsg: '',
+  storyboard: [],
+  result: null,
+  selectedTemplate: null,
+  quickPrompt: '',
+  templatePrompt: '',
+  premiumScenes: [],
+  voiceoverScript: '',
+  voiceoverVoice: 'rachel',
+  voiceoverLang: 'en',
+  voiceoverAudio: null
+};
+
+var CS_VIDEO_TEMPLATES = [
+  { id: 'listing-showcase', name: 'Listing Showcase', icon: '\uD83C\uDFE0', duration: '30-60s', desc: 'Real estate property walkthrough' },
+  { id: 'testimonial', name: 'Testimonial', icon: '\u2B50', duration: '15-30s', desc: 'Client success story format' },
+  { id: 'product-demo', name: 'Product Demo', icon: '\uD83D\uDCE6', duration: '30-45s', desc: 'Product features showcase' },
+  { id: 'team-intro', name: 'Team Intro', icon: '\uD83D\uDC65', duration: '20-30s', desc: 'Meet the team introduction' },
+  { id: 'event-promo', name: 'Event Promo', icon: '\uD83C\uDF89', duration: '15-30s', desc: 'Event announcement and details' },
+  { id: 'stats-reveal', name: 'Stats Reveal', icon: '\uD83D\uDCCA', duration: '10-20s', desc: 'Animated statistics reveal' },
+  { id: 'before-after', name: 'Before/After', icon: '\uD83D\uDD04', duration: '20-30s', desc: 'Transformation comparison' },
+  { id: 'logo-reveal', name: 'Logo Reveal', icon: '\u2728', duration: '5-10s', desc: 'Branded logo animation' }
+];
+
+var CS_VOICES = [
+  { id: 'rachel', name: 'Rachel', desc: 'Professional, warm' },
+  { id: 'adam', name: 'Adam', desc: 'Deep, authoritative' },
+  { id: 'bella', name: 'Bella', desc: 'Friendly, energetic' },
+  { id: 'josh', name: 'Josh', desc: 'Casual, relatable' },
+  { id: 'elli', name: 'Elli', desc: 'Soft, trustworthy' },
+  { id: 'arnold', name: 'Arnold', desc: 'Bold, confident' }
+];
+
+function renderVideoStudio(container) {
+  var tiers = [
+    { id: 'quick', label: '\u26A1 Quick Clips', desc: 'Grok Imagine · Seconds' },
+    { id: 'template', label: '\uD83C\uDFAC Template Engine', desc: 'Pre-built formats' },
+    { id: 'premium', label: '\uD83C\uDF1F Premium Cinematic', desc: 'Runway Gen-3 · Storyboard' }
+  ];
+
+  var tierBtns = tiers.map(function(t) {
+    var isActive = csVideoState.tier === t.id;
+    return '<div onclick="selectVideoTier(\'' + t.id + '\')" data-tier="' + t.id + '" style="' +
+      'flex:1;padding:14px;border-radius:10px;cursor:pointer;text-align:center;transition:all 0.2s;' +
+      'border:1px solid ' + (isActive ? '#d4a843' : 'rgba(255,255,255,0.1)') + ';' +
+      'background:' + (isActive ? 'rgba(212,168,67,0.1)' : 'rgba(255,255,255,0.03)') + ';">' +
+      '<div style="font-size:14px;font-weight:700;color:' + (isActive ? '#d4a843' : '#ccc') + ';margin-bottom:4px;">' + t.label + '</div>' +
+      '<div style="font-size:11px;color:#666;">' + t.desc + '</div>' +
+    '</div>';
+  }).join('');
+
+  container.innerHTML =
+    '<div style="display:flex;flex-direction:column;gap:16px;">' +
+      '<div style="display:flex;gap:8px;" id="csVideoTiers">' + tierBtns + '</div>' +
+      '<div id="csVideoBody">' + renderVideoTierContent() + '</div>' +
+    '</div>';
+}
+
+function selectVideoTier(tier) {
+  csVideoState.tier = tier;
+  var tiers = document.querySelectorAll('[data-tier]');
+  var tierDefs = [
+    { id: 'quick', label: '\u26A1 Quick Clips', desc: 'Grok Imagine · Seconds' },
+    { id: 'template', label: '\uD83C\uDFAC Template Engine', desc: 'Pre-built formats' },
+    { id: 'premium', label: '\uD83C\uDF1F Premium Cinematic', desc: 'Runway Gen-3 · Storyboard' }
+  ];
+  for (var i = 0; i < tiers.length; i++) {
+    var t = tiers[i];
+    var td = tierDefs.filter(function(d) { return d.id === t.getAttribute('data-tier'); })[0];
+    var isActive = t.getAttribute('data-tier') === tier;
+    t.style.borderColor = isActive ? '#d4a843' : 'rgba(255,255,255,0.1)';
+    t.style.background = isActive ? 'rgba(212,168,67,0.1)' : 'rgba(255,255,255,0.03)';
+    t.querySelector('div').style.color = isActive ? '#d4a843' : '#ccc';
+  }
+  var body = document.getElementById('csVideoBody');
+  if (body) body.innerHTML = renderVideoTierContent();
+}
+
+function renderVideoTierContent() {
+  if (csVideoState.tier === 'quick') return renderQuickClips();
+  if (csVideoState.tier === 'template') return renderTemplateVideo();
+  if (csVideoState.tier === 'premium') return renderPremiumVideo();
+  return '';
+}
+
+function renderQuickClips() {
+  return '<div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;">' +
+    '<div class="cs-card">' +
+      '<div style="font-size:16px;font-weight:700;color:#fff;margin-bottom:16px;">\u26A1 Quick Video Clip</div>' +
+      '<div style="font-size:12px;color:#999;margin-bottom:12px;">Powered by Grok Imagine · Fast generation · Great for social media</div>' +
+      '<div style="margin-bottom:12px;">' +
+        '<label class="cs-label">Video Prompt</label>' +
+        '<textarea class="cs-textarea" id="csQuickPrompt" rows="4" placeholder="Describe the video: A luxury real estate walkthrough of a modern penthouse, cinematic camera movement, golden hour lighting..." onchange="csVideoState.quickPrompt=this.value" oninput="csVideoState.quickPrompt=this.value">' + escHTML(csVideoState.quickPrompt) + '</textarea>' +
+      '</div>' +
+      '<div style="margin-bottom:12px;">' +
+        '<label class="cs-label">Duration</label>' +
+        '<select class="cs-select" id="csQuickDuration">' +
+          '<option value="5">5 seconds</option>' +
+          '<option value="10" selected>10 seconds</option>' +
+          '<option value="15">15 seconds</option>' +
+        '</select>' +
+      '</div>' +
+      renderVoiceoverPanel() +
+      '<button class="cs-btn-gold" onclick="generateVideo()" style="width:100%;margin-top:16px;padding:14px;">' +
+        '\uD83C\uDFAC Generate Quick Clip' +
+      '</button>' +
+    '</div>' +
+    '<div class="cs-card" id="csVideoPreviewPanel" style="min-height:350px;">' +
+      renderVideoPreviewPanel() +
     '</div>' +
   '</div>';
 }
+
+function renderTemplateVideo() {
+  var templateGrid = CS_VIDEO_TEMPLATES.map(function(t) {
+    var isSelected = csVideoState.selectedTemplate === t.id;
+    return '<div class="cs-card" onclick="csVideoState.selectedTemplate=\'' + t.id + '\';renderTemplateVideo_update()" style="cursor:pointer;transition:all 0.2s;' +
+      'border-color:' + (isSelected ? '#d4a843' : 'rgba(255,255,255,0.08)') + ';' +
+      'background:' + (isSelected ? 'rgba(212,168,67,0.06)' : 'rgba(255,255,255,0.03)') + ';">' +
+      '<div style="font-size:28px;text-align:center;margin-bottom:8px;">' + t.icon + '</div>' +
+      '<div style="font-size:12px;font-weight:700;color:' + (isSelected ? '#d4a843' : '#fff') + ';text-align:center;margin-bottom:4px;">' + escHTML(t.name) + '</div>' +
+      '<div style="font-size:11px;color:#999;text-align:center;margin-bottom:4px;">' + escHTML(t.desc) + '</div>' +
+      '<div style="font-size:10px;color:#d4a843;text-align:center;">' + t.duration + '</div>' +
+    '</div>';
+  }).join('');
+
+  return '<div style="display:flex;flex-direction:column;gap:16px;">' +
+    '<div style="font-size:15px;font-weight:600;color:#fff;">Choose a Video Template</div>' +
+    '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;" id="csVideoTemplateGrid">' + templateGrid + '</div>' +
+    '<div class="cs-card" id="csTemplateDetail">' + renderTemplateDetail() + '</div>' +
+  '</div>';
+}
+
+function renderTemplateVideo_update() {
+  var grid = document.getElementById('csVideoTemplateGrid');
+  var detail = document.getElementById('csTemplateDetail');
+  if (grid) {
+    grid.innerHTML = CS_VIDEO_TEMPLATES.map(function(t) {
+      var isSelected = csVideoState.selectedTemplate === t.id;
+      return '<div class="cs-card" onclick="csVideoState.selectedTemplate=\'' + t.id + '\';renderTemplateVideo_update()" style="cursor:pointer;transition:all 0.2s;' +
+        'border-color:' + (isSelected ? '#d4a843' : 'rgba(255,255,255,0.08)') + ';' +
+        'background:' + (isSelected ? 'rgba(212,168,67,0.06)' : 'rgba(255,255,255,0.03)') + ';">' +
+        '<div style="font-size:28px;text-align:center;margin-bottom:8px;">' + t.icon + '</div>' +
+        '<div style="font-size:12px;font-weight:700;color:' + (isSelected ? '#d4a843' : '#fff') + ';text-align:center;margin-bottom:4px;">' + escHTML(t.name) + '</div>' +
+        '<div style="font-size:11px;color:#999;text-align:center;margin-bottom:4px;">' + escHTML(t.desc) + '</div>' +
+        '<div style="font-size:10px;color:#d4a843;text-align:center;">' + t.duration + '</div>' +
+      '</div>';
+    }).join('');
+  }
+  if (detail) detail.innerHTML = renderTemplateDetail();
+}
+
+function renderTemplateDetail() {
+  if (!csVideoState.selectedTemplate) {
+    return '<div style="text-align:center;padding:30px;opacity:0.5;color:#999;">Select a template above to configure</div>';
+  }
+  var tmpl = null;
+  for (var i = 0; i < CS_VIDEO_TEMPLATES.length; i++) {
+    if (CS_VIDEO_TEMPLATES[i].id === csVideoState.selectedTemplate) { tmpl = CS_VIDEO_TEMPLATES[i]; break; }
+  }
+  if (!tmpl) return '';
+
+  return '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start;">' +
+    '<div>' +
+      '<div style="font-size:15px;font-weight:700;color:#fff;margin-bottom:4px;">' + tmpl.icon + ' ' + escHTML(tmpl.name) + '</div>' +
+      '<div style="font-size:12px;color:#999;margin-bottom:16px;">' + escHTML(tmpl.desc) + ' &middot; ' + tmpl.duration + '</div>' +
+      '<div style="margin-bottom:10px;">' +
+        '<label class="cs-label">Key Message / Brief</label>' +
+        '<textarea class="cs-textarea" id="csTemplateBrief" rows="3" placeholder="Enter the key message, property details, or content for this video..."></textarea>' +
+      '</div>' +
+      renderVoiceoverPanel() +
+    '</div>' +
+    '<div style="display:flex;flex-direction:column;gap:10px;">' +
+      '<div class="cs-card" style="padding:12px;">' +
+        '<div style="font-size:12px;color:#d4a843;font-weight:600;margin-bottom:8px;">Template Scenes</div>' +
+        renderTemplateScenesPreview(tmpl) +
+      '</div>' +
+      '<button class="cs-btn-gold" onclick="generateVideo()" style="width:100%;padding:14px;">' +
+        '\uD83C\uDFAC Generate Template Video' +
+      '</button>' +
+    '</div>' +
+  '</div>';
+}
+
+function renderTemplateScenesPreview(tmpl) {
+  var sceneMap = {
+    'listing-showcase': ['Exterior aerial shot', 'Front entrance walk-in', 'Living area pan', 'Kitchen closeup', 'Master suite', 'Backyard/amenities', 'Call-to-action outro'],
+    'testimonial': ['Client intro', 'Before situation', 'The transformation', 'Results reveal', 'Client recommendation'],
+    'product-demo': ['Product reveal', 'Feature 1 demo', 'Feature 2 demo', 'Benefits summary', 'CTA close'],
+    'team-intro': ['Company logo open', 'Team overview', 'Individual intros', 'Office culture', 'Contact CTA'],
+    'event-promo': ['Event title card', 'Date & location', 'Highlights preview', 'Speaker/performer', 'Register CTA'],
+    'stats-reveal': ['Opening hook', 'Stat 1 reveal', 'Stat 2 reveal', 'Stat 3 reveal', 'Brand outro'],
+    'before-after': ['Before scene', 'Transition effect', 'After reveal', 'Impact statement'],
+    'logo-reveal': ['Background build', 'Logo animation', 'Tagline type-on', 'Brand settle']
+  };
+  var scenes = sceneMap[tmpl.id] || ['Scene 1', 'Scene 2', 'Scene 3'];
+  return scenes.map(function(s, idx) {
+    return '<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid rgba(255,255,255,0.05);">' +
+      '<div style="width:20px;height:20px;border-radius:50%;background:rgba(212,168,67,0.2);color:#d4a843;font-size:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">' + (idx + 1) + '</div>' +
+      '<div style="font-size:12px;color:#ccc;">' + escHTML(s) + '</div>' +
+    '</div>';
+  }).join('');
+}
+
+function renderPremiumVideo() {
+  return '<div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;">' +
+    '<div class="cs-card">' +
+      '<div style="font-size:16px;font-weight:700;color:#fff;margin-bottom:4px;">\uD83C\uDF1F Premium Cinematic</div>' +
+      '<div style="font-size:12px;color:#999;margin-bottom:16px;">Powered by Runway Gen-3 &middot; Professional quality &middot; Custom storyboards</div>' +
+      '<div style="margin-bottom:12px;">' +
+        '<label class="cs-label">Project Brief</label>' +
+        '<textarea class="cs-textarea" id="csPremiumBrief" rows="3" placeholder="Describe your video project, style, mood, key messages..."></textarea>' +
+      '</div>' +
+      '<div style="margin-bottom:12px;">' +
+        '<label class="cs-label">Video Style</label>' +
+        '<select class="cs-select" id="csPremiumStyle">' +
+          '<option value="cinematic">Cinematic / Film-grade</option>' +
+          '<option value="documentary">Documentary Style</option>' +
+          '<option value="corporate">Corporate / Clean</option>' +
+          '<option value="social">Social Media / Dynamic</option>' +
+          '<option value="luxury">Luxury / High-end</option>' +
+        '</select>' +
+      '</div>' +
+      '<div style="margin-bottom:16px;">' +
+        '<label class="cs-label">Storyboard Scenes</label>' +
+        '<div id="csStoryboard">' + renderStoryboard() + '</div>' +
+        '<button class="cs-btn-secondary" onclick="addStoryboardScene()" style="margin-top:8px;width:100%;">+ Add Scene</button>' +
+      '</div>' +
+      renderVoiceoverPanel() +
+      '<button class="cs-btn-gold" onclick="generatePremiumVideo()" style="width:100%;margin-top:16px;padding:14px;">' +
+        '\uD83C\uDF1F Generate Cinematic Video' +
+      '</button>' +
+    '</div>' +
+    '<div class="cs-card" id="csVideoPreviewPanel" style="min-height:400px;">' +
+      renderVideoPreviewPanel() +
+    '</div>' +
+  '</div>';
+}
+
+function renderStoryboard() {
+  if (!csVideoState.storyboard.length) {
+    return '<div style="text-align:center;padding:20px;opacity:0.5;color:#999;font-size:13px;">Add scenes to build your storyboard</div>';
+  }
+  return csVideoState.storyboard.map(function(scene, idx) {
+    return '<div class="cs-card" style="margin-bottom:8px;padding:10px;">' +
+      '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;">' +
+        '<div style="font-size:12px;font-weight:600;color:#d4a843;">Scene ' + (idx + 1) + '</div>' +
+        '<button onclick="removeStoryboardScene(' + idx + ')" style="background:none;border:none;color:#666;cursor:pointer;font-size:14px;">&times;</button>' +
+      '</div>' +
+      '<textarea class="cs-textarea" rows="2" style="font-size:12px;" onchange="csVideoState.storyboard[' + idx + '].desc=this.value" placeholder="Describe this scene...">' + escHTML(scene.desc || '') + '</textarea>' +
+    '</div>';
+  }).join('');
+}
+
+function addStoryboardScene() {
+  csVideoState.storyboard.push({ desc: '', duration: 5 });
+  var sb = document.getElementById('csStoryboard');
+  if (sb) sb.innerHTML = renderStoryboard();
+}
+
+function removeStoryboardScene(idx) {
+  csVideoState.storyboard.splice(idx, 1);
+  var sb = document.getElementById('csStoryboard');
+  if (sb) sb.innerHTML = renderStoryboard();
+}
+
+function renderVoiceoverPanel() {
+  var voiceOpts = CS_VOICES.map(function(v) {
+    return '<option value="' + v.id + '"' + (csVideoState.voiceoverVoice === v.id ? ' selected' : '') + '>' + v.name + ' - ' + v.desc + '</option>';
+  }).join('');
+
+  return '<div class="cs-card" style="margin-bottom:12px;">' +
+    '<div style="font-size:13px;font-weight:600;color:#d4a843;margin-bottom:10px;">\uD83C\uDFA4 Voiceover (ElevenLabs)</div>' +
+    '<div style="margin-bottom:8px;">' +
+      '<label class="cs-label">Script</label>' +
+      '<textarea class="cs-textarea" id="csVoiceoverScript" rows="2" placeholder="Enter narration script..." onchange="csVideoState.voiceoverScript=this.value">' + escHTML(csVideoState.voiceoverScript) + '</textarea>' +
+    '</div>' +
+    '<div class="cs-grid-2" style="margin-bottom:8px;">' +
+      '<div>' +
+        '<label class="cs-label">Voice</label>' +
+        '<select class="cs-select" id="csVoiceSelect" onchange="csVideoState.voiceoverVoice=this.value">' + voiceOpts + '</select>' +
+      '</div>' +
+      '<div>' +
+        '<label class="cs-label">Language</label>' +
+        '<select class="cs-select" id="csVoiceLang" onchange="csVideoState.voiceoverLang=this.value">' +
+          '<option value="en" selected>English</option>' +
+          '<option value="es">Spanish</option>' +
+          '<option value="fr">French</option>' +
+          '<option value="de">German</option>' +
+          '<option value="pt">Portuguese</option>' +
+          '<option value="ja">Japanese</option>' +
+        '</select>' +
+      '</div>' +
+    '</div>' +
+    '<button class="cs-btn-secondary" onclick="generateVoiceover()" style="width:100%;font-size:12px;padding:8px;">' +
+      '\uD83C\uDFA4 Preview Voiceover' +
+    '</button>' +
+    (csVideoState.voiceoverAudio ? '<audio controls style="width:100%;margin-top:8px;" src="' + escHTML(csVideoState.voiceoverAudio) + '"></audio>' : '') +
+  '</div>';
+}
+
+function generateVoiceover() {
+  var script = document.getElementById('csVoiceoverScript');
+  if (script) csVideoState.voiceoverScript = script.value;
+  if (!csVideoState.voiceoverScript.trim()) {
+    showToast('Enter a voiceover script first', 'error');
+    return;
+  }
+  showToast('Generating voiceover...', 'info');
+  csAPI('/api/creative/voiceover/generate', {
+    method: 'POST',
+    body: JSON.stringify({
+      script: csVideoState.voiceoverScript,
+      voice_id: csVideoState.voiceoverVoice,
+      language: csVideoState.voiceoverLang
+    })
+  }).then(function(data) {
+    if (data.error) { showToast(data.error, 'error'); return; }
+    csVideoState.voiceoverAudio = data.audio_url || data.url;
+    showToast('Voiceover ready!', 'success');
+    var body = document.getElementById('csVideoBody');
+    if (body) body.innerHTML = renderVideoTierContent();
+  }).catch(function(e) {
+    showToast('Voiceover generation failed: ' + (e.message || 'Network error'), 'error');
+  });
+}
+
+function renderVideoPreviewPanel() {
+  if (csVideoState.generating) {
+    return '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:350px;gap:20px;">' +
+      renderRenderProgress(csVideoState.progress) +
+      '<div style="color:#999;font-size:12px;">' + escHTML(csVideoState.progressMsg || 'Preparing render...') + '</div>' +
+    '</div>';
+  }
+  if (csVideoState.result && csVideoState.result.url) {
+    return renderVideoPreview(csVideoState.result.url);
+  }
+  return '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:350px;gap:16px;opacity:0.5;">' +
+    '<div style="font-size:60px;">\uD83C\uDFAC</div>' +
+    '<div style="color:#ccc;font-size:15px;">Video preview will appear here</div>' +
+    '<div style="color:#999;font-size:12px;">Configure your settings and click Generate</div>' +
+  '</div>';
+}
+
+function renderRenderProgress(percent) {
+  return '<div style="width:100%;max-width:300px;">' +
+    '<div style="display:flex;justify-content:space-between;margin-bottom:8px;">' +
+      '<span style="color:#d4a843;font-size:14px;font-weight:600;">Rendering...</span>' +
+      '<span style="color:#d4a843;font-size:14px;font-weight:600;">' + Math.round(percent || 0) + '%</span>' +
+    '</div>' +
+    '<div style="height:6px;background:rgba(255,255,255,0.1);border-radius:3px;overflow:hidden;">' +
+      '<div style="height:100%;background:linear-gradient(90deg,#d4a843,#f0c060);border-radius:3px;transition:width 0.5s ease;width:' + Math.round(percent || 0) + '%"></div>' +
+    '</div>' +
+  '</div>';
+}
+
+function renderVideoPreview(url) {
+  return '<div>' +
+    '<video controls style="width:100%;border-radius:8px;background:#000;" src="' + escHTML(url) + '">' +
+      'Your browser does not support the video tag.' +
+    '</video>' +
+    '<div style="display:flex;gap:8px;margin-top:10px;">' +
+      '<button class="cs-btn-gold" onclick="downloadVideoFile(\'' + escHTML(url) + '\')" style="flex:1;font-size:12px;padding:10px;">' +
+        '\u2B07\uFE0F Download MP4' +
+      '</button>' +
+      '<button class="cs-btn-secondary" onclick="csPublishVideo(\'' + escHTML(url) + '\')" style="flex:1;font-size:12px;padding:10px;">' +
+        '\uD83D\uDE80 Publish' +
+      '</button>' +
+    '</div>' +
+  '</div>';
+}
+
+function downloadVideoFile(url) {
+  var a = document.createElement('a');
+  a.href = url;
+  a.download = 'saintsal-video-' + Date.now() + '.mp4';
+  a.target = '_blank';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  showToast('Downloading video...', 'info');
+}
+
+function csPublishVideo(url) {
+  showToast('Video added to publishing queue', 'success');
+  switchCSTab('social-posting');
+}
+
+function generateVideo() {
+  var promptEl = null;
+  var prompt = '';
+
+  if (csVideoState.tier === 'quick') {
+    promptEl = document.getElementById('csQuickPrompt');
+    if (promptEl) csVideoState.quickPrompt = promptEl.value;
+    prompt = csVideoState.quickPrompt;
+  } else if (csVideoState.tier === 'template') {
+    var briefEl = document.getElementById('csTemplateBrief');
+    if (briefEl) prompt = briefEl.value;
+    if (!csVideoState.selectedTemplate) {
+      showToast('Select a video template first', 'error');
+      return;
+    }
+  } else if (csVideoState.tier === 'premium') {
+    var premBrief = document.getElementById('csPremiumBrief');
+    if (premBrief) prompt = premBrief.value;
+  }
+
+  if (!prompt || !prompt.trim()) {
+    showToast('Please enter a video prompt or brief', 'error');
+    return;
+  }
+
+  csVideoState.generating = true;
+  csVideoState.progress = 0;
+  csVideoState.progressMsg = 'Initializing generation...';
+  csVideoState.result = null;
+
+  var panel = document.getElementById('csVideoPreviewPanel');
+  if (panel) panel.innerHTML = renderVideoPreviewPanel();
+
+  var body = {
+    tier: csVideoState.tier,
+    prompt: prompt,
+    template_id: csVideoState.selectedTemplate,
+    storyboard: csVideoState.storyboard,
+    voiceover_script: csVideoState.voiceoverScript,
+    voice_id: csVideoState.voiceoverVoice,
+    brand_id: creativeStudioState.brand ? creativeStudioState.brand.id : null
+  };
+
+  // Use SSE for progress
+  var eventSource = new EventSource(API + '/api/creative/video/generate?token=' + (sessionToken || ''));
+  var sentBody = false;
+
+  // Fallback if SSE is unavailable
+  csAPI('/api/creative/video/generate', {
+    method: 'POST',
+    body: JSON.stringify(body)
+  }).then(function(data) {
+    if (data.error) {
+      showToast(data.error, 'error');
+      csVideoState.generating = false;
+      csVideoState.result = null;
+      var p = document.getElementById('csVideoPreviewPanel');
+      if (p) p.innerHTML = renderVideoPreviewPanel();
+      return;
+    }
+    csVideoState.generating = false;
+    csVideoState.progress = 100;
+    csVideoState.result = data;
+    var p = document.getElementById('csVideoPreviewPanel');
+    if (p) p.innerHTML = renderVideoPreviewPanel();
+    showToast('Video generated!', 'success');
+  }).catch(function(e) {
+    csVideoState.generating = false;
+    showToast('Video generation failed: ' + (e.message || 'Network error'), 'error');
+    var p = document.getElementById('csVideoPreviewPanel');
+    if (p) p.innerHTML = renderVideoPreviewPanel();
+  });
+}
+
+function generatePremiumVideo() {
+  csVideoState.tier = 'premium';
+  generateVideo();
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// TAB 3: SOCIAL POSTING / CALENDAR
+// ═══════════════════════════════════════════════════════════════════════════════
+
+var csCalendarState = {
+  month: null,
+  year: null,
+  posts: [],
+  loading: false,
+  loaded: false,
+  selectedDay: null,
+  selectedPost: null,
+  history: [],
+  historyLoaded: false,
+  historyLoading: false,
+  view: 'calendar',   // 'calendar' | 'history' | 'bulk'
+  bulkItems: []
+};
+
+function renderSocialCalendar(container) {
+  if (!csCalendarState.month) { initCalendar(); }
+
+  var viewBtns = [
+    { id: 'calendar', label: '\uD83D\uDCC5 Calendar' },
+    { id: 'history', label: '\uD83D\uDCC3 History' },
+    { id: 'bulk', label: '\u26A1 Bulk Schedule' }
+  ].map(function(v) {
+    var isActive = csCalendarState.view === v.id;
+    return '<button onclick="csCalView(\'' + v.id + '\')" class="' + (isActive ? 'cs-btn-gold' : 'cs-btn-secondary') + '" style="padding:8px 16px;font-size:13px;">' +
+      v.label + '</button>';
+  }).join('');
+
+  container.innerHTML =
+    '<div style="display:flex;flex-direction:column;gap:16px;">' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;">' +
+        '<div style="display:flex;gap:6px;">' + viewBtns + '</div>' +
+        '<button class="cs-btn-gold" onclick="showScheduleModal()" style="padding:8px 16px;font-size:13px;">' +
+          '+ New Post' +
+        '</button>' +
+      '</div>' +
+      '<div id="csCalBody">' + renderCalBody() + '</div>' +
+    '</div>';
+
+  if (!csCalendarState.loaded && !csCalendarState.loading) {
+    loadCalendarData(csCalendarState.month, csCalendarState.year);
+  }
+}
+
+function csCalView(view) {
+  csCalendarState.view = view;
+  var calBody = document.getElementById('csCalBody');
+  if (!calBody) return;
+  calBody.innerHTML = renderCalBody();
+  if (view === 'history' && !csCalendarState.historyLoaded) loadPostHistory();
+}
+
+function renderCalBody() {
+  if (csCalendarState.view === 'calendar') return renderCalendarView();
+  if (csCalendarState.view === 'history') return renderPostHistoryView();
+  if (csCalendarState.view === 'bulk') return bulkSchedulePanel();
+  return '';
+}
+
+function initCalendar() {
+  var now = new Date();
+  csCalendarState.month = now.getMonth();
+  csCalendarState.year = now.getFullYear();
+}
+
+function loadCalendarData(month, year) {
+  if (csCalendarState.loading) return;
+  csCalendarState.loading = true;
+  var m = year + '-' + (month < 9 ? '0' : '') + (month + 1);
+  csAPI('/api/social-studio/calendar?month=' + m).then(function(data) {
+    csCalendarState.loading = false;
+    csCalendarState.loaded = true;
+    if (data.error) { showToast(data.error, 'error'); return; }
+    csCalendarState.posts = data.posts || data.items || [];
+    var calBody = document.getElementById('csCalBody');
+    if (calBody && csCalendarState.view === 'calendar') calBody.innerHTML = renderCalendarView();
+  }).catch(function(e) {
+    csCalendarState.loading = false;
+    showToast('Could not load calendar: ' + (e.message || 'Network error'), 'error');
+  });
+}
+
+function navigateMonth(delta) {
+  csCalendarState.month += delta;
+  if (csCalendarState.month < 0) { csCalendarState.month = 11; csCalendarState.year--; }
+  if (csCalendarState.month > 11) { csCalendarState.month = 0; csCalendarState.year++; }
+  csCalendarState.loaded = false;
+  csCalendarState.posts = [];
+  var calBody = document.getElementById('csCalBody');
+  if (calBody) calBody.innerHTML = renderCalendarView();
+  loadCalendarData(csCalendarState.month, csCalendarState.year);
+}
+
+function renderCalendarView() {
+  var monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  var month = csCalendarState.month !== null ? csCalendarState.month : new Date().getMonth();
+  var year = csCalendarState.year || new Date().getFullYear();
+
+  var header = '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">' +
+    '<button class="cs-btn-secondary" onclick="navigateMonth(-1)" style="padding:8px 14px;">&larr;</button>' +
+    '<div style="font-size:18px;font-weight:700;color:#fff;">' + monthNames[month] + ' ' + year + '</div>' +
+    '<button class="cs-btn-secondary" onclick="navigateMonth(1)" style="padding:8px 14px;">&rarr;</button>' +
+  '</div>';
+
+  if (csCalendarState.loading) {
+    return header + csSpinner('Loading calendar...');
+  }
+
+  var dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  var dayHeaders = dayNames.map(function(d) {
+    return '<div style="text-align:center;font-size:11px;color:#666;text-transform:uppercase;letter-spacing:1px;padding:8px 0;font-weight:600;">' + d + '</div>';
+  }).join('');
+
+  var daysInMonth = getDaysInMonth(month, year);
+  var firstDay = getFirstDayOfMonth(month, year);
+  var today = new Date();
+  var isCurrentMonth = today.getMonth() === month && today.getFullYear() === year;
+
+  var cells = '';
+  // Empty cells before first day
+  for (var e = 0; e < firstDay; e++) {
+    cells += '<div style="min-height:80px;padding:6px;"></div>';
+  }
+  // Day cells
+  for (var d = 1; d <= daysInMonth; d++) {
+    var dayPosts = csCalendarState.posts.filter(function(p) {
+      if (!p.scheduled_at && !p.date) return false;
+      var pDate = new Date(p.scheduled_at || p.date);
+      return pDate.getDate() === d && pDate.getMonth() === month && pDate.getFullYear() === year;
+    });
+    var isToday = isCurrentMonth && today.getDate() === d;
+    var isSelected = csCalendarState.selectedDay === d;
+
+    var dots = dayPosts.slice(0, 4).map(function(p) {
+      var color = CS_PLATFORM_COLORS[p.platform] || '#d4a843';
+      return '<div style="width:7px;height:7px;border-radius:50%;background:' + color + ';flex-shrink:0;" title="' + escHTML(p.platform || '') + '"></div>';
+    }).join('');
+
+    cells += '<div onclick="csCalendarState.selectedDay=' + d + ';showCalendarDay(' + d + ')" style="' +
+      'min-height:80px;padding:6px;border:1px solid ' +
+      (isSelected ? '#d4a843' : (isToday ? 'rgba(212,168,67,0.4)' : 'rgba(255,255,255,0.06)')) +
+      ';border-radius:8px;cursor:pointer;background:' +
+      (isToday ? 'rgba(212,168,67,0.06)' : 'rgba(255,255,255,0.02)') +
+      ';transition:all 0.15s;' +
+      '">' +
+      '<div style="font-size:13px;font-weight:' + (isToday ? '700' : '400') + ';color:' + (isToday ? '#d4a843' : '#ccc') + ';margin-bottom:4px;">' + d + '</div>' +
+      '<div style="display:flex;flex-wrap:wrap;gap:3px;">' + dots + '</div>' +
+      (dayPosts.length > 4 ? '<div style="font-size:10px;color:#999;margin-top:2px;">+' + (dayPosts.length - 4) + ' more</div>' : '') +
+    '</div>';
+  }
+
+  return '<div style="display:grid;grid-template-columns:1fr 1fr 2fr;gap:20px;">' +
+    '<div style="grid-column:1/-1">' + header + '</div>' +
+    '<div style="grid-column:1/3;">' +
+      '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;">' +
+        dayHeaders + cells +
+      '</div>' +
+    '</div>' +
+    '<div>' +
+      '<div class="cs-card" id="csDayDetail" style="min-height:300px;">' +
+        (csCalendarState.selectedDay ? renderCalendarDayDetail(csCalendarState.selectedDay) : csEmpty('\uD83D\uDCC5', 'Select a day', 'Click any day to see scheduled posts')) +
+      '</div>' +
+    '</div>' +
+  '</div>';
+}
+
+function showCalendarDay(day) {
+  var detail = document.getElementById('csDayDetail');
+  if (detail) detail.innerHTML = renderCalendarDayDetail(day);
+}
+
+function renderCalendarDayDetail(day) {
+  var month = csCalendarState.month;
+  var year = csCalendarState.year;
+  var dayPosts = csCalendarState.posts.filter(function(p) {
+    if (!p.scheduled_at && !p.date) return false;
+    var pDate = new Date(p.scheduled_at || p.date);
+    return pDate.getDate() === day && pDate.getMonth() === month && pDate.getFullYear() === year;
+  });
+
+  var monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  var html = '<div style="font-size:14px;font-weight:700;color:#d4a843;margin-bottom:12px;">' +
+    monthNames[month] + ' ' + day + ', ' + year + ' &middot; ' + dayPosts.length + ' post(s)' +
+  '</div>';
+
+  if (!dayPosts.length) {
+    html += csEmpty('\uD83D\uDCCB', 'No posts scheduled', 'Click + New Post to schedule');
+    html += '<button class="cs-btn-gold" onclick="showScheduleModal(' + day + ')" style="width:100%;margin-top:12px;">+ Schedule Post</button>';
+    return html;
+  }
+
+  for (var i = 0; i < dayPosts.length; i++) {
+    var post = dayPosts[i];
+    html += renderPostDetail(post);
+  }
+  html += '<button class="cs-btn-secondary" onclick="showScheduleModal(' + day + ')" style="width:100%;margin-top:8px;font-size:12px;">+ Add Post This Day</button>';
+  return html;
+}
+
+function renderPostDetail(post) {
+  var color = CS_PLATFORM_COLORS[post.platform] || '#d4a843';
+  var time = post.scheduled_at ? new Date(post.scheduled_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : (post.date || '');
+  return '<div class="cs-card" style="margin-bottom:8px;padding:10px;border-left:3px solid ' + color + ';">' +
+    '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px;">' +
+      '<div style="display:flex;align-items:center;gap:6px;">' +
+        '<div style="width:8px;height:8px;border-radius:50%;background:' + color + ';"></div>' +
+        '<span style="font-size:11px;color:' + color + ';font-weight:600;text-transform:capitalize;">' + escHTML(post.platform || '') + '</span>' +
+        '<span style="font-size:11px;color:#666;">' + escHTML(time) + '</span>' +
+      '</div>' +
+      '<div style="display:flex;gap:4px;">' +
+        '<button onclick="renderPostAnalytics(\'' + escHTML(post.id || '') + '\')" style="background:none;border:none;color:#999;cursor:pointer;font-size:12px;" title="Analytics">\uD83D\uDCCA</button>' +
+        '<button onclick="deleteScheduledPost(\'' + escHTML(post.id || '') + '\')" style="background:none;border:none;color:#999;cursor:pointer;font-size:12px;" title="Delete">&times;</button>' +
+      '</div>' +
+    '</div>' +
+    '<div style="font-size:12px;color:#ccc;line-height:1.5;overflow:hidden;max-height:60px;">' +
+      escHTML((post.content || '').substring(0, 120) + ((post.content || '').length > 120 ? '...' : '')) +
+    '</div>' +
+    '<div style="margin-top:6px;display:flex;gap:4px;">' +
+      '<span style="font-size:10px;padding:2px 6px;border-radius:4px;background:rgba(255,255,255,0.06);color:#999;">' +
+        escHTML(post.status || 'scheduled') +
+      '</span>' +
+    '</div>' +
+  '</div>';
+}
+
+function renderPostAnalytics(postId) {
+  if (!postId) return;
+  csAPI('/api/social-studio/post-analytics?id=' + encodeURIComponent(postId)).then(function(data) {
+    if (data.error) { showToast(data.error, 'error'); return; }
+    var m = data.metrics || data;
+    var bodyHtml = '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;">' +
+      renderAnalyticCard('Likes', m.likes || 0, '\u2764\uFE0F') +
+      renderAnalyticCard('Comments', m.comments || 0, '\uD83D\uDCAC') +
+      renderAnalyticCard('Shares', m.shares || 0, '\uD83D\uDD04') +
+      renderAnalyticCard('Reach', m.reach || 0, '\uD83D\uDC41\uFE0F') +
+      renderAnalyticCard('Impressions', m.impressions || 0, '\uD83D\uDCCA') +
+      renderAnalyticCard('Clicks', m.clicks || 0, '\uD83D\uDD17') +
+    '</div>';
+    csModal('Post Analytics', bodyHtml, [{ label: 'Close', cls: 'cs-btn-secondary', onclick: 'csCloseModal()' }]);
+  }).catch(function(e) {
+    showToast('Could not load analytics: ' + (e.message || 'Network error'), 'error');
+  });
+}
+
+function renderAnalyticCard(label, value, icon) {
+  return '<div class="cs-card" style="text-align:center;padding:14px;">' +
+    '<div style="font-size:20px;margin-bottom:4px;">' + icon + '</div>' +
+    '<div style="font-size:20px;font-weight:700;color:#d4a843;">' + csFormatNumber(value) + '</div>' +
+    '<div style="font-size:11px;color:#999;">' + escHTML(label) + '</div>' +
+  '</div>';
+}
+
+function deleteScheduledPost(postId) {
+  if (!postId) return;
+  if (!window.confirm('Delete this scheduled post?')) return;
+  csAPI('/api/social-studio/delete-post', {
+    method: 'POST',
+    body: JSON.stringify({ post_id: postId })
+  }).then(function(data) {
+    if (data.error) { showToast(data.error, 'error'); return; }
+    csCalendarState.posts = csCalendarState.posts.filter(function(p) { return p.id !== postId; });
+    showToast('Post deleted', 'success');
+    showCalendarDay(csCalendarState.selectedDay);
+  }).catch(function(e) {
+    showToast('Delete failed: ' + (e.message || 'Network error'), 'error');
+  });
+}
+
+function showScheduleModal(day) {
+  var platforms = ['instagram', 'facebook', 'linkedin', 'twitter', 'tiktok', 'google'];
+  var platformOpts = platforms.map(function(p) {
+    return '<option value="' + p + '">' + p.charAt(0).toUpperCase() + p.slice(1) + '</option>';
+  }).join('');
+
+  var defaultDate = '';
+  if (day && csCalendarState.month !== null) {
+    var m = csCalendarState.month + 1;
+    defaultDate = csCalendarState.year + '-' + (m < 10 ? '0' : '') + m + '-' + (day < 10 ? '0' : '') + day;
+  }
+
+  var bodyHtml = '<div style="display:flex;flex-direction:column;gap:12px;">' +
+    '<div><label class="cs-label">Platform</label>' +
+      '<select class="cs-select" id="schedPlatform">' + platformOpts + '</select></div>' +
+    '<div><label class="cs-label">Content</label>' +
+      '<textarea class="cs-textarea" id="schedContent" rows="4" placeholder="Write your post content..."></textarea></div>' +
+    '<div class="cs-grid-2">' +
+      '<div><label class="cs-label">Date</label>' +
+        '<input type="date" class="cs-input" id="schedDate" value="' + escHTML(defaultDate) + '"></div>' +
+      '<div><label class="cs-label">Time</label>' +
+        '<input type="time" class="cs-input" id="schedTime" value="09:00"></div>' +
+    '</div>' +
+  '</div>';
+
+  csModal('Schedule Post', bodyHtml, [
+    { label: 'Cancel', cls: 'cs-btn-secondary', onclick: 'csCloseModal()' },
+    { label: '\uD83D\uDE80 Schedule', cls: 'cs-btn-gold', onclick: 'submitSchedulePost()' }
+  ]);
+}
+
+function submitSchedulePost() {
+  var platform = document.getElementById('schedPlatform');
+  var content = document.getElementById('schedContent');
+  var date = document.getElementById('schedDate');
+  var time = document.getElementById('schedTime');
+
+  if (!content || !content.value.trim()) { showToast('Enter post content', 'error'); return; }
+  if (!date || !date.value) { showToast('Select a date', 'error'); return; }
+
+  var scheduledAt = date.value + 'T' + (time ? time.value : '09:00') + ':00';
+  csAPI('/api/social-studio/schedule', {
+    method: 'POST',
+    body: JSON.stringify({
+      platform: platform ? platform.value : 'instagram',
+      content: content.value,
+      scheduled_at: scheduledAt,
+      brand_id: creativeStudioState.brand ? creativeStudioState.brand.id : null
+    })
+  }).then(function(data) {
+    if (data.error) { showToast(data.error, 'error'); return; }
+    csCalendarState.posts.push(data.post || {
+      id: data.id || Date.now() + '',
+      platform: platform ? platform.value : 'instagram',
+      content: content.value,
+      scheduled_at: scheduledAt,
+      status: 'scheduled'
+    });
+    csCloseModal();
+    showToast('Post scheduled!', 'success');
+    var calBody = document.getElementById('csCalBody');
+    if (calBody && csCalendarState.view === 'calendar') calBody.innerHTML = renderCalendarView();
+  }).catch(function(e) {
+    showToast('Schedule failed: ' + (e.message || 'Network error'), 'error');
+  });
+}
+
+function renderPostHistoryView() {
+  if (csCalendarState.historyLoading) return csSpinner('Loading post history...');
+  if (!csCalendarState.historyLoaded) {
+    return csEmpty('\uD83D\uDCC3', 'Loading history...', '');
+  }
+  if (!csCalendarState.history.length) {
+    return csEmpty('\uD83D\uDCC3', 'No post history yet', 'Published posts will appear here');
+  }
+
+  var html = '<div style="display:flex;flex-direction:column;gap:10px;">';
+  for (var i = 0; i < csCalendarState.history.length; i++) {
+    var post = csCalendarState.history[i];
+    var color = CS_PLATFORM_COLORS[post.platform] || '#d4a843';
+    html += '<div class="cs-card" style="border-left:3px solid ' + color + ';">' +
+      '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;">' +
+        '<div style="display:flex;align-items:center;gap:8px;">' +
+          '<div style="width:8px;height:8px;border-radius:50%;background:' + color + ';"></div>' +
+          '<span style="font-size:12px;color:' + color + ';font-weight:600;text-transform:capitalize;">' + escHTML(post.platform || '') + '</span>' +
+          '<span style="font-size:11px;color:#666;">' + csFormatDate(post.published_at || post.scheduled_at) + '</span>' +
+        '</div>' +
+        '<button onclick="renderPostAnalytics(\'' + escHTML(post.id || '') + '\')" style="background:none;border:none;color:#d4a843;cursor:pointer;font-size:12px;">\uD83D\uDCCA Analytics</button>' +
+      '</div>' +
+      '<div style="font-size:13px;color:#ccc;margin-bottom:8px;">' + escHTML((post.content || '').substring(0, 150)) + '</div>' +
+      '<div style="display:flex;gap:12px;">' +
+        '<span style="font-size:11px;color:#999;">\u2764\uFE0F ' + csFormatNumber(post.likes || 0) + '</span>' +
+        '<span style="font-size:11px;color:#999;">\uD83D\uDCAC ' + csFormatNumber(post.comments || 0) + '</span>' +
+        '<span style="font-size:11px;color:#999;">\uD83D\uDD04 ' + csFormatNumber(post.shares || 0) + '</span>' +
+        '<span style="font-size:11px;color:#999;">\uD83D\uDC41\uFE0F ' + csFormatNumber(post.reach || 0) + '</span>' +
+      '</div>' +
+    '</div>';
+  }
+  html += '</div>';
+  return html;
+}
+
+function loadPostHistory() {
+  csCalendarState.historyLoading = true;
+  var calBody = document.getElementById('csCalBody');
+  if (calBody && csCalendarState.view === 'history') calBody.innerHTML = renderCalBody();
+
+  csAPI('/api/social-studio/history').then(function(data) {
+    csCalendarState.historyLoading = false;
+    csCalendarState.historyLoaded = true;
+    csCalendarState.history = data.posts || data.items || data || [];
+    var cb = document.getElementById('csCalBody');
+    if (cb && csCalendarState.view === 'history') cb.innerHTML = renderPostHistoryView();
+  }).catch(function(e) {
+    csCalendarState.historyLoading = false;
+    csCalendarState.historyLoaded = true;
+    showToast('Could not load history: ' + (e.message || 'Network error'), 'error');
+  });
+}
+
+function bulkSchedulePanel() {
+  var html = '<div style="display:flex;flex-direction:column;gap:16px;">' +
+    '<div class="cs-card">' +
+      '<div style="font-size:15px;font-weight:700;color:#fff;margin-bottom:8px;">\u26A1 Bulk Schedule</div>' +
+      '<div style="font-size:13px;color:#999;margin-bottom:16px;">Select platform and time slot, then schedule all generated content at once.</div>' +
+      '<div class="cs-grid-2" style="margin-bottom:12px;">' +
+        '<div>' +
+          '<label class="cs-label">Platform</label>' +
+          '<select class="cs-select" id="bulkPlatform">' +
+            '<option value="instagram">Instagram</option>' +
+            '<option value="facebook">Facebook</option>' +
+            '<option value="linkedin">LinkedIn</option>' +
+            '<option value="twitter">Twitter/X</option>' +
+          '</select>' +
+        '</div>' +
+        '<div>' +
+          '<label class="cs-label">Posting Time</label>' +
+          '<input type="time" class="cs-input" id="bulkTime" value="09:00">' +
+        '</div>' +
+      '</div>' +
+      '<div>' +
+        '<label class="cs-label">Start Date</label>' +
+        '<input type="date" class="cs-input" id="bulkStartDate">' +
+      '</div>' +
+    '</div>' +
+    '<div class="cs-card">' +
+      '<div style="font-size:14px;font-weight:600;color:#d4a843;margin-bottom:12px;">Generated Content Queue</div>' +
+      renderBulkItems() +
+      '<button class="cs-btn-gold" onclick="scheduleBulkContent()" style="width:100%;margin-top:12px;padding:14px;">' +
+        '\uD83D\uDE80 Schedule All' +
+      '</button>' +
+    '</div>' +
+  '</div>';
+  return html;
+}
+
+function renderBulkItems() {
+  if (!csCalendarState.bulkItems.length) {
+    return csEmpty('\uD83D\uDCCB', 'No content in queue', 'Generate content in the Content Engine tab, then return here to bulk schedule');
+  }
+  return '<div style="display:flex;flex-direction:column;gap:8px;">' +
+    csCalendarState.bulkItems.map(function(item, idx) {
+      return '<div class="cs-card" style="padding:10px;display:flex;align-items:flex-start;gap:10px;">' +
+        '<input type="checkbox" id="bulk_' + idx + '" checked style="margin-top:2px;accent-color:#d4a843;">' +
+        '<div style="flex:1;">' +
+          '<div style="font-size:12px;color:#ccc;">' + escHTML((item.content || '').substring(0, 100)) + '</div>' +
+          '<div style="font-size:11px;color:#999;margin-top:4px;text-transform:capitalize;">' + escHTML(item.platform || '') + '</div>' +
+        '</div>' +
+      '</div>';
+    }).join('') +
+  '</div>';
+}
+
+function scheduleBulkContent() {
+  var platform = document.getElementById('bulkPlatform');
+  var time = document.getElementById('bulkTime');
+  var startDate = document.getElementById('bulkStartDate');
+
+  if (!startDate || !startDate.value) { showToast('Select a start date', 'error'); return; }
+
+  var selectedItems = [];
+  for (var i = 0; i < csCalendarState.bulkItems.length; i++) {
+    var cb = document.getElementById('bulk_' + i);
+    if (cb && cb.checked) selectedItems.push(csCalendarState.bulkItems[i]);
+  }
+
+  if (!selectedItems.length) { showToast('Select at least one item to schedule', 'error'); return; }
+
+  csAPI('/api/social-studio/bulk-schedule', {
+    method: 'POST',
+    body: JSON.stringify({
+      items: selectedItems,
+      platform: platform ? platform.value : 'instagram',
+      start_date: startDate.value,
+      time: time ? time.value : '09:00'
+    })
+  }).then(function(data) {
+    if (data.error) { showToast(data.error, 'error'); return; }
+    showToast('Bulk scheduled: ' + (data.count || selectedItems.length) + ' posts!', 'success');
+    csCalendarState.bulkItems = [];
+    csCalendarState.loaded = false;
+    csCalView('calendar');
+  }).catch(function(e) {
+    showToast('Bulk schedule failed: ' + (e.message || 'Network error'), 'error');
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// TAB 4: AD CREATIVE
+// ═══════════════════════════════════════════════════════════════════════════════
+
+var csAdState = {
+  brief: {
+    url: '',
+    audience: '',
+    goal: 'awareness',
+    budget: '500-2000'
+  },
+  generating: false,
+  packages: [],
+  selectedPkg: null,
+  emailSequenceType: 'welcome',
+  emailGenerating: false,
+  emailResult: null
+};
+
+var CS_AD_FORMATS = [
+  { name: 'FB/IG Feed', size: '1200x628', platform: 'Facebook / Instagram' },
+  { name: 'FB/IG Story', size: '1080x1920', platform: 'Facebook / Instagram' },
+  { name: 'Google Display Square', size: '300x250', platform: 'Google Ads' },
+  { name: 'Google Leaderboard', size: '728x90', platform: 'Google Ads' },
+  { name: 'Google Skyscraper', size: '160x600', platform: 'Google Ads' },
+  { name: 'LinkedIn Sponsored', size: '1200x627', platform: 'LinkedIn' },
+  { name: 'Twitter Card', size: '1200x675', platform: 'Twitter/X' },
+  { name: 'Pinterest Pin', size: '1000x1500', platform: 'Pinterest' }
+];
+
+function renderAdCreative(container) {
+  container.innerHTML =
+    '<div style="display:flex;flex-direction:column;gap:20px;">' +
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;">' +
+        '<div>' +
+          '<div class="cs-card" style="margin-bottom:16px;">' +
+            '<div style="font-size:16px;font-weight:700;color:#fff;margin-bottom:16px;">\uD83D\uDCE2 Campaign Brief</div>' +
+            renderAdBriefForm() +
+            '<div style="margin-top:16px;">' +
+              '<button class="cs-btn-gold" onclick="generateAdPackage()" style="width:100%;" id="csGenAdBtn">' +
+                '\u2728 Generate Ad Package' +
+              '</button>' +
+            '</div>' +
+          '</div>' +
+          '<div class="cs-card">' +
+            '<div style="font-size:14px;font-weight:600;color:#d4a843;margin-bottom:12px;">\uD83D\uDCCF Ad Format Sizes</div>' +
+            renderAdFormats() +
+          '</div>' +
+        '</div>' +
+        '<div id="csAdPackagePanel">' +
+          renderAdPackagePanel() +
+        '</div>' +
+      '</div>' +
+      '<div class="cs-card">' +
+        '<div style="font-size:14px;font-weight:600;color:#d4a843;margin-bottom:12px;">\uD83D\uDCE7 Email Sequence Generator</div>' +
+        renderEmailSequencePanel() +
+      '</div>' +
+    '</div>';
+}
+
+function renderAdBriefForm() {
+  return '<div style="display:flex;flex-direction:column;gap:12px;">' +
+    '<div>' +
+      '<label class="cs-label">Product / Service URL</label>' +
+      '<input class="cs-input" type="url" id="adBriefUrl" placeholder="https://yourwebsite.com/product" value="' + escHTML(csAdState.brief.url) + '" onchange="csAdState.brief.url=this.value">' +
+    '</div>' +
+    '<div>' +
+      '<label class="cs-label">Target Audience</label>' +
+      '<textarea class="cs-textarea" id="adBriefAudience" rows="3" placeholder="Describe your ideal customer: age, interests, job title, pain points..." onchange="csAdState.brief.audience=this.value">' + escHTML(csAdState.brief.audience) + '</textarea>' +
+    '</div>' +
+    '<div class="cs-grid-2">' +
+      '<div>' +
+        '<label class="cs-label">Campaign Goal</label>' +
+        '<select class="cs-select" id="adBriefGoal" onchange="csAdState.brief.goal=this.value">' +
+          '<option value="awareness"' + (csAdState.brief.goal === 'awareness' ? ' selected' : '') + '>Brand Awareness</option>' +
+          '<option value="leads"' + (csAdState.brief.goal === 'leads' ? ' selected' : '') + '>Lead Generation</option>' +
+          '<option value="sales"' + (csAdState.brief.goal === 'sales' ? ' selected' : '') + '>Direct Sales</option>' +
+          '<option value="traffic"' + (csAdState.brief.goal === 'traffic' ? ' selected' : '') + '>Website Traffic</option>' +
+          '<option value="engagement"' + (csAdState.brief.goal === 'engagement' ? ' selected' : '') + '>Engagement</option>' +
+        '</select>' +
+      '</div>' +
+      '<div>' +
+        '<label class="cs-label">Budget Range</label>' +
+        '<select class="cs-select" id="adBriefBudget" onchange="csAdState.brief.budget=this.value">' +
+          '<option value="under-500">Under $500/mo</option>' +
+          '<option value="500-2000"' + (csAdState.brief.budget === '500-2000' ? ' selected' : '') + '>$500\u2013$2,000/mo</option>' +
+          '<option value="2000-10000">$2,000\u2013$10,000/mo</option>' +
+          '<option value="10000+">$10,000+/mo</option>' +
+        '</select>' +
+      '</div>' +
+    '</div>' +
+  '</div>';
+}
+
+function generateAdPackage() {
+  var urlEl = document.getElementById('adBriefUrl');
+  var audEl = document.getElementById('adBriefAudience');
+  var goalEl = document.getElementById('adBriefGoal');
+  var budgetEl = document.getElementById('adBriefBudget');
+  if (urlEl) csAdState.brief.url = urlEl.value;
+  if (audEl) csAdState.brief.audience = audEl.value;
+  if (goalEl) csAdState.brief.goal = goalEl.value;
+  if (budgetEl) csAdState.brief.budget = budgetEl.value;
+
+  if (!csAdState.brief.audience.trim()) {
+    showToast('Describe your target audience first', 'error');
+    return;
+  }
+
+  csAdState.generating = true;
+  var panel = document.getElementById('csAdPackagePanel');
+  if (panel) {
+    panel.innerHTML = '<div class="cs-card" style="min-height:400px;">' + csSpinner('Generating ad package...') + '</div>';
+  }
+
+  csAPI('/api/creative/ad/generate', {
+    method: 'POST',
+    body: JSON.stringify({
+      url: csAdState.brief.url,
+      audience: csAdState.brief.audience,
+      goal: csAdState.brief.goal,
+      budget: csAdState.brief.budget,
+      brand_id: creativeStudioState.brand ? creativeStudioState.brand.id : null
+    })
+  }).then(function(data) {
+    csAdState.generating = false;
+    if (data.error) { showToast(data.error, 'error'); var p = document.getElementById('csAdPackagePanel'); if (p) p.innerHTML = renderAdPackagePanel(); return; }
+    csAdState.selectedPkg = data.package || data;
+    csAdState.packages.unshift(csAdState.selectedPkg);
+    var p = document.getElementById('csAdPackagePanel');
+    if (p) p.innerHTML = renderAdPackagePanel();
+    showToast('Ad package generated!', 'success');
+  }).catch(function(e) {
+    csAdState.generating = false;
+    showToast('Generation failed: ' + (e.message || 'Network error'), 'error');
+    var p = document.getElementById('csAdPackagePanel');
+    if (p) p.innerHTML = renderAdPackagePanel();
+  });
+}
+
+function renderAdPackagePanel() {
+  if (!csAdState.selectedPkg) {
+    return '<div class="cs-card" style="min-height:400px;">' +
+      csEmpty('\uD83D\uDCE6', 'Ad package will appear here', 'Fill the brief and click Generate') +
+    '</div>';
+  }
+  return renderAdPackage(csAdState.selectedPkg);
+}
+
+function renderAdPackage(pkg) {
+  var html = '<div class="cs-card">' +
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">' +
+      '<div style="font-size:16px;font-weight:700;color:#d4a843;">\uD83D\uDCE6 Ad Package</div>' +
+      '<button class="cs-btn-secondary" onclick="exportAdPackage()" style="font-size:12px;padding:6px 14px;">\uD83D\uDCE5 Export All</button>' +
+    '</div>';
+
+  // Hero images
+  if (pkg.images && pkg.images.length) {
+    html += '<div style="margin-bottom:16px;">' +
+      '<div style="font-size:12px;color:#999;margin-bottom:8px;text-transform:uppercase;letter-spacing:1px;">Hero Images</div>' +
+      '<div style="display:flex;gap:8px;overflow-x:auto;">';
+    for (var i = 0; i < pkg.images.length; i++) {
+      html += '<img src="' + escHTML(pkg.images[i].url || pkg.images[i]) + '" style="height:100px;width:auto;border-radius:6px;flex-shrink:0;border:1px solid rgba(255,255,255,0.1);" />';
+    }
+    html += '</div></div>';
+  }
+
+  // Headlines
+  if (pkg.headlines && pkg.headlines.length) {
+    html += '<div style="margin-bottom:16px;">' +
+      '<div style="font-size:12px;color:#999;margin-bottom:8px;text-transform:uppercase;letter-spacing:1px;">Headlines</div>';
+    for (var hi = 0; hi < pkg.headlines.length; hi++) {
+      html += '<div style="background:rgba(255,255,255,0.04);border-radius:6px;padding:10px 12px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;">' +
+        '<span style="font-size:13px;color:#e0e0e0;font-weight:500;">' + escHTML(pkg.headlines[hi]) + '</span>' +
+        '<button onclick="csCopyText(\'' + escHTML(pkg.headlines[hi]).replace(/'/g, "\\'") + '\')" style="background:none;border:none;color:#d4a843;cursor:pointer;font-size:12px;flex-shrink:0;margin-left:8px;">\uD83D\uDCCB</button>' +
+      '</div>';
+    }
+    html += '</div>';
+  }
+
+  // Body copy
+  if (pkg.body_copy && pkg.body_copy.length) {
+    html += '<div style="margin-bottom:16px;">' +
+      '<div style="font-size:12px;color:#999;margin-bottom:8px;text-transform:uppercase;letter-spacing:1px;">Body Copy Variants</div>';
+    for (var bi = 0; bi < pkg.body_copy.length; bi++) {
+      html += '<div style="background:rgba(255,255,255,0.04);border-radius:6px;padding:10px 12px;margin-bottom:6px;">' +
+        '<div style="font-size:12px;color:#ccc;line-height:1.6;">' + escHTML(pkg.body_copy[bi]) + '</div>' +
+      '</div>';
+    }
+    html += '</div>';
+  }
+
+  // CTAs
+  if (pkg.ctas && pkg.ctas.length) {
+    html += '<div style="margin-bottom:16px;">' +
+      '<div style="font-size:12px;color:#999;margin-bottom:8px;text-transform:uppercase;letter-spacing:1px;">Call-to-Action</div>' +
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;">';
+    for (var ci = 0; ci < pkg.ctas.length; ci++) {
+      html += '<div style="background:#d4a843;color:#000;border-radius:6px;padding:8px 16px;font-size:13px;font-weight:700;">' + escHTML(pkg.ctas[ci]) + '</div>';
+    }
+    html += '</div></div>';
+  }
+
+  // A/B variants
+  html += renderABVariants(pkg);
+
+  html += '</div>';
+  return html;
+}
+
+function renderABVariants(pkg) {
+  if (!pkg.ab_variants && !pkg.headlines) return '';
+  var variants = pkg.ab_variants || (pkg.headlines ? [
+    { label: 'Variant A', headline: pkg.headlines[0] || '', cta: (pkg.ctas || [])[0] || 'Learn More' },
+    { label: 'Variant B', headline: pkg.headlines[1] || pkg.headlines[0] || '', cta: (pkg.ctas || [])[1] || 'Get Started' }
+  ] : []);
+
+  if (!variants.length) return '';
+
+  return '<div style="margin-bottom:8px;">' +
+    '<div style="font-size:12px;color:#999;margin-bottom:8px;text-transform:uppercase;letter-spacing:1px;">A/B Test Variants</div>' +
+    '<div style="display:grid;grid-template-columns:' + (variants.length === 2 ? '1fr 1fr' : '1fr 1fr 1fr') + ';gap:8px;">' +
+    variants.map(function(v) {
+      return '<div class="cs-card" style="border-color:rgba(212,168,67,0.2);padding:12px;">' +
+        '<div style="font-size:11px;color:#d4a843;font-weight:700;margin-bottom:8px;">' + escHTML(v.label || 'Variant') + '</div>' +
+        '<div style="font-size:12px;color:#ccc;margin-bottom:8px;">' + escHTML(v.headline || '') + '</div>' +
+        '<div style="background:#d4a843;color:#000;border-radius:4px;padding:4px 10px;font-size:11px;font-weight:700;display:inline-block;">' + escHTML(v.cta || 'Click Here') + '</div>' +
+      '</div>';
+    }).join('') +
+    '</div></div>';
+}
+
+function renderAdFormats() {
+  return '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">' +
+    CS_AD_FORMATS.map(function(f) {
+      return '<div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:6px;padding:8px;display:flex;flex-direction:column;gap:2px;">' +
+        '<div style="font-size:12px;color:#ccc;font-weight:500;">' + escHTML(f.name) + '</div>' +
+        '<div style="font-size:11px;color:#d4a843;font-weight:600;">' + escHTML(f.size) + '</div>' +
+        '<div style="font-size:10px;color:#666;">' + escHTML(f.platform) + '</div>' +
+      '</div>';
+    }).join('') +
+  '</div>';
+}
+
+function exportAdPackage() {
+  if (!csAdState.selectedPkg) { showToast('No package to export', 'error'); return; }
+  showToast('Preparing export...', 'info');
+  csAPI('/api/creative/ad/export', {
+    method: 'POST',
+    body: JSON.stringify({ package: csAdState.selectedPkg })
+  }).then(function(data) {
+    if (data.error) { showToast(data.error, 'error'); return; }
+    if (data.download_url) {
+      var a = document.createElement('a');
+      a.href = data.download_url;
+      a.download = 'ad-package-' + Date.now() + '.zip';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      showToast('Package downloaded!', 'success');
+    } else {
+      showToast('Export ready. Check your downloads.', 'success');
+    }
+  }).catch(function(e) {
+    showToast('Export failed: ' + (e.message || 'Network error'), 'error');
+  });
+}
+
+function renderEmailSequencePanel() {
+  var seqTypes = [
+    { id: 'welcome', label: 'Welcome Series' },
+    { id: 'nurture', label: 'Nurture Sequence' },
+    { id: 'reengagement', label: 'Re-engagement' },
+    { id: 'launch', label: 'Product Launch' },
+    { id: 'abandoned-cart', label: 'Abandoned Cart' }
+  ];
+
+  var seqBtns = seqTypes.map(function(s) {
+    var isActive = csAdState.emailSequenceType === s.id;
+    return '<button onclick="csAdState.emailSequenceType=\'' + s.id + '\';csAdState.emailResult=null;renderAdCreative(document.getElementById(\'csBody\'))" ' +
+      'class="' + (isActive ? 'cs-btn-gold' : 'cs-btn-secondary') + '" style="padding:6px 14px;font-size:12px;">' +
+      escHTML(s.label) + '</button>';
+  }).join('');
+
+  if (csAdState.emailGenerating) {
+    return csSpinner('Generating email sequence...');
+  }
+
+  if (csAdState.emailResult) {
+    return renderEmailResult(csAdState.emailResult);
+  }
+
+  return '<div style="display:flex;flex-direction:column;gap:12px;">' +
+    '<div style="display:flex;flex-wrap:wrap;gap:6px;">' + seqBtns + '</div>' +
+    '<div>' +
+      '<label class="cs-label">Product / Service Description</label>' +
+      '<textarea class="cs-textarea" id="emailSeqDesc" rows="2" placeholder="Briefly describe what you\'re selling or promoting..."></textarea>' +
+    '</div>' +
+    '<button class="cs-btn-gold" onclick="generateEmailSequence()" style="width:100%;">' +
+      '\uD83D\uDCE7 Generate Email Sequence' +
+    '</button>' +
+  '</div>';
+}
+
+function generateEmailSequence() {
+  var desc = document.getElementById('emailSeqDesc');
+  if (!desc || !desc.value.trim()) { showToast('Describe your product or service', 'error'); return; }
+  csAdState.emailGenerating = true;
+  var body = document.getElementById('csBody');
+  if (body) renderAdCreative(body);
+
+  csAPI('/api/creative/email/sequence', {
+    method: 'POST',
+    body: JSON.stringify({
+      type: csAdState.emailSequenceType,
+      description: desc ? desc.value : '',
+      brand_id: creativeStudioState.brand ? creativeStudioState.brand.id : null
+    })
+  }).then(function(data) {
+    csAdState.emailGenerating = false;
+    if (data.error) { showToast(data.error, 'error'); csAdState.emailResult = null; }
+    else { csAdState.emailResult = data; showToast('Email sequence generated!', 'success'); }
+    var b = document.getElementById('csBody');
+    if (b) renderAdCreative(b);
+  }).catch(function(e) {
+    csAdState.emailGenerating = false;
+    showToast('Generation failed: ' + (e.message || 'Network error'), 'error');
+    var b = document.getElementById('csBody');
+    if (b) renderAdCreative(b);
+  });
+}
+
+function renderEmailResult(data) {
+  var emails = data.emails || data.sequence || [];
+  var html = '<div>' +
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">' +
+      '<div style="font-size:14px;font-weight:600;color:#d4a843;">\uD83D\uDCE7 ' + emails.length + '-Email Sequence Ready</div>' +
+      '<button onclick="csAdState.emailResult=null;renderAdCreative(document.getElementById(\'csBody\'))" class="cs-btn-secondary" style="padding:4px 10px;font-size:11px;">Reset</button>' +
+    '</div>' +
+    '<div style="display:flex;flex-direction:column;gap:8px;">';
+
+  for (var i = 0; i < emails.length; i++) {
+    var email = emails[i];
+    html += '<div class="cs-card" style="padding:12px;">' +
+      '<div style="font-size:11px;color:#d4a843;font-weight:600;margin-bottom:4px;">Email ' + (i + 1) + (email.day ? ' &mdash; Day ' + email.day : '') + '</div>' +
+      '<div style="font-size:13px;font-weight:700;color:#fff;margin-bottom:6px;">Subject: ' + escHTML(email.subject || '') + '</div>' +
+      '<div style="font-size:12px;color:#ccc;line-height:1.6;">' + escHTML((email.body || email.content || '').substring(0, 200)) + (email.body && email.body.length > 200 ? '...' : '') + '</div>' +
+    '</div>';
+  }
+
+  html += '</div></div>';
+  return html;
+}
+
+function csCopyText(text) {
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(text).then(function() { showToast('Copied!', 'success'); });
+  } else {
+    var ta = document.createElement('textarea');
+    ta.value = text;
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    showToast('Copied!', 'success');
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// TAB 5: BRAND PROFILES
+// ═══════════════════════════════════════════════════════════════════════════════
+
+var csBrandState = {
+  profiles: [],
+  loading: false,
+  loaded: false,
+  selectedId: null,
+  editing: null,
+  wizardStep: 0,
+  wizardMode: null,   // 'url' | 'manual' | 'ai'
+  importUrl: '',
+  importLoading: false,
+  saving: false
+};
+
+function renderBrandProfiles(container) {
+  if (!csBrandState.loaded && !csBrandState.loading) {
+    loadBrandProfiles();
+  }
+
+  container.innerHTML =
+    '<div style="display:grid;grid-template-columns:250px 1fr;gap:20px;min-height:500px;">' +
+      '<div class="cs-card" style="padding:0;overflow:hidden;">' +
+        '<div style="padding:14px;border-bottom:1px solid rgba(255,255,255,0.08);display:flex;justify-content:space-between;align-items:center;">' +
+          '<div style="font-size:13px;font-weight:600;color:#d4a843;">Brand Profiles</div>' +
+          '<button class="cs-btn-gold" onclick="startNewBrandProfile()" style="padding:4px 10px;font-size:12px;">+ New</button>' +
+        '</div>' +
+        '<div id="csBrandList" style="padding:8px;">' + renderBrandList() + '</div>' +
+      '</div>' +
+      '<div id="csBrandEditor">' + renderBrandEditor() + '</div>' +
+    '</div>';
+}
+
+function loadBrandProfiles() {
+  csBrandState.loading = true;
+  csAPI('/api/creative/brand/profiles').then(function(data) {
+    csBrandState.loading = false;
+    csBrandState.loaded = true;
+    csBrandState.profiles = data.profiles || data || [];
+    creativeStudioState.brandProfiles = csBrandState.profiles;
+    var list = document.getElementById('csBrandList');
+    if (list) list.innerHTML = renderBrandList();
+  }).catch(function(e) {
+    csBrandState.loading = false;
+    // Try fallback endpoint
+    csAPI('/api/social-studio/brand-dna').then(function(data) {
+      csBrandState.loaded = true;
+      if (data.brand_dna) {
+        csBrandState.profiles = [Object.assign({ id: 'default' }, data.brand_dna)];
+        creativeStudioState.brandProfiles = csBrandState.profiles;
+        var list = document.getElementById('csBrandList');
+        if (list) list.innerHTML = renderBrandList();
+      }
+    }).catch(function() {
+      csBrandState.loaded = true;
+    });
+  });
+}
+
+function renderBrandList() {
+  if (csBrandState.loading) return csSpinner('Loading...');
+  if (!csBrandState.profiles.length) {
+    return '<div style="padding:20px;text-align:center;opacity:0.5;">' +
+      '<div style="font-size:24px;margin-bottom:8px;">\uD83C\uDFF7\uFE0F</div>' +
+      '<div style="font-size:12px;color:#999;">No brand profiles yet</div>' +
+    '</div>';
+  }
+  return csBrandState.profiles.map(function(b) {
+    var isSelected = csBrandState.selectedId === b.id;
+    var color = (b.color_palette && b.color_palette.primary) ? b.color_palette.primary : '#d4a843';
+    return '<div onclick="selectBrandProfile(\'' + escHTML(b.id) + '\')" style="' +
+      'display:flex;align-items:center;gap:10px;padding:10px;border-radius:8px;cursor:pointer;' +
+      'background:' + (isSelected ? 'rgba(212,168,67,0.1)' : 'transparent') + ';' +
+      'border:1px solid ' + (isSelected ? '#d4a843' : 'transparent') + ';transition:all 0.2s;margin-bottom:4px;">' +
+      '<div style="width:32px;height:32px;border-radius:50%;background:' + escHTML(color) + ';flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:14px;">' +
+        (b.brand_name || b.name || 'B').charAt(0).toUpperCase() +
+      '</div>' +
+      '<div style="overflow:hidden;">' +
+        '<div style="font-size:13px;color:' + (isSelected ? '#d4a843' : '#ccc') + ';font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' +
+          escHTML(b.brand_name || b.name || 'Untitled') +
+        '</div>' +
+        '<div style="font-size:11px;color:#666;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' +
+          escHTML(b.industry || '') +
+        '</div>' +
+      '</div>' +
+    '</div>';
+  }).join('');
+}
+
+function selectBrandProfile(id) {
+  csBrandState.selectedId = id;
+  csBrandState.editing = null;
+  csBrandState.wizardStep = 0;
+  csBrandState.wizardMode = null;
+
+  for (var i = 0; i < csBrandState.profiles.length; i++) {
+    if (csBrandState.profiles[i].id === id) {
+      csBrandState.editing = JSON.parse(JSON.stringify(csBrandState.profiles[i]));
+      break;
+    }
+  }
+  creativeStudioState.brand = csBrandState.editing;
+
+  var list = document.getElementById('csBrandList');
+  if (list) list.innerHTML = renderBrandList();
+  var editor = document.getElementById('csBrandEditor');
+  if (editor) editor.innerHTML = renderBrandEditor();
+}
+
+function startNewBrandProfile() {
+  csBrandState.selectedId = null;
+  csBrandState.editing = {
+    id: null, brand_name: '', tagline: '', mission: '', industry: '', voice: 'professional',
+    tone_keywords: [], key_phrases: [], target_audience: '', content_pillars: [],
+    color_palette: { primary: '#d4a843', secondary: '#2ecc71' }, font_preferences: '',
+    no_go_words: []
+  };
+  csBrandState.wizardStep = 0;
+  csBrandState.wizardMode = null;
+
+  var editor = document.getElementById('csBrandEditor');
+  if (editor) editor.innerHTML = renderBrandEditor();
+}
+
+function renderBrandEditor() {
+  if (!csBrandState.editing && !csBrandState.wizardMode) {
+    if (csBrandState.selectedId) return csSpinner('Loading...');
+    return '<div class="cs-card" style="min-height:400px;">' +
+      csEmpty('\uD83C\uDFF7\uFE0F', 'Select or create a brand profile', 'Click + New to create your first brand profile') +
+    '</div>';
+  }
+
+  if (!csBrandState.editing || csBrandState.editing.id === null) {
+    return renderBrandWizard();
+  }
+
+  return renderBrandEditForm();
+}
+
+function renderBrandWizard() {
+  var step = csBrandState.wizardStep;
+
+  if (step === 0) {
+    return '<div class="cs-card">' +
+      '<div style="font-size:16px;font-weight:700;color:#fff;margin-bottom:4px;">Create Brand Profile</div>' +
+      '<div style="font-size:13px;color:#999;margin-bottom:20px;">How would you like to build your brand profile?</div>' +
+      '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;">' +
+        '<div class="cs-card" onclick="csBrandState.wizardMode=\'url\';csBrandState.wizardStep=1;var e=document.getElementById(\'csBrandEditor\');if(e)e.innerHTML=renderBrandEditor();" style="cursor:pointer;text-align:center;padding:20px;transition:all 0.2s;border-color:rgba(255,255,255,0.08);" onmouseover="this.style.borderColor=\'#d4a843\'" onmouseout="this.style.borderColor=\'rgba(255,255,255,0.08)\'">' +
+          '<div style="font-size:28px;margin-bottom:8px;">\uD83C\uDF10</div>' +
+          '<div style="font-size:13px;font-weight:600;color:#fff;margin-bottom:4px;">URL Import</div>' +
+          '<div style="font-size:11px;color:#999;">Auto-extract from website</div>' +
+        '</div>' +
+        '<div class="cs-card" onclick="csBrandState.wizardMode=\'manual\';csBrandState.wizardStep=1;var e=document.getElementById(\'csBrandEditor\');if(e)e.innerHTML=renderBrandEditor();" style="cursor:pointer;text-align:center;padding:20px;transition:all 0.2s;border-color:rgba(255,255,255,0.08);" onmouseover="this.style.borderColor=\'#d4a843\'" onmouseout="this.style.borderColor=\'rgba(255,255,255,0.08)\'">' +
+          '<div style="font-size:28px;margin-bottom:8px;">\u270D\uFE0F</div>' +
+          '<div style="font-size:13px;font-weight:600;color:#fff;margin-bottom:4px;">Manual Setup</div>' +
+          '<div style="font-size:11px;color:#999;">Enter details step-by-step</div>' +
+        '</div>' +
+        '<div class="cs-card" onclick="csBrandState.wizardMode=\'ai\';csBrandState.wizardStep=1;var e=document.getElementById(\'csBrandEditor\');if(e)e.innerHTML=renderBrandEditor();" style="cursor:pointer;text-align:center;padding:20px;transition:all 0.2s;border-color:rgba(255,255,255,0.08);" onmouseover="this.style.borderColor=\'#d4a843\'" onmouseout="this.style.borderColor=\'rgba(255,255,255,0.08)\'">' +
+          '<div style="font-size:28px;margin-bottom:8px;">\u2728</div>' +
+          '<div style="font-size:13px;font-weight:600;color:#fff;margin-bottom:4px;">AI Generate</div>' +
+          '<div style="font-size:11px;color:#999;">AI builds from description</div>' +
+        '</div>' +
+      '</div>' +
+    '</div>';
+  }
+
+  if (step === 1) {
+    if (csBrandState.wizardMode === 'url') return renderBrandURLImport();
+    if (csBrandState.wizardMode === 'ai') return renderBrandAIGenerate();
+    return renderBrandManualStep1();
+  }
+  if (step === 2) return renderBrandVisualIdentity();
+  if (step === 3) return renderBrandVoiceConfig();
+  if (step === 4) return renderBrandReview();
+  return '';
+}
+
+function renderBrandURLImport() {
+  return '<div class="cs-card">' +
+    '<div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;">' +
+      '<button onclick="csBrandState.wizardStep=0;var e=document.getElementById(\'csBrandEditor\');if(e)e.innerHTML=renderBrandEditor();" style="background:none;border:none;color:#999;cursor:pointer;">&larr;</button>' +
+      '<div style="font-size:16px;font-weight:700;color:#fff;">\uD83C\uDF10 Import from Website</div>' +
+    '</div>' +
+    '<div style="margin-bottom:12px;">' +
+      '<label class="cs-label">Website URL</label>' +
+      '<input class="cs-input" type="url" id="brandImportUrl" placeholder="https://yourbusiness.com" value="' + escHTML(csBrandState.importUrl) + '">' +
+    '</div>' +
+    '<button class="cs-btn-gold" onclick="importBrandFromURL()" style="width:100%;margin-bottom:12px;">' +
+      (csBrandState.importLoading ? csSpinner('Analyzing website...') : '\uD83C\uDF10 Extract Brand Identity') +
+    '</button>' +
+    '<div style="font-size:12px;color:#666;text-align:center;">AI will analyze your website and extract brand colors, voice, and content style.</div>' +
+  '</div>';
+}
+
+function importBrandFromURL() {
+  var urlEl = document.getElementById('brandImportUrl');
+  if (!urlEl || !urlEl.value.trim()) { showToast('Enter a website URL', 'error'); return; }
+  csBrandState.importUrl = urlEl.value;
+  csBrandState.importLoading = true;
+  var editor = document.getElementById('csBrandEditor');
+  if (editor) editor.innerHTML = '<div class="cs-card">' + csSpinner('Analyzing website...') + '</div>';
+
+  csAPI('/api/creative/brand/import-url', {
+    method: 'POST',
+    body: JSON.stringify({ url: csBrandState.importUrl })
+  }).then(function(data) {
+    csBrandState.importLoading = false;
+    if (data.error) { showToast(data.error, 'error'); var e = document.getElementById('csBrandEditor'); if (e) e.innerHTML = renderBrandEditor(); return; }
+    csBrandState.editing = Object.assign(csBrandState.editing || {}, data.brand_dna || data);
+    csBrandState.wizardStep = 2;
+    var e = document.getElementById('csBrandEditor');
+    if (e) e.innerHTML = renderBrandEditor();
+    showToast('Brand identity extracted!', 'success');
+  }).catch(function(err) {
+    csBrandState.importLoading = false;
+    showToast('Import failed: ' + (err.message || 'Network error'), 'error');
+    var e = document.getElementById('csBrandEditor');
+    if (e) e.innerHTML = renderBrandEditor();
+  });
+}
+
+function renderBrandAIGenerate() {
+  return '<div class="cs-card">' +
+    '<div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;">' +
+      '<button onclick="csBrandState.wizardStep=0;var e=document.getElementById(\'csBrandEditor\');if(e)e.innerHTML=renderBrandEditor();" style="background:none;border:none;color:#999;cursor:pointer;">&larr;</button>' +
+      '<div style="font-size:16px;font-weight:700;color:#fff;">\u2728 AI Brand Generation</div>' +
+    '</div>' +
+    '<div style="margin-bottom:12px;">' +
+      '<label class="cs-label">Business Name</label>' +
+      '<input class="cs-input" type="text" id="aiBrandName" placeholder="Your Business Name">' +
+    '</div>' +
+    '<div style="margin-bottom:12px;">' +
+      '<label class="cs-label">Industry</label>' +
+      '<select class="cs-select" id="aiBrandIndustry">' +
+        '<option value="real-estate">Real Estate</option>' +
+        '<option value="lending">Commercial Lending</option>' +
+        '<option value="professional">Professional Services</option>' +
+        '<option value="ecommerce">E-Commerce</option>' +
+        '<option value="faith">Faith Organization</option>' +
+        '<option value="healthcare">Healthcare</option>' +
+        '<option value="tech">Technology</option>' +
+        '<option value="other">Other</option>' +
+      '</select>' +
+    '</div>' +
+    '<div style="margin-bottom:16px;">' +
+      '<label class="cs-label">Business Description</label>' +
+      '<textarea class="cs-textarea" id="aiBrandDesc" rows="3" placeholder="Describe your business, what you do, and who you serve..."></textarea>' +
+    '</div>' +
+    '<button class="cs-btn-gold" onclick="generateBrandWithAI()" style="width:100%;">' +
+      '\u2728 Generate Brand Identity' +
+    '</button>' +
+  '</div>';
+}
+
+function generateBrandWithAI() {
+  var name = document.getElementById('aiBrandName');
+  var industry = document.getElementById('aiBrandIndustry');
+  var desc = document.getElementById('aiBrandDesc');
+  if (!desc || !desc.value.trim()) { showToast('Describe your business', 'error'); return; }
+  var editor = document.getElementById('csBrandEditor');
+  if (editor) editor.innerHTML = '<div class="cs-card">' + csSpinner('Generating brand identity with AI...') + '</div>';
+
+  csAPI('/api/creative/brand/generate-ai', {
+    method: 'POST',
+    body: JSON.stringify({
+      name: name ? name.value : '',
+      industry: industry ? industry.value : 'professional',
+      description: desc ? desc.value : ''
+    })
+  }).then(function(data) {
+    if (data.error) { showToast(data.error, 'error'); var e = document.getElementById('csBrandEditor'); if (e) e.innerHTML = renderBrandEditor(); return; }
+    csBrandState.editing = Object.assign(csBrandState.editing || {}, data.brand_dna || data);
+    csBrandState.wizardStep = 2;
+    var e = document.getElementById('csBrandEditor');
+    if (e) e.innerHTML = renderBrandEditor();
+    showToast('Brand identity generated!', 'success');
+  }).catch(function(err) {
+    showToast('Generation failed: ' + (err.message || 'Network error'), 'error');
+    var e = document.getElementById('csBrandEditor');
+    if (e) e.innerHTML = renderBrandEditor();
+  });
+}
+
+function renderBrandManualStep1() {
+  var b = csBrandState.editing || {};
+  return '<div class="cs-card">' +
+    '<div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;">' +
+      '<button onclick="csBrandState.wizardStep=0;var e=document.getElementById(\'csBrandEditor\');if(e)e.innerHTML=renderBrandEditor();" style="background:none;border:none;color:#999;cursor:pointer;">&larr;</button>' +
+      '<div style="font-size:16px;font-weight:700;color:#fff;">Step 1: Brand Basics</div>' +
+    '</div>' +
+    '<div style="display:flex;flex-direction:column;gap:12px;">' +
+      '<div><label class="cs-label">Brand Name</label>' +
+        '<input class="cs-input" type="text" id="brandName" placeholder="Your Brand Name" value="' + escHTML(b.brand_name || '') + '"></div>' +
+      '<div><label class="cs-label">Tagline</label>' +
+        '<input class="cs-input" type="text" id="brandTagline" placeholder="Your memorable tagline" value="' + escHTML(b.tagline || '') + '"></div>' +
+      '<div><label class="cs-label">Mission Statement</label>' +
+        '<textarea class="cs-textarea" id="brandMission" rows="2" placeholder="Your brand mission...">' + escHTML(b.mission || '') + '</textarea></div>' +
+      '<div><label class="cs-label">Industry</label>' +
+        '<input class="cs-input" type="text" id="brandIndustry" placeholder="e.g. Real Estate, Finance, Retail" value="' + escHTML(b.industry || '') + '"></div>' +
+      '<div><label class="cs-label">Target Audience</label>' +
+        '<textarea class="cs-textarea" id="brandAudience" rows="2" placeholder="Describe your ideal customer...">' + escHTML(b.target_audience || '') + '</textarea></div>' +
+    '</div>' +
+    '<button class="cs-btn-gold" onclick="saveBrandStep1()" style="width:100%;margin-top:16px;">Next: Visual Identity &rarr;</button>' +
+  '</div>';
+}
+
+function saveBrandStep1() {
+  var b = csBrandState.editing || {};
+  var nameEl = document.getElementById('brandName');
+  var taglineEl = document.getElementById('brandTagline');
+  var missionEl = document.getElementById('brandMission');
+  var industryEl = document.getElementById('brandIndustry');
+  var audienceEl = document.getElementById('brandAudience');
+  if (nameEl) b.brand_name = nameEl.value;
+  if (taglineEl) b.tagline = taglineEl.value;
+  if (missionEl) b.mission = missionEl.value;
+  if (industryEl) b.industry = industryEl.value;
+  if (audienceEl) b.target_audience = audienceEl.value;
+  csBrandState.editing = b;
+  csBrandState.wizardStep = 2;
+  var e = document.getElementById('csBrandEditor');
+  if (e) e.innerHTML = renderBrandEditor();
+}
+
+function renderBrandVisualIdentity() {
+  var b = csBrandState.editing || {};
+  var palette = b.color_palette || {};
+  return '<div class="cs-card">' +
+    '<div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;">' +
+      '<button onclick="csBrandState.wizardStep=1;var e=document.getElementById(\'csBrandEditor\');if(e)e.innerHTML=renderBrandEditor();" style="background:none;border:none;color:#999;cursor:pointer;">&larr;</button>' +
+      '<div style="font-size:16px;font-weight:700;color:#fff;">Step 2: Visual Identity</div>' +
+    '</div>' +
+    '<div style="display:flex;flex-direction:column;gap:12px;">' +
+      '<div class="cs-grid-2">' +
+        '<div><label class="cs-label">Primary Color</label>' +
+          '<div style="display:flex;gap:8px;align-items:center;">' +
+            '<input type="color" id="brandPrimaryColor" value="' + escHTML(palette.primary || '#d4a843') + '" style="width:40px;height:36px;border:none;background:none;cursor:pointer;">' +
+            '<input class="cs-input" type="text" id="brandPrimaryHex" value="' + escHTML(palette.primary || '#d4a843') + '" placeholder="#d4a843">' +
+          '</div></div>' +
+        '<div><label class="cs-label">Secondary Color</label>' +
+          '<div style="display:flex;gap:8px;align-items:center;">' +
+            '<input type="color" id="brandSecondaryColor" value="' + escHTML(palette.secondary || '#2ecc71') + '" style="width:40px;height:36px;border:none;background:none;cursor:pointer;">' +
+            '<input class="cs-input" type="text" id="brandSecondaryHex" value="' + escHTML(palette.secondary || '#2ecc71') + '" placeholder="#2ecc71">' +
+          '</div></div>' +
+      '</div>' +
+      '<div><label class="cs-label">Font Preferences</label>' +
+        '<input class="cs-input" type="text" id="brandFonts" placeholder="e.g. Helvetica, Playfair Display, Inter" value="' + escHTML(b.font_preferences || '') + '"></div>' +
+      '<div>' +
+        '<label class="cs-label">Logo URL (optional)</label>' +
+        '<input class="cs-input" type="url" id="brandLogoUrl" placeholder="https://..." value="' + escHTML(b.logo_url || '') + '">' +
+      '</div>' +
+    '</div>' +
+    '<button class="cs-btn-gold" onclick="saveBrandStep2()" style="width:100%;margin-top:16px;">Next: Voice &amp; Tone &rarr;</button>' +
+  '</div>';
+}
+
+function saveBrandStep2() {
+  var b = csBrandState.editing || {};
+  var primaryHex = document.getElementById('brandPrimaryHex');
+  var secondaryHex = document.getElementById('brandSecondaryHex');
+  var fonts = document.getElementById('brandFonts');
+  var logo = document.getElementById('brandLogoUrl');
+  b.color_palette = {
+    primary: primaryHex ? primaryHex.value : '#d4a843',
+    secondary: secondaryHex ? secondaryHex.value : '#2ecc71'
+  };
+  if (fonts) b.font_preferences = fonts.value;
+  if (logo) b.logo_url = logo.value;
+  csBrandState.editing = b;
+  csBrandState.wizardStep = 3;
+  var e = document.getElementById('csBrandEditor');
+  if (e) e.innerHTML = renderBrandEditor();
+}
+
+function renderBrandVoiceConfig() {
+  var b = csBrandState.editing || {};
+  return '<div class="cs-card">' +
+    '<div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;">' +
+      '<button onclick="csBrandState.wizardStep=2;var e=document.getElementById(\'csBrandEditor\');if(e)e.innerHTML=renderBrandEditor();" style="background:none;border:none;color:#999;cursor:pointer;">&larr;</button>' +
+      '<div style="font-size:16px;font-weight:700;color:#fff;">Step 3: Voice &amp; Tone</div>' +
+    '</div>' +
+    '<div style="display:flex;flex-direction:column;gap:14px;">' +
+      renderVoiceSlider('Professional', 'Casual', 'professional-casual', 50) +
+      renderVoiceSlider('Bold', 'Subtle', 'bold-subtle', 50) +
+      renderVoiceSlider('Warm', 'Authoritative', 'warm-auth', 50) +
+      '<div><label class="cs-label">Tone Keywords (comma-separated)</label>' +
+        '<input class="cs-input" type="text" id="brandToneKw" placeholder="e.g. trustworthy, innovative, community-focused" value="' + escHTML((b.tone_keywords || []).join(', ')) + '"></div>' +
+      '<div><label class="cs-label">Key Phrases (comma-separated)</label>' +
+        '<input class="cs-input" type="text" id="brandKeyPhrases" placeholder="e.g. Building futures together, Excellence in every deal" value="' + escHTML((b.key_phrases || []).join(', ')) + '"></div>' +
+      '<div><label class="cs-label">No-Go Words (avoid these)</label>' +
+        '<input class="cs-input" type="text" id="brandNoGo" placeholder="Words or phrases to never use in content" value="' + escHTML((b.no_go_words || []).join(', ')) + '"></div>' +
+    '</div>' +
+    '<button class="cs-btn-gold" onclick="saveBrandStep3()" style="width:100%;margin-top:16px;">Next: Review &rarr;</button>' +
+  '</div>';
+}
+
+function renderVoiceSlider(leftLabel, rightLabel, id, defaultVal) {
+  return '<div>' +
+    '<div style="display:flex;justify-content:space-between;margin-bottom:6px;">' +
+      '<span style="font-size:12px;color:#ccc;">' + escHTML(leftLabel) + '</span>' +
+      '<span style="font-size:12px;color:#ccc;">' + escHTML(rightLabel) + '</span>' +
+    '</div>' +
+    '<input type="range" id="voice_' + id + '" min="0" max="100" value="' + defaultVal + '" style="width:100%;accent-color:#d4a843;">' +
+  '</div>';
+}
+
+function saveBrandStep3() {
+  var b = csBrandState.editing || {};
+  var toneEl = document.getElementById('brandToneKw');
+  var phraseEl = document.getElementById('brandKeyPhrases');
+  var noGoEl = document.getElementById('brandNoGo');
+  if (toneEl) b.tone_keywords = toneEl.value.split(',').map(function(s) { return s.trim(); }).filter(Boolean);
+  if (phraseEl) b.key_phrases = phraseEl.value.split(',').map(function(s) { return s.trim(); }).filter(Boolean);
+  if (noGoEl) b.no_go_words = noGoEl.value.split(',').map(function(s) { return s.trim(); }).filter(Boolean);
+  b.voice_sliders = {
+    professional_casual: document.getElementById('voice_professional-casual') ? document.getElementById('voice_professional-casual').value : 50,
+    bold_subtle: document.getElementById('voice_bold-subtle') ? document.getElementById('voice_bold-subtle').value : 50,
+    warm_auth: document.getElementById('voice_warm-auth') ? document.getElementById('voice_warm-auth').value : 50
+  };
+  csBrandState.editing = b;
+  csBrandState.wizardStep = 4;
+  var e = document.getElementById('csBrandEditor');
+  if (e) e.innerHTML = renderBrandEditor();
+}
+
+function renderBrandReview() {
+  var b = csBrandState.editing || {};
+  return '<div class="cs-card">' +
+    '<div style="font-size:16px;font-weight:700;color:#fff;margin-bottom:16px;">Step 4: Review &amp; Save</div>' +
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px;">' +
+      '<div class="cs-card" style="padding:12px;">' +
+        '<div style="font-size:11px;color:#999;margin-bottom:6px;text-transform:uppercase;">Brand</div>' +
+        '<div style="font-size:15px;font-weight:700;color:#fff;">' + escHTML(b.brand_name || 'Untitled') + '</div>' +
+        '<div style="font-size:12px;color:#999;font-style:italic;">' + escHTML(b.tagline || '') + '</div>' +
+      '</div>' +
+      '<div class="cs-card" style="padding:12px;">' +
+        '<div style="font-size:11px;color:#999;margin-bottom:6px;text-transform:uppercase;">Colors</div>' +
+        '<div style="display:flex;gap:8px;">' +
+          '<div style="width:32px;height:32px;border-radius:50%;background:' + escHTML((b.color_palette || {}).primary || '#d4a843') + ';"></div>' +
+          '<div style="width:32px;height:32px;border-radius:50%;background:' + escHTML((b.color_palette || {}).secondary || '#2ecc71') + ';"></div>' +
+        '</div>' +
+      '</div>' +
+      '<div class="cs-card" style="padding:12px;">' +
+        '<div style="font-size:11px;color:#999;margin-bottom:6px;text-transform:uppercase;">Tone</div>' +
+        '<div style="display:flex;flex-wrap:wrap;gap:4px;">' +
+          (b.tone_keywords || []).map(function(t) {
+            return '<span style="background:rgba(212,168,67,0.2);color:#d4a843;border-radius:4px;padding:2px 8px;font-size:11px;">' + escHTML(t) + '</span>';
+          }).join('') +
+        '</div>' +
+      '</div>' +
+      '<div class="cs-card" style="padding:12px;">' +
+        '<div style="font-size:11px;color:#999;margin-bottom:6px;text-transform:uppercase;">Industry</div>' +
+        '<div style="font-size:13px;color:#ccc;">' + escHTML(b.industry || 'Not set') + '</div>' +
+      '</div>' +
+    '</div>' +
+    '<button class="cs-btn-gold" onclick="saveBrandProfile()" style="width:100%;padding:14px;font-size:15px;">' +
+      (csBrandState.saving ? csSpinner('Saving...') : '\uD83D\uDCBE Save Brand Profile') +
+    '</button>' +
+  '</div>';
+}
+
+function saveBrandProfile() {
+  var b = csBrandState.editing;
+  if (!b) { showToast('No profile to save', 'error'); return; }
+  if (!b.brand_name || !b.brand_name.trim()) { showToast('Enter a brand name', 'error'); return; }
+  csBrandState.saving = true;
+
+  var method = b.id ? 'PUT' : 'POST';
+  var path = b.id ? ('/api/creative/brand/profiles/' + b.id) : '/api/creative/brand/profiles';
+
+  csAPI(path, {
+    method: method,
+    body: JSON.stringify({ brand: b })
+  }).then(function(data) {
+    csBrandState.saving = false;
+    if (data.error) { showToast(data.error, 'error'); return; }
+    var savedProfile = data.profile || data;
+    if (savedProfile.id) {
+      b.id = savedProfile.id;
+      csBrandState.editing = b;
+      // Update or insert in list
+      var found = false;
+      for (var i = 0; i < csBrandState.profiles.length; i++) {
+        if (csBrandState.profiles[i].id === savedProfile.id) {
+          csBrandState.profiles[i] = b;
+          found = true;
+          break;
+        }
+      }
+      if (!found) csBrandState.profiles.push(b);
+      csBrandState.selectedId = savedProfile.id;
+      creativeStudioState.brandProfiles = csBrandState.profiles;
+      creativeStudioState.brand = b;
+    }
+    showToast('Brand profile saved!', 'success');
+    csBrandState.wizardStep = 0;
+    csBrandState.wizardMode = null;
+    var container = document.getElementById('csBody');
+    if (container) renderBrandProfiles(container);
+  }).catch(function(e) {
+    csBrandState.saving = false;
+    showToast('Save failed: ' + (e.message || 'Network error'), 'error');
+  });
+}
+
+function renderBrandEditForm() {
+  var b = csBrandState.editing || {};
+  var palette = b.color_palette || {};
+  return '<div class="cs-card">' +
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">' +
+      '<div style="font-size:16px;font-weight:700;color:#fff;">' + escHTML(b.brand_name || 'Edit Brand Profile') + '</div>' +
+      '<div style="display:flex;gap:8px;">' +
+        '<button class="cs-btn-secondary" onclick="csBrandState.editing=null;var e=document.getElementById(\'csBrandEditor\');if(e)e.innerHTML=renderBrandEditor();" style="padding:6px 12px;font-size:12px;">Cancel</button>' +
+        '<button class="cs-btn-gold" onclick="saveBrandProfile()" style="padding:6px 12px;font-size:12px;">\uD83D\uDCBE Save</button>' +
+      '</div>' +
+    '</div>' +
+    '<div style="display:flex;flex-direction:column;gap:12px;">' +
+      '<div class="cs-grid-2">' +
+        '<div><label class="cs-label">Brand Name</label>' +
+          '<input class="cs-input" type="text" id="editBrandName" value="' + escHTML(b.brand_name || '') + '" onchange="csBrandState.editing.brand_name=this.value"></div>' +
+        '<div><label class="cs-label">Industry</label>' +
+          '<input class="cs-input" type="text" id="editBrandIndustry" value="' + escHTML(b.industry || '') + '" onchange="csBrandState.editing.industry=this.value"></div>' +
+      '</div>' +
+      '<div><label class="cs-label">Tagline</label>' +
+        '<input class="cs-input" type="text" id="editBrandTagline" value="' + escHTML(b.tagline || '') + '" onchange="csBrandState.editing.tagline=this.value"></div>' +
+      '<div><label class="cs-label">Mission</label>' +
+        '<textarea class="cs-textarea" id="editBrandMission" rows="2" onchange="csBrandState.editing.mission=this.value">' + escHTML(b.mission || '') + '</textarea></div>' +
+      '<div><label class="cs-label">Target Audience</label>' +
+        '<textarea class="cs-textarea" id="editBrandAudience" rows="2" onchange="csBrandState.editing.target_audience=this.value">' + escHTML(b.target_audience || '') + '</textarea></div>' +
+      '<div class="cs-grid-2">' +
+        '<div><label class="cs-label">Primary Color</label>' +
+          '<div style="display:flex;gap:6px;align-items:center;">' +
+            '<input type="color" value="' + escHTML(palette.primary || '#d4a843') + '" onchange="csBrandState.editing.color_palette=csBrandState.editing.color_palette||{};csBrandState.editing.color_palette.primary=this.value" style="width:36px;height:32px;border:none;cursor:pointer;">' +
+            '<span style="font-size:12px;color:#999;">' + escHTML(palette.primary || '#d4a843') + '</span>' +
+          '</div></div>' +
+        '<div><label class="cs-label">Secondary Color</label>' +
+          '<div style="display:flex;gap:6px;align-items:center;">' +
+            '<input type="color" value="' + escHTML(palette.secondary || '#2ecc71') + '" onchange="csBrandState.editing.color_palette=csBrandState.editing.color_palette||{};csBrandState.editing.color_palette.secondary=this.value" style="width:36px;height:32px;border:none;cursor:pointer;">' +
+            '<span style="font-size:12px;color:#999;">' + escHTML(palette.secondary || '#2ecc71') + '</span>' +
+          '</div></div>' +
+      '</div>' +
+      '<div><label class="cs-label">Tone Keywords</label>' +
+        '<input class="cs-input" type="text" value="' + escHTML((b.tone_keywords || []).join(', ')) + '" placeholder="professional, bold, warm..." onchange="csBrandState.editing.tone_keywords=this.value.split(\',\').map(function(s){return s.trim();}).filter(Boolean)"></div>' +
+    '</div>' +
+  '</div>';
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// TAB 6: MARKETING AUTOMATION
+// ═══════════════════════════════════════════════════════════════════════════════
+
+var csAutoState = {
+  workflows: [],
+  loading: false,
+  loaded: false,
+  ghlConnected: false,
+  ghlLocationId: null,
+  reviews: [],
+  reviewsLoaded: false,
+  triggers: []
+};
+
+var CS_GHL_WORKFLOWS = [
+  { id: 'welcome', name: 'Welcome Sequence', icon: '\uD83D\uDC4B', desc: 'New lead welcome messages', trigger: 'New contact added', status: 'active' },
+  { id: 'day2', name: 'Day 2 Follow-Up', icon: '\uD83D\uDCC5', desc: '24-hour nurture touchpoint', trigger: '1 day after welcome', status: 'active' },
+  { id: 'day4', name: 'Day 4 Check-In', icon: '\uD83D\uDCE7', desc: 'Value content delivery', trigger: '4 days after welcome', status: 'active' },
+  { id: 'day7', name: 'Day 7 Value Drop', icon: '\uD83D\uDCCA', desc: 'Educational resource share', trigger: '7 days after welcome', status: 'active' },
+  { id: 'day14', name: 'Day 14 Re-engage', icon: '\uD83D\uDD04', desc: 'Re-engagement campaign', trigger: '14 days after welcome', status: 'paused' },
+  { id: 'reengagement', name: 'Re-Engagement', icon: '\u26A1', desc: 'Win back cold leads', trigger: '30+ days inactive', status: 'paused' },
+  { id: 'birthday', name: 'Birthday Surprise', icon: '\uD83C\uDF82', desc: 'Birthday recognition touchpoint', trigger: 'Contact birthday', status: 'active' },
+  { id: 'lead-qual', name: 'Lead Qualification', icon: '\uD83C\uDFAF', desc: 'Qualify inbound leads automatically', trigger: 'Form submission', status: 'active' },
+  { id: 'appt-set', name: 'Appointment Set', icon: '\uD83D\uDCC6', desc: 'Confirmation and reminders', trigger: 'Appointment booked', status: 'active' },
+  { id: 'post-close', name: 'Post-Close Follow-Up', icon: '\uD83C\uDFC6', desc: 'Post-transaction nurture', trigger: 'Deal closed', status: 'active' },
+  { id: 'referral', name: 'Referral Ask', icon: '\uD83E\uDD1D', desc: 'Ask happy clients for referrals', trigger: '30 days post-close', status: 'active' },
+  { id: 'review-req', name: 'Review Request', icon: '\u2B50', desc: 'Automated review generation', trigger: 'Service completed', status: 'active' },
+  { id: 'newsletter', name: 'Monthly Newsletter', icon: '\uD83D\uDCF0', desc: 'Monthly value newsletter', trigger: '1st of each month', status: 'active' },
+  { id: 'event-promo', name: 'Event Promotion', icon: '\uD83C\uDF89', desc: 'Event announcement series', trigger: 'Event created', status: 'paused' },
+  { id: 'win-back', name: 'Win-Back Campaign', icon: '\uD83D\uDCB0', desc: 'Reactivate past clients', trigger: '90 days since last contact', status: 'paused' },
+  { id: 'upsell', name: 'Upsell Sequence', icon: '\uD83D\uDE80', desc: 'Upsell complementary services', trigger: 'Service milestones', status: 'paused' }
+];
+
+function renderMarketingAuto(container) {
+  if (!csAutoState.loaded && !csAutoState.loading) {
+    loadMarketingWorkflows();
+  }
+
+  var activeCount = CS_GHL_WORKFLOWS.filter(function(w) { return w.status === 'active'; }).length;
+  var pausedCount = CS_GHL_WORKFLOWS.filter(function(w) { return w.status === 'paused'; }).length;
+
+  container.innerHTML =
+    '<div style="display:flex;flex-direction:column;gap:16px;">' +
+      '<div class="cs-grid-2">' +
+        '<div>' +
+          renderGHLStatus() +
+          '<div style="margin-top:12px;display:flex;gap:8px;">' +
+            '<div class="cs-card" style="flex:1;padding:12px;text-align:center;">' +
+              '<div style="font-size:24px;font-weight:700;color:#2ecc71;">' + activeCount + '</div>' +
+              '<div style="font-size:11px;color:#999;">Active Workflows</div>' +
+            '</div>' +
+            '<div class="cs-card" style="flex:1;padding:12px;text-align:center;">' +
+              '<div style="font-size:24px;font-weight:700;color:#e74c3c;">' + pausedCount + '</div>' +
+              '<div style="font-size:11px;color:#999;">Paused</div>' +
+            '</div>' +
+          '</div>' +
+          renderReputationPanel() +
+        '</div>' +
+        '<div>' +
+          '<div class="cs-card">' +
+            '<div style="font-size:14px;font-weight:600;color:#d4a843;margin-bottom:12px;">\u26A1 GHL Workflows</div>' +
+            renderWorkflowCards() +
+          '</div>' +
+        '</div>' +
+      '</div>' +
+    '</div>';
+}
+
+function loadMarketingWorkflows() {
+  csAutoState.loading = true;
+  csAPI('/api/marketing/workflows').then(function(data) {
+    csAutoState.loading = false;
+    csAutoState.loaded = true;
+    if (data.workflows) {
+      // Merge status from backend
+      for (var i = 0; i < data.workflows.length; i++) {
+        var wf = data.workflows[i];
+        for (var j = 0; j < CS_GHL_WORKFLOWS.length; j++) {
+          if (CS_GHL_WORKFLOWS[j].id === wf.id) {
+            CS_GHL_WORKFLOWS[j].status = wf.status || CS_GHL_WORKFLOWS[j].status;
+            CS_GHL_WORKFLOWS[j].trigger_count = wf.trigger_count || 0;
+            break;
+          }
+        }
+      }
+    }
+    if (data.ghl_connected !== undefined) csAutoState.ghlConnected = data.ghl_connected;
+    if (data.location_id) csAutoState.ghlLocationId = data.location_id;
+  }).catch(function() {
+    csAutoState.loading = false;
+    csAutoState.loaded = true;
+  });
+}
+
+function renderGHLStatus() {
+  return '<div class="cs-card">' +
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">' +
+      '<div style="font-size:13px;font-weight:600;color:#fff;">GHL Integration</div>' +
+      '<div style="display:flex;align-items:center;gap:6px;">' +
+        '<div style="width:8px;height:8px;border-radius:50%;background:' + (csAutoState.ghlConnected ? '#2ecc71' : '#e74c3c') + ';"></div>' +
+        '<span style="font-size:12px;color:' + (csAutoState.ghlConnected ? '#2ecc71' : '#e74c3c') + ';">' +
+          (csAutoState.ghlConnected ? 'Connected' : 'Not Connected') +
+        '</span>' +
+      '</div>' +
+    '</div>' +
+    (csAutoState.ghlConnected
+      ? '<div style="font-size:12px;color:#999;">Location ID: <span style="color:#ccc;">' + escHTML(csAutoState.ghlLocationId || 'N/A') + '</span></div>'
+      : '<button class="cs-btn-gold" onclick="connectGHL()" style="width:100%;font-size:12px;padding:8px;">Connect GoHighLevel</button>'
+    ) +
+  '</div>';
+}
+
+function connectGHL() {
+  showToast('Redirecting to GHL connection...', 'info');
+  csAPI('/api/marketing/ghl/connect').then(function(data) {
+    if (data.url) window.open(data.url, '_blank');
+    else showToast(data.error || 'Connect at your GHL account settings', 'info');
+  }).catch(function(e) {
+    showToast('Could not initiate GHL connection: ' + (e.message || 'Network error'), 'error');
+  });
+}
+
+function renderWorkflowCards() {
+  return '<div style="display:flex;flex-direction:column;gap:6px;max-height:500px;overflow-y:auto;">' +
+    CS_GHL_WORKFLOWS.map(function(wf) {
+      var isActive = wf.status === 'active';
+      return '<div class="cs-card" style="padding:10px;display:flex;align-items:center;gap:10px;border-color:rgba(255,255,255,0.08);">' +
+        '<div style="font-size:18px;flex-shrink:0;">' + wf.icon + '</div>' +
+        '<div style="flex:1;min-width:0;">' +
+          '<div style="font-size:12px;font-weight:600;color:#fff;">' + escHTML(wf.name) + '</div>' +
+          '<div style="font-size:11px;color:#999;">' + escHTML(wf.trigger) + '</div>' +
+        '</div>' +
+        (wf.trigger_count ? '<div style="font-size:11px;color:#666;">' + wf.trigger_count + ' runs</div>' : '') +
+        '<label style="position:relative;display:inline-block;width:36px;height:20px;flex-shrink:0;">' +
+          '<input type="checkbox"' + (isActive ? ' checked' : '') + ' onchange="toggleWorkflow(\'' + escHTML(wf.id) + '\',this.checked)" ' +
+            'style="opacity:0;width:0;height:0;position:absolute;">' +
+          '<span style="position:absolute;cursor:pointer;top:0;left:0;right:0;bottom:0;background:' + (isActive ? '#2ecc71' : '#333') + ';border-radius:20px;transition:0.2s;">' +
+            '<span style="position:absolute;height:14px;width:14px;left:' + (isActive ? '19px' : '3px') + ';bottom:3px;background:#fff;border-radius:50%;transition:0.2s;"></span>' +
+          '</span>' +
+        '</label>' +
+      '</div>';
+    }).join('') +
+  '</div>';
+}
+
+function toggleWorkflow(id, active) {
+  csAPI('/api/marketing/workflows/toggle', {
+    method: 'POST',
+    body: JSON.stringify({ workflow_id: id, active: active })
+  }).then(function(data) {
+    if (data.error) { showToast(data.error, 'error'); return; }
+    for (var i = 0; i < CS_GHL_WORKFLOWS.length; i++) {
+      if (CS_GHL_WORKFLOWS[i].id === id) {
+        CS_GHL_WORKFLOWS[i].status = active ? 'active' : 'paused';
+        break;
+      }
+    }
+    showToast('Workflow ' + (active ? 'activated' : 'paused'), 'success');
+  }).catch(function(e) {
+    showToast('Toggle failed: ' + (e.message || 'Network error'), 'error');
+  });
+}
+
+function renderTriggerList() {
+  var triggers = [
+    { event: 'New contact added', action: 'Start Welcome Sequence' },
+    { event: 'Form submitted', action: 'Lead Qualification + Notify team' },
+    { event: 'Appointment booked', action: 'Confirmation email + Calendar invite' },
+    { event: 'Deal closed', action: 'Post-Close follow-up sequence' },
+    { event: 'Review request sent', action: 'Follow-up SMS if no response in 3 days' },
+    { event: '90 days inactive', action: 'Win-Back campaign trigger' }
+  ];
+
+  return '<div class="cs-card" style="margin-top:12px;">' +
+    '<div style="font-size:13px;font-weight:600;color:#d4a843;margin-bottom:10px;">\uD83D\uDD17 Automation Triggers</div>' +
+    '<div style="display:flex;flex-direction:column;gap:6px;">' +
+    triggers.map(function(t) {
+      return '<div style="display:flex;align-items:center;gap:8px;padding:8px;background:rgba(255,255,255,0.03);border-radius:6px;">' +
+        '<div style="flex:1;font-size:12px;color:#ccc;">' + escHTML(t.event) + '</div>' +
+        '<div style="font-size:16px;color:#666;">&rarr;</div>' +
+        '<div style="flex:1;font-size:12px;color:#d4a843;">' + escHTML(t.action) + '</div>' +
+      '</div>';
+    }).join('') +
+    '</div></div>';
+}
+
+function renderReputationPanel() {
+  return '<div class="cs-card" style="margin-top:12px;">' +
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">' +
+      '<div style="font-size:13px;font-weight:600;color:#d4a843;">\u2B50 Reputation Management</div>' +
+      '<button class="cs-btn-secondary" onclick="loadReviews()" style="padding:4px 10px;font-size:11px;">Refresh</button>' +
+    '</div>' +
+    '<div id="csReviews">' + renderReviewsPanel() + '</div>' +
+  '</div>';
+}
+
+function renderReviewsPanel() {
+  if (!csAutoState.reviewsLoaded) {
+    return '<div style="text-align:center;padding:20px;">' +
+      '<button class="cs-btn-secondary" onclick="loadReviews()" style="font-size:12px;">Load Reviews</button>' +
+    '</div>';
+  }
+  if (!csAutoState.reviews.length) {
+    return csEmpty('\u2B50', 'No reviews loaded', 'Reviews from Google Business will appear here');
+  }
+  return csAutoState.reviews.slice(0, 5).map(function(r) {
+    var stars = '';
+    for (var i = 0; i < 5; i++) {
+      stars += (i < r.rating ? '\u2B50' : '\u2606');
+    }
+    return '<div class="cs-card" style="margin-bottom:8px;padding:10px;">' +
+      '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px;">' +
+        '<div>' +
+          '<div style="font-size:12px;font-weight:600;color:#fff;">' + escHTML(r.author || 'Anonymous') + '</div>' +
+          '<div style="font-size:12px;">' + stars + '</div>' +
+        '</div>' +
+        '<div style="font-size:10px;color:#666;">' + csFormatDate(r.date) + '</div>' +
+      '</div>' +
+      '<div style="font-size:12px;color:#ccc;margin-bottom:8px;">' + escHTML((r.text || '').substring(0, 120)) + '</div>' +
+      '<button class="cs-btn-secondary" onclick="generateReviewResponse(\'' + escHTML(r.id || '') + '\')" style="width:100%;font-size:11px;padding:6px;">' +
+        '\u2728 Generate AI Response' +
+      '</button>' +
+    '</div>';
+  }).join('');
+}
+
+function loadReviews() {
+  csAPI('/api/marketing/reviews').then(function(data) {
+    csAutoState.reviewsLoaded = true;
+    csAutoState.reviews = data.reviews || data || [];
+    var reviewsEl = document.getElementById('csReviews');
+    if (reviewsEl) reviewsEl.innerHTML = renderReviewsPanel();
+  }).catch(function(e) {
+    csAutoState.reviewsLoaded = true;
+    csAutoState.reviews = [];
+    showToast('Could not load reviews: ' + (e.message || 'Network error'), 'error');
+    var reviewsEl = document.getElementById('csReviews');
+    if (reviewsEl) reviewsEl.innerHTML = renderReviewsPanel();
+  });
+}
+
+function generateReviewResponse(reviewId) {
+  var review = null;
+  for (var i = 0; i < csAutoState.reviews.length; i++) {
+    if (csAutoState.reviews[i].id === reviewId) { review = csAutoState.reviews[i]; break; }
+  }
+  showToast('Generating response...', 'info');
+  csAPI('/api/marketing/review-response', {
+    method: 'POST',
+    body: JSON.stringify({
+      review_id: reviewId,
+      review_text: review ? review.text : '',
+      rating: review ? review.rating : 5,
+      brand_id: creativeStudioState.brand ? creativeStudioState.brand.id : null
+    })
+  }).then(function(data) {
+    if (data.error) { showToast(data.error, 'error'); return; }
+    var resp = data.response || data.text || '';
+    csModal('AI Review Response', '<div style="font-size:13px;color:#ccc;line-height:1.7;margin-bottom:16px;">' + escHTML(resp) + '</div>' +
+      '<button class="cs-btn-gold" onclick="csCopyText(\'' + escHTML(resp).replace(/'/g, "\\'") + '\');csCloseModal();" style="width:100%;">\uD83D\uDCCB Copy Response</button>',
+      [{ label: 'Close', cls: 'cs-btn-secondary', onclick: 'csCloseModal()' }]
+    );
+  }).catch(function(e) {
+    showToast('Response generation failed: ' + (e.message || 'Network error'), 'error');
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// TAB 7: TIERING DASHBOARD
+// ═══════════════════════════════════════════════════════════════════════════════
+
+var csTierState = {
+  loading: false,
+  loaded: false,
+  current: 'free',
+  usage: {},
+  limits: {}
+};
+
+var CS_TIER_FEATURES = [
+  { feature: 'Content Generation', free: '10/mo', starter: '100/mo', pro: 'Unlimited', teams: 'Unlimited', enterprise: 'Unlimited' },
+  { feature: 'Image Generation', free: '5/mo', starter: '50/mo', pro: '500/mo', teams: 'Unlimited', enterprise: 'Unlimited' },
+  { feature: 'Video Production', free: '\u2718', starter: '2/mo', pro: '20/mo', teams: '100/mo', enterprise: 'Unlimited' },
+  { feature: 'Brand Profiles', free: '1', starter: '3', pro: '10', teams: '25', enterprise: 'Unlimited' },
+  { feature: 'Social Calendar', free: 'Basic', starter: 'Full', pro: 'Full', teams: 'Full', enterprise: 'Full' },
+  { feature: 'Ad Creative', free: '\u2718', starter: '5/mo', pro: '50/mo', teams: 'Unlimited', enterprise: 'Unlimited' },
+  { feature: 'Marketing Automation', free: '\u2718', starter: '\u2718', pro: '5 workflows', teams: '16 workflows', enterprise: 'Custom' },
+  { feature: 'Voiceover (ElevenLabs)', free: '\u2718', starter: '10 min/mo', pro: '60 min/mo', teams: '300 min/mo', enterprise: 'Unlimited' },
+  { feature: 'Team Members', free: '1', starter: '1', pro: '3', teams: '10', enterprise: 'Unlimited' },
+  { feature: 'White Label', free: '\u2718', starter: '\u2718', pro: '\u2718', teams: 'Add-on', enterprise: '\u2714' }
+];
+
+var CS_TIER_PRICES = {
+  free: { price: 0, label: 'Free' },
+  starter: { price: 49, label: 'Starter' },
+  pro: { price: 149, label: 'Pro' },
+  teams: { price: 399, label: 'Teams' },
+  enterprise: { price: null, label: 'Enterprise' }
+};
+
+function renderTieringDashboard(container) {
+  if (!csTierState.loaded && !csTierState.loading) {
+    loadTierInfo();
+  }
+
+  container.innerHTML =
+    '<div style="display:flex;flex-direction:column;gap:20px;">' +
+      '<div class="cs-grid-2">' +
+        '<div>' +
+          '<div class="cs-card" id="csTierCurrentPlan">' + renderCurrentPlanCard() + '</div>' +
+          '<div style="margin-top:12px;" id="csTierUpgradeCTA">' + renderUpgradeCTA() + '</div>' +
+        '</div>' +
+        '<div>' +
+          '<div class="cs-card" id="csTierMeter">' + renderComputeMeter() + '</div>' +
+          '<div class="cs-card" style="margin-top:12px;" id="csTierUsage">' + renderUsageBreakdown() + '</div>' +
+        '</div>' +
+      '</div>' +
+      '<div class="cs-card">' +
+        '<div style="font-size:14px;font-weight:600;color:#d4a843;margin-bottom:16px;">\uD83D\uDCCB Feature Access by Plan</div>' +
+        renderFeatureTable() +
+      '</div>' +
+    '</div>';
+}
+
+function loadTierInfo() {
+  csTierState.loading = true;
+  csAPI('/api/creative/usage').then(function(data) {
+    csTierState.loading = false;
+    csTierState.loaded = true;
+    csTierState.current = data.tier || data.plan || 'free';
+    csTierState.usage = data.usage || {};
+    csTierState.limits = data.limits || {};
+    creativeStudioState.tierInfo = { current: csTierState.current, usage: csTierState.usage, limits: csTierState.limits };
+
+    var planCard = document.getElementById('csTierCurrentPlan');
+    if (planCard) planCard.innerHTML = renderCurrentPlanCard();
+    var meter = document.getElementById('csTierMeter');
+    if (meter) meter.innerHTML = renderComputeMeter();
+    var usage = document.getElementById('csTierUsage');
+    if (usage) usage.innerHTML = renderUsageBreakdown();
+    var cta = document.getElementById('csTierUpgradeCTA');
+    if (cta) cta.innerHTML = renderUpgradeCTA();
+  }).catch(function(e) {
+    csTierState.loading = false;
+    csTierState.loaded = true;
+  });
+}
+
+function renderCurrentPlanCard() {
+  var tier = csTierState.current;
+  var tierInfo = CS_TIER_PRICES[tier] || { price: 0, label: tier };
+  return '<div style="text-align:center;padding:10px;">' +
+    '<div style="font-size:12px;color:#999;margin-bottom:4px;text-transform:uppercase;letter-spacing:1px;">Current Plan</div>' +
+    '<div style="font-size:28px;font-weight:700;color:#d4a843;margin-bottom:4px;">' + escHTML(tierInfo.label) + '</div>' +
+    (tierInfo.price !== null
+      ? '<div style="font-size:14px;color:#999;">$' + tierInfo.price + '/month</div>'
+      : '<div style="font-size:14px;color:#999;">Custom Pricing</div>'
+    ) +
+    '<div style="margin-top:12px;font-size:12px;color:#666;">Member since ' + csFormatDate(new Date()) + '</div>' +
+  '</div>';
+}
+
+function renderComputeMeter() {
+  var usage = csTierState.usage;
+  var limits = csTierState.limits;
+  var totalUsed = (usage.image_gen || 0) + (usage.video || 0) + (usage.copy || 0) + (usage.voiceover || 0);
+  var totalLimit = limits.compute_minutes || 100;
+  var pct = Math.min(Math.round((totalUsed / totalLimit) * 100), 100);
+  var color = pct > 80 ? '#e74c3c' : pct > 60 ? '#f39c12' : '#2ecc71';
+
+  return '<div>' +
+    '<div style="font-size:14px;font-weight:600;color:#d4a843;margin-bottom:12px;">\uD83D\uDCCA Compute Meter</div>' +
+    '<div style="display:flex;justify-content:space-between;margin-bottom:8px;">' +
+      '<span style="font-size:13px;color:#ccc;">' + csFormatNumber(totalUsed) + ' min used</span>' +
+      '<span style="font-size:13px;color:#ccc;">' + csFormatNumber(totalLimit) + ' min limit</span>' +
+    '</div>' +
+    '<div style="height:12px;background:rgba(255,255,255,0.08);border-radius:6px;overflow:hidden;margin-bottom:8px;">' +
+      '<div style="height:100%;border-radius:6px;background:linear-gradient(90deg,' + color + ',#f0c060);width:' + pct + '%;transition:width 0.5s ease;"></div>' +
+    '</div>' +
+    '<div style="text-align:center;font-size:13px;color:' + color + ';font-weight:600;">' + pct + '% used</div>' +
+  '</div>';
+}
+
+function renderUsageBreakdown() {
+  var usage = csTierState.usage;
+  var limits = csTierState.limits;
+
+  var categories = [
+    { key: 'image_gen', label: 'Image Gen', icon: '\uD83C\uDFA8', color: '#9C27B0' },
+    { key: 'video', label: 'Video', icon: '\uD83C\uDFAC', color: '#F44336' },
+    { key: 'copy', label: 'Copy / Content', icon: '\u270D\uFE0F', color: '#2196F3' },
+    { key: 'voiceover', label: 'Voiceover', icon: '\uD83C\uDFA4', color: '#4CAF50' },
+    { key: 'social_post', label: 'Social Posts', icon: '\uD83D\uDCC5', color: '#FF9800' }
+  ];
+
+  return '<div>' +
+    '<div style="font-size:14px;font-weight:600;color:#d4a843;margin-bottom:12px;">\uD83D\uDCCA Usage Breakdown</div>' +
+    '<div style="display:flex;flex-direction:column;gap:10px;">' +
+    categories.map(function(cat) {
+      var used = usage[cat.key] || 0;
+      var limit = limits[cat.key] || 0;
+      var pct = limit ? Math.min(Math.round((used / limit) * 100), 100) : 0;
+      return '<div>' +
+        '<div style="display:flex;justify-content:space-between;margin-bottom:4px;">' +
+          '<span style="font-size:12px;color:#ccc;">' + cat.icon + ' ' + cat.label + '</span>' +
+          '<span style="font-size:12px;color:#999;">' + (limit ? (csFormatNumber(used) + '/' + csFormatNumber(limit)) : csFormatNumber(used)) + '</span>' +
+        '</div>' +
+        '<div style="height:4px;background:rgba(255,255,255,0.08);border-radius:2px;overflow:hidden;">' +
+          '<div style="height:100%;background:' + cat.color + ';border-radius:2px;width:' + pct + '%;"></div>' +
+        '</div>' +
+      '</div>';
+    }).join('') +
+    '</div></div>';
+}
+
+function renderUpgradeCTA() {
+  var tier = csTierState.current;
+  if (tier === 'enterprise') {
+    return '<div class="cs-card" style="text-align:center;border-color:rgba(212,168,67,0.4);">' +
+      '<div style="font-size:20px;margin-bottom:8px;">\uD83C\uDFC6</div>' +
+      '<div style="font-size:14px;font-weight:700;color:#d4a843;">Enterprise Plan</div>' +
+      '<div style="font-size:12px;color:#999;margin-top:4px;">You have the highest tier. Thank you!</div>' +
+    '</div>';
+  }
+
+  var nextTier = tier === 'free' ? 'starter' : (tier === 'starter' ? 'pro' : (tier === 'pro' ? 'teams' : 'enterprise'));
+  var nextInfo = CS_TIER_PRICES[nextTier] || { label: 'Enterprise', price: null };
+
+  return '<div class="cs-card" style="background:linear-gradient(135deg,rgba(212,168,67,0.1),rgba(212,168,67,0.05));border-color:rgba(212,168,67,0.4);text-align:center;">' +
+    '<div style="font-size:20px;margin-bottom:8px;">\uD83D\uDE80</div>' +
+    '<div style="font-size:15px;font-weight:700;color:#fff;margin-bottom:4px;">Upgrade to ' + escHTML(nextInfo.label) + '</div>' +
+    (nextInfo.price !== null
+      ? '<div style="font-size:13px;color:#999;margin-bottom:12px;">$' + nextInfo.price + '/month</div>'
+      : '<div style="font-size:13px;color:#999;margin-bottom:12px;">Custom pricing</div>'
+    ) +
+    '<button class="cs-btn-gold" onclick="csUpgradeClick(\'' + nextTier + '\')" style="width:100%;padding:12px;font-size:14px;">' +
+      'Upgrade Now &rarr;' +
+    '</button>' +
+  '</div>';
+}
+
+function csUpgradeClick(tier) {
+  showToast('Redirecting to upgrade...', 'info');
+  csAPI('/api/billing/create-checkout', {
+    method: 'POST',
+    body: JSON.stringify({ plan: tier })
+  }).then(function(data) {
+    if (data.url) window.location.href = data.url;
+    else if (data.error) showToast(data.error, 'error');
+    else showToast('Contact support to upgrade', 'info');
+  }).catch(function(e) {
+    showToast('Upgrade failed: ' + (e.message || 'Network error'), 'error');
+  });
+}
+
+function renderFeatureTable() {
+  var tiers = ['free', 'starter', 'pro', 'teams', 'enterprise'];
+  var tierColors = { free: '#666', starter: '#2196F3', pro: '#9C27B0', teams: '#d4a843', enterprise: '#e74c3c' };
+
+  var headerCells = tiers.map(function(t) {
+    var ti = CS_TIER_PRICES[t] || { label: t, price: 0 };
+    var isCurrent = csTierState.current === t;
+    return '<th style="padding:10px;text-align:center;border-bottom:2px solid ' + tierColors[t] + ';' + (isCurrent ? 'background:rgba(212,168,67,0.05);' : '') + '">' +
+      '<div style="font-size:13px;font-weight:700;color:' + tierColors[t] + ';">' + ti.label + '</div>' +
+      (ti.price !== null ? '<div style="font-size:11px;color:#666;">' + (ti.price === 0 ? 'Free' : '$' + ti.price + '/mo') + '</div>' : '<div style="font-size:11px;color:#666;">Custom</div>') +
+      (isCurrent ? '<div style="font-size:10px;color:#d4a843;margin-top:2px;">CURRENT</div>' : '') +
+    '</th>';
+  }).join('');
+
+  var rows = CS_TIER_FEATURES.map(function(row) {
+    var cells = tiers.map(function(t) {
+      var val = row[t];
+      var isCheck = val === '\u2714';
+      var isCross = val === '\u2718';
+      return '<td style="padding:8px;text-align:center;font-size:12px;' + (csTierState.current === t ? 'background:rgba(212,168,67,0.03);' : '') + '">' +
+        (isCheck ? '<span style="color:#2ecc71;font-size:14px;">\u2714</span>' :
+         isCross ? '<span style="color:#555;font-size:14px;">\u2718</span>' :
+         '<span style="color:#ccc;">' + escHTML(val || '') + '</span>') +
+      '</td>';
+    }).join('');
+    return '<tr style="border-bottom:1px solid rgba(255,255,255,0.05);">' +
+      '<td style="padding:8px;font-size:12px;color:#999;">' + escHTML(row.feature) + '</td>' +
+      cells +
+    '</tr>';
+  }).join('');
+
+  return '<div style="overflow-x:auto;">' +
+    '<table style="width:100%;border-collapse:collapse;">' +
+      '<thead><tr>' +
+        '<th style="padding:10px;text-align:left;font-size:12px;color:#666;border-bottom:1px solid rgba(255,255,255,0.1);">Feature</th>' +
+        headerCells +
+      '</tr></thead>' +
+      '<tbody>' + rows + '</tbody>' +
+    '</table>' +
+  '</div>';
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// BACKWARD COMPATIBILITY: renderSocialStudio alias
+// ═══════════════════════════════════════════════════════════════════════════════
+// The platform routes to 'social' view which calls renderSocialStudio().
+// We alias it to the new Creative Studio entry point.
+
+var _originalRenderSocialStudio = window.renderSocialStudio;
+
+window.renderSocialStudio = function() {
+  renderCreativeStudio();
+};
+
+// Keep original Social Studio functions accessible if needed
+// (they are still defined below their original location in app.js)
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// INIT: Load tier info when studio first mounts
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function csInitStudio() {
+  // Load brand profiles in background
+  if (!csBrandState.loaded && !csBrandState.loading) {
+    csAPI('/api/creative/brand/profiles').then(function(data) {
+      csBrandState.loaded = true;
+      csBrandState.profiles = data.profiles || data || [];
+      creativeStudioState.brandProfiles = csBrandState.profiles;
+      if (csBrandState.profiles.length) {
+        creativeStudioState.brand = csBrandState.profiles[0];
+      }
+    }).catch(function() { csBrandState.loaded = true; });
+  }
+  // Load tier info
+  csAPI('/api/creative/usage').then(function(data) {
+    csTierState.current = data.tier || data.plan || 'free';
+    csTierState.usage = data.usage || {};
+    csTierState.limits = data.limits || {};
+    creativeStudioState.tierInfo = { current: csTierState.current, usage: csTierState.usage, limits: csTierState.limits };
+    // Update header tier badge if visible
+    var tierBadge = document.querySelector('[data-tier-badge]');
+    if (tierBadge) tierBadge.textContent = '\u2B50 ' + csTierState.current;
+  }).catch(function() {});
+}
+
 
 /* ═══════════════════════════════════════════════
    v8.7.0 BUILDER IDE — 3-Panel Functions
