@@ -9493,7 +9493,7 @@ async def agent_build(request: Request):
 BUILDER_V2_AGENTS = {
     "architect": {
         "name": "Grok 4.20", "role": "Architect", "color": "#F59E0B", "icon": "🟠",
-        "model": "grok-4.20-multi-agent-beta-0309", "provider": "xai",
+        "model": "grok-4.20-beta-latest-non-reasoning", "provider": "xai",
         "fallback_model": "grok-4", "fallback_provider": "xai",
     },
     "designer": {
