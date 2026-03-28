@@ -233,6 +233,11 @@ CORPNET_DATA_API_KEY = os.environ.get("CORPNET_STAGING_TOKEN", os.environ.get("C
 CORPNET_API_KEY = os.environ.get("CORPNET_API_KEY", "")
 CORPNET_BASE_URL = os.environ.get("CORPNET_API_BASE_STAGING", "https://api.staging24.corpnet.com")
 
+# ─── FileForms API (replaces CorpNet) ────────────────────────────────────────
+FILEFORMS_API_KEY = _env("FILEFORMS_API_KEY")
+FILEFORMS_BASE_URL = _env("FILEFORMS_BASE_URL", "https://api.fileforms.com")
+FILEFORMS_WEBHOOK_SECRET = _env("FILEFORMS_WEBHOOK_SECRET")
+
 # ─── Real Estate API Keys ────────────────────────────────────────────────────
 RENTCAST_API_KEY = os.environ.get("RENTCAST_API_KEY", "")
 RENTCAST_BASE = "https://api.rentcast.io/v1"
@@ -2536,6 +2541,78 @@ async def get_compliance_info(state: str):
 
     compliance["requirements"] = requirements
     return compliance
+
+
+# ─── FileForms Webhook + API (Business Formations) ───────────────────────────
+
+@app.post("/api/webhooks/fileforms")
+async def fileforms_webhook(request: Request):
+    """Receive webhook events from FileForms for order status updates."""
+    try:
+        payload = await request.body()
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Invalid payload"}, status_code=400)
+
+    # Optional: verify webhook signature if FILEFORMS_WEBHOOK_SECRET is set
+    if FILEFORMS_WEBHOOK_SECRET:
+        sig = request.headers.get("x-fileforms-signature", request.headers.get("x-webhook-signature", ""))
+        if sig:
+            import hmac, hashlib
+            expected = hmac.new(FILEFORMS_WEBHOOK_SECRET.encode(), payload, hashlib.sha256).hexdigest()
+            if not hmac.compare_digest(sig, expected):
+                print(f"[FileForms Webhook] Signature mismatch")
+                return JSONResponse({"error": "Invalid signature"}, status_code=401)
+
+    event_type = body.get("event", body.get("type", body.get("eventType", "unknown")))
+    order_id = body.get("orderId", body.get("order_id", body.get("id", "")))
+    status = body.get("status", body.get("orderStatus", ""))
+    data = body.get("data", body)
+
+    print(f"[FileForms Webhook] Event: {event_type}, Order: {order_id}, Status: {status}")
+
+    # Store event in Supabase for tracking
+    if supabase_admin:
+        try:
+            supabase_admin.table("business_formations").upsert({
+                "fileforms_order_id": str(order_id),
+                "status": status or event_type,
+                "event_type": event_type,
+                "raw_data": json.dumps(data) if isinstance(data, dict) else str(data),
+                "updated_at": datetime.now().isoformat(),
+            }, on_conflict="fileforms_order_id").execute()
+        except Exception as db_err:
+            print(f"[FileForms Webhook] DB error: {db_err}")
+            # Table might not have fileforms columns yet — log and continue
+
+    # Notify Cap of important events
+    important_events = ["order.completed", "order.filed", "order.error", "filing.approved", "filing.rejected"]
+    if event_type in important_events and RESEND_API_KEY:
+        try:
+            async with httpx.AsyncClient(timeout=10) as ec:
+                await ec.post("https://api.resend.com/emails", headers={
+                    "Authorization": f"Bearer {RESEND_API_KEY}", "Content-Type": "application/json",
+                }, json={
+                    "from": "SaintSal Labs <support@cookin.io>",
+                    "to": [os.environ.get("CAP_EMAIL", "ryan@hacpglobal.ai")],
+                    "subject": f"[FileForms] {event_type} — Order {order_id}",
+                    "html": f"<div><h3>FileForms Event: {event_type}</h3><p>Order: {order_id}</p><p>Status: {status}</p><pre>{json.dumps(data, indent=2)[:2000]}</pre></div>",
+                })
+        except Exception:
+            pass
+
+    return {"received": True, "event": event_type, "orderId": order_id}
+
+
+@app.get("/api/fileforms/status")
+async def fileforms_integration_status():
+    """Check FileForms API integration status."""
+    return {
+        "configured": bool(FILEFORMS_API_KEY),
+        "base_url": FILEFORMS_BASE_URL,
+        "webhook_url": "https://www.saintsallabs.com/api/webhooks/fileforms",
+        "webhook_secret_configured": bool(FILEFORMS_WEBHOOK_SECRET),
+    }
 
 
 # ─── Ticker Banners per Vertical ──────────────────────────────────────────────
