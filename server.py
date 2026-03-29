@@ -8160,106 +8160,8 @@ async def social_publish(request: Request):
 
 # ── SAL Social Studio → GHL Social Media Posting Bridge ─────────────────────
 
-@app.post("/api/social-studio/publish")
-async def social_studio_publish(request: Request):
-    """Bridge SAL Social Studio to GHL's Social Media Posting API."""
-    try:
-        # 1. Auth
-        auth_header = request.headers.get("authorization", "")
-        user = await get_current_user(auth_header if auth_header else None)
-        if not user:
-            return JSONResponse({"success": False, "error": "Unauthorized"}, status_code=401)
-
-        # 2. Parse body
-        try:
-            body = await request.json()
-        except Exception:
-            return JSONResponse({"success": False, "error": "Invalid JSON body"}, status_code=400)
-
-        content = body.get("content") or ""
-        media_urls = body.get("mediaUrls") or []
-        platforms = body.get("platforms") or []
-        schedule_date = body.get("scheduleDate") or None
-        post_type = body.get("type") or "post"
-
-        # 3. Resolve ghl_location_id
-        ghl_location_id = body.get("ghl_location_id") or ""
-        if not ghl_location_id and supabase_admin:
-            try:
-                profile_result = supabase_admin.table("profiles").select("ghl_location_id").eq(
-                    "id", user["id"]
-                ).single().execute()
-                if profile_result.data:
-                    ghl_location_id = profile_result.data.get("ghl_location_id") or ""
-            except Exception:
-                pass
-
-        if not ghl_location_id:
-            return JSONResponse(
-                {"success": False, "error": "No GHL location ID found. Provide ghl_location_id in the request body or connect your GHL account."},
-                status_code=400
-            )
-
-        # 4. Build GHL payload
-        ghl_payload: dict = {
-            "type": post_type,
-            "content": content,
-            "mediaUrls": media_urls,
-            "platforms": platforms,
-        }
-        if schedule_date:
-            ghl_payload["scheduledAt"] = schedule_date
-
-        # 5. Call GHL Social Media Posting API
-        ghl_url = f"https://services.leadconnectorhq.com/social-media-posting/{ghl_location_id}/posts"
-        ghl_headers = {
-            "Authorization": f"Bearer {GHL_COMPANY_KEY}",
-            "Content-Type": "application/json",
-            "Version": "2021-07-28",
-        }
-
-        async with httpx.AsyncClient(timeout=30) as hc:
-            resp = await hc.post(ghl_url, headers=ghl_headers, json=ghl_payload)
-
-        if resp.status_code not in (200, 201):
-            try:
-                err_detail = resp.json().get("message") or resp.text[:300]
-            except Exception:
-                err_detail = resp.text[:300]
-            return JSONResponse({"success": False, "error": f"GHL API error {resp.status_code}: {err_detail}"})
-
-        resp_data = resp.json()
-        ghl_post_id = (
-            resp_data.get("id")
-            or resp_data.get("post", {}).get("id")
-            or ""
-        )
-
-        # 6. Log to marketing_content table (non-fatal)
-        if supabase_admin:
-            try:
-                supabase_admin.table("marketing_content").insert({
-                    "user_id": user["id"],
-                    "content": content,
-                    "platforms": platforms,
-                    "ghl_post_id": ghl_post_id,
-                    "ghl_location_id": ghl_location_id,
-                    "scheduled_at": schedule_date,
-                    "status": "scheduled" if schedule_date else "published",
-                    "post_type": post_type,
-                }).execute()
-            except Exception:
-                pass  # Table may not exist — non-fatal
-
-        return JSONResponse({
-            "success": True,
-            "posted_to": platforms,
-            "scheduled_at": schedule_date,
-            "ghl_post_id": ghl_post_id,
-        })
-
-    except Exception as e:
-        return JSONResponse({"success": False, "error": str(e)}, status_code=500)
+# NOTE: /api/social-studio/publish is defined below in the main Social Studio block (line ~15210).
+# This earlier duplicate has been removed to avoid FastAPI route conflicts.
 
 
 # ── Builder In-Memory Project Store ─────────────────────────────────────────
@@ -15208,62 +15110,94 @@ async def social_studio_accounts(request: Request):
 
 
 @app.post("/api/social-studio/publish")
-async def social_studio_publish(request: Request):
-    """Publish AI-generated content to user's social accounts via GHL."""
+async def social_studio_publish_ghl(request: Request):
+    """Publish AI-generated content to user's social accounts via GHL Social Planner.
+    
+    GHL Create Post API: POST /social-media-posting/:locationId/posts
+    Required body fields:
+      - accountIds: list of GHL social account IDs (from GET .../accounts)
+      - summary: the post text / caption
+      - scheduleDate: ISO 8601 UTC string (required even for immediate — use now+2min)
+      - mediaUrls: list of public media URLs
+      - type: "post" | "reel" | "story"
+    """
     user = await get_current_user(request.headers.get("authorization"))
     if not user:
         return JSONResponse({"error": "Authentication required"}, status_code=401)
 
     body = await request.json()
-    content = body.get("content", "")
-    platforms = body.get("platforms", [])
+    summary = body.get("summary", body.get("content", ""))
+    account_ids = body.get("accountIds", [])  # GHL social account IDs
     media_urls = body.get("mediaUrls", [])
-    schedule_date = body.get("scheduleDate")  # ISO 8601 UTC, null = post now
+    schedule_date = body.get("scheduleDate")  # ISO 8601 UTC
+    post_type = body.get("type", "post")
+    platform_labels = body.get("platformLabels", [])  # For logging: ["facebook", "instagram"]
 
-    if not content and not media_urls:
+    if not summary and not media_urls:
         return JSONResponse({"error": "Content or media required"}, status_code=400)
-    if not platforms:
-        return JSONResponse({"error": "Select at least one platform"}, status_code=400)
+    if not account_ids:
+        return JSONResponse({"error": "Select at least one social account"}, status_code=400)
 
     # Get user's GHL location
+    if not supabase_admin:
+        return JSONResponse({"error": "Database not available"}, status_code=500)
+
     profile = supabase_admin.table("profiles").select("ghl_location_id").eq("id", user["id"]).single().execute()
     if not profile.data or not profile.data.get("ghl_location_id"):
         return JSONResponse({"error": "No GHL account. Complete onboarding at app.saintsallabs.com"}, status_code=400)
 
     location_id = profile.data["ghl_location_id"]
 
+    if not GHL_COMPANY_KEY:
+        return JSONResponse({"error": "GHL not configured"}, status_code=500)
+
+    # If no scheduleDate, set to 2 minutes from now (GHL requires a future date)
+    if not schedule_date:
+        from datetime import timedelta
+        schedule_date = (datetime.utcnow() + timedelta(minutes=2)).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+
     try:
         async with httpx.AsyncClient(timeout=30) as hc:
-            headers = {"Authorization": f"Bearer {GHL_COMPANY_KEY}", "Content-Type": "application/json", "Version": "2021-07-28"}
+            headers = {
+                "Authorization": f"Bearer {GHL_COMPANY_KEY}",
+                "Content-Type": "application/json",
+                "Version": "2021-07-28",
+            }
 
             ghl_payload = {
-                "type": "post",
-                "socialMediaPlatforms": platforms,
-                "content": content,
+                "type": post_type,
+                "accountIds": account_ids,
+                "summary": summary,
+                "scheduleDate": schedule_date,
+                "status": "scheduled",
             }
             if media_urls:
                 ghl_payload["mediaUrls"] = media_urls
-            if schedule_date:
-                ghl_payload["scheduleDate"] = schedule_date
 
             resp = await hc.post(
-                f"{GHL_AGENCY_BASE}/social-media-posting/{location_id}/post",
+                f"{GHL_AGENCY_BASE}/social-media-posting/{location_id}/posts",
                 headers=headers,
                 json=ghl_payload,
             )
 
-            result = resp.json() if resp.status_code in (200, 201) else {}
+            result = {}
+            try:
+                result = resp.json()
+            except Exception:
+                pass
 
-            # Store in marketing_content table
+            ghl_post_id = result.get("id") or result.get("post", {}).get("id") or result.get("postId", "")
+
+            # Store in marketing_content table (non-fatal)
             if supabase_admin:
                 try:
                     supabase_admin.table("marketing_content").insert({
                         "user_id": user["id"],
-                        "content": content,
-                        "platform": ",".join(platforms),
+                        "content": summary,
+                        "platform": ",".join(platform_labels) if platform_labels else ",".join(account_ids[:3]),
                         "media_url": media_urls[0] if media_urls else None,
                         "status": "scheduled" if schedule_date else "published",
-                        "ghl_post_id": result.get("id", result.get("postId", "")),
+                        "ghl_post_id": ghl_post_id,
                         "schedule_date": schedule_date,
                         "date": datetime.now().isoformat(),
                     }).execute()
@@ -15273,17 +15207,21 @@ async def social_studio_publish(request: Request):
             if resp.status_code in (200, 201):
                 return {
                     "success": True,
-                    "postId": result.get("id", result.get("postId", "")),
-                    "platforms": platforms,
+                    "postId": ghl_post_id,
+                    "accountIds": account_ids,
                     "scheduled": bool(schedule_date),
-                    "message": f"{'Scheduled' if schedule_date else 'Published'} to {', '.join(platforms)}",
+                    "scheduleDate": schedule_date,
+                    "message": f"Post {'scheduled' if schedule_date else 'published'} via GHL Social Planner",
                 }
             else:
+                err_msg = result.get("message") or result.get("error") or resp.text[:300]
+                print(f"[Social Studio] GHL publish failed {resp.status_code}: {err_msg}")
                 return JSONResponse({
-                    "error": f"GHL posting failed: {resp.text[:300]}",
+                    "error": f"GHL posting failed: {err_msg}",
                     "status_code": resp.status_code,
                 }, status_code=resp.status_code)
     except Exception as e:
+        print(f"[Social Studio] Publish exception: {e}")
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
@@ -15969,34 +15907,75 @@ async def social_studio_save_content(request: Request):
 
 @app.post("/api/social-studio/schedule")
 async def social_studio_schedule_post(request: Request):
-    """Schedule a single post via GHL or Supabase."""
+    """Schedule a single post via GHL Social Planner + log to Supabase."""
     try:
         auth = request.headers.get("authorization", "")
         user = await get_current_user(auth if auth else None)
         if not user:
             return JSONResponse({"error": "Authentication required"}, status_code=401)
         body = await request.json()
-        content = body.get("content", "")
-        platforms = body.get("platforms", [])
-        schedule_date = body.get("schedule_date", "")
-        media_urls = body.get("media_urls", [])
+        summary = body.get("content", body.get("summary", ""))
+        account_ids = body.get("accountIds", [])
+        platform_label = body.get("platform", "")
+        schedule_date = body.get("scheduled_at", body.get("schedule_date", ""))
+        media_urls = body.get("media_urls", body.get("mediaUrls", []))
+        post_type = body.get("type", "post")
 
-        if not content:
+        if not summary:
             return JSONResponse({"error": "Content is required"}, status_code=400)
         if not schedule_date:
             return JSONResponse({"error": "Schedule date is required"}, status_code=400)
 
+        ghl_post_id = ""
+        posted_to_ghl = False
+
+        # If user has GHL + account IDs, push to GHL Social Planner
+        if account_ids and GHL_COMPANY_KEY and supabase_admin:
+            try:
+                profile = supabase_admin.table("profiles").select("ghl_location_id").eq("id", user["id"]).single().execute()
+                if profile.data and profile.data.get("ghl_location_id"):
+                    location_id = profile.data["ghl_location_id"]
+                    ghl_payload = {
+                        "type": post_type,
+                        "accountIds": account_ids,
+                        "summary": summary,
+                        "scheduleDate": schedule_date,
+                        "status": "scheduled",
+                    }
+                    if media_urls:
+                        ghl_payload["mediaUrls"] = media_urls
+                    async with httpx.AsyncClient(timeout=30) as hc:
+                        headers = {"Authorization": f"Bearer {GHL_COMPANY_KEY}", "Content-Type": "application/json", "Version": "2021-07-28"}
+                        resp = await hc.post(f"{GHL_AGENCY_BASE}/social-media-posting/{location_id}/posts", headers=headers, json=ghl_payload)
+                        if resp.status_code in (200, 201):
+                            result = resp.json()
+                            ghl_post_id = result.get("id") or result.get("post", {}).get("id") or ""
+                            posted_to_ghl = True
+                        else:
+                            print(f"[Schedule] GHL post failed {resp.status_code}: {resp.text[:200]}")
+            except Exception as ghl_err:
+                print(f"[Schedule] GHL error: {ghl_err}")
+
+        # Always log to Supabase marketing_content
         post_id = str(uuid.uuid4())
         if supabase_admin:
             try:
                 supabase_admin.table("marketing_content").insert({
-                    "id": post_id, "user_id": user["id"], "content": content, "platforms": platforms,
-                    "media_urls": media_urls, "scheduled_at": schedule_date, "status": "scheduled"
+                    "id": post_id, "user_id": user["id"], "content": summary,
+                    "platform": platform_label,
+                    "media_url": media_urls[0] if media_urls else None,
+                    "scheduled_at": schedule_date, "status": "scheduled",
+                    "ghl_post_id": ghl_post_id,
+                    "date": datetime.now().isoformat(),
                 }).execute()
             except Exception as db_err:
                 print(f"[Schedule] DB error: {db_err}")
 
-        return JSONResponse({"success": True, "post_id": post_id, "scheduled_at": schedule_date, "platforms": platforms})
+        return JSONResponse({
+            "success": True, "post_id": post_id, "ghl_post_id": ghl_post_id,
+            "scheduled_at": schedule_date, "ghl_posted": posted_to_ghl,
+            "post": {"id": post_id, "platform": platform_label, "content": summary, "scheduled_at": schedule_date, "status": "scheduled"}
+        })
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
 

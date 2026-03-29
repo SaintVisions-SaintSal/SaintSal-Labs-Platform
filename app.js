@@ -9118,10 +9118,191 @@ function csSaveResult() {
   });
 }
 
+// ─── GHL Social Accounts Cache ────────────────────────────────────────────────
+var ghlAccountsCache = { accounts: [], loaded: false, loading: false, provisioned: false };
+
+function loadGHLAccounts(cb) {
+  if (ghlAccountsCache.loaded) { if (cb) cb(ghlAccountsCache); return; }
+  if (ghlAccountsCache.loading) return;
+  ghlAccountsCache.loading = true;
+  csAPI('/api/social-studio/accounts').then(function(data) {
+    ghlAccountsCache.loading = false;
+    ghlAccountsCache.loaded = true;
+    ghlAccountsCache.accounts = data.accounts || [];
+    ghlAccountsCache.provisioned = data.provisioned !== false;
+    ghlAccountsCache.message = data.message || '';
+    if (cb) cb(ghlAccountsCache);
+  }).catch(function(e) {
+    ghlAccountsCache.loading = false;
+    ghlAccountsCache.loaded = true;
+    ghlAccountsCache.accounts = [];
+    if (cb) cb(ghlAccountsCache);
+  });
+}
+
+function getAccountPlatform(acct) {
+  // GHL account objects vary — extract platform name
+  return (acct.type || acct.platform || acct.provider || '').toLowerCase();
+}
+
+function getAccountName(acct) {
+  return acct.name || acct.pageName || acct.channelName || acct.profileName || getAccountPlatform(acct);
+}
+
+function getAccountId(acct) {
+  return acct.id || acct._id || acct.accountId || '';
+}
+
+// ─── GHL Publish Modal ────────────────────────────────────────────────────────
 function csPublishResult() {
-  if (!csContentState.result) return;
-  switchCSTab('social-posting');
-  showToast('Content added to posting queue', 'success');
+  if (!csContentState.result) { showToast('Generate content first', 'error'); return; }
+
+  // Show loading modal while fetching accounts
+  csModal('Publish to Social Media', csSpinner('Fetching your connected accounts from GHL...'), []);
+
+  loadGHLAccounts(function(cache) {
+    if (!cache.provisioned) {
+      csModal('Connect GHL Account', 
+        '<div style="text-align:center;padding:20px;">' +
+          '<div style="font-size:48px;margin-bottom:16px;">\uD83D\uDD17</div>' +
+          '<div style="color:#ccc;font-size:15px;margin-bottom:12px;">Your GHL sub-account isn\'t set up yet.</div>' +
+          '<div style="color:#999;font-size:13px;">Complete onboarding to connect social accounts.</div>' +
+        '</div>',
+        [{ label: 'Close', cls: 'cs-btn-secondary', onclick: 'csCloseModal()' }]
+      );
+      return;
+    }
+
+    if (!cache.accounts.length) {
+      csModal('Connect Social Accounts', 
+        '<div style="text-align:center;padding:20px;">' +
+          '<div style="font-size:48px;margin-bottom:16px;">\uD83D\uDCF1</div>' +
+          '<div style="color:#ccc;font-size:15px;margin-bottom:12px;">No social accounts connected yet.</div>' +
+          '<div style="color:#999;font-size:13px;margin-bottom:20px;">Connect your social accounts in GHL Social Planner:</div>' +
+          '<a href="https://app.saintsallabs.com" target="_blank" class="cs-btn-gold" style="display:inline-block;text-decoration:none;padding:10px 24px;">Open GHL Dashboard</a>' +
+          '<div style="color:#666;font-size:11px;margin-top:12px;">Marketing \u2192 Social Planner \u2192 Connect Accounts</div>' +
+        '</div>',
+        [{ label: 'Close', cls: 'cs-btn-secondary', onclick: 'csCloseModal()' }]
+      );
+      return;
+    }
+
+    // Build account checkboxes
+    var accountsHtml = cache.accounts.map(function(acct, i) {
+      var platform = getAccountPlatform(acct);
+      var name = getAccountName(acct);
+      var id = getAccountId(acct);
+      var color = CS_PLATFORM_COLORS[platform] || '#d4a843';
+      var icon = { facebook: '\uD83D\uDCF1', instagram: '\uD83D\uDCF7', linkedin: '\uD83D\uDCBC', twitter: '\uD83D\uDC26', tiktok: '\uD83C\uDFB5', google: '\uD83C\uDF10', youtube: '\u25B6\uFE0F', pinterest: '\uD83D\uDCCC' }[platform] || '\uD83C\uDF10';
+      return '<label style="display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid rgba(255,255,255,0.1);border-radius:8px;cursor:pointer;transition:all 0.2s;" ' +
+        'onmouseover="this.style.borderColor=\'' + color + '\';this.style.background=\'rgba(255,255,255,0.04)\'" ' +
+        'onmouseout="this.style.borderColor=\'rgba(255,255,255,0.1)\';this.style.background=\'transparent\'">' +
+        '<input type="checkbox" class="ghl-acct-cb" data-id="' + escHTML(id) + '" data-platform="' + escHTML(platform) + '" ' +
+          'style="width:18px;height:18px;accent-color:' + color + ';cursor:pointer;" checked>' +
+        '<span style="font-size:18px;">' + icon + '</span>' +
+        '<div style="flex:1;">' +
+          '<div style="color:#fff;font-size:13px;font-weight:600;">' + escHTML(name) + '</div>' +
+          '<div style="color:' + color + ';font-size:11px;text-transform:capitalize;">' + escHTML(platform) + '</div>' +
+        '</div>' +
+      '</label>';
+    }).join('');
+
+    var contentPreview = csContentState.result.content || '';
+    if (contentPreview.length > 200) contentPreview = contentPreview.substring(0, 200) + '...';
+
+    var bodyHtml =
+      '<div style="margin-bottom:16px;">' +
+        '<div class="cs-label">Content Preview</div>' +
+        '<div style="background:rgba(255,255,255,0.04);border-radius:8px;padding:12px;font-size:13px;color:#ccc;max-height:100px;overflow-y:auto;white-space:pre-wrap;">' +
+          escHTML(contentPreview) +
+        '</div>' +
+      '</div>' +
+      '<div style="margin-bottom:16px;">' +
+        '<div class="cs-label">Select Accounts (' + cache.accounts.length + ' connected)</div>' +
+        '<div style="display:flex;flex-direction:column;gap:6px;max-height:250px;overflow-y:auto;" id="ghlAccountsList">' +
+          accountsHtml +
+        '</div>' +
+      '</div>' +
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">' +
+        '<div>' +
+          '<div class="cs-label">Post Type</div>' +
+          '<select class="cs-select" id="ghlPostType">' +
+            '<option value="post">Post</option>' +
+            '<option value="reel">Reel</option>' +
+            '<option value="story">Story</option>' +
+          '</select>' +
+        '</div>' +
+        '<div>' +
+          '<div class="cs-label">Schedule (optional)</div>' +
+          '<input type="datetime-local" class="cs-input" id="ghlScheduleDate" style="color-scheme:dark;">' +
+        '</div>' +
+      '</div>';
+
+    csModal('Publish via GHL Social Planner', bodyHtml, [
+      { label: 'Cancel', cls: 'cs-btn-secondary', onclick: 'csCloseModal()' },
+      { label: '\uD83D\uDE80 Post Now', cls: 'cs-btn-gold', onclick: 'submitGHLPublish(false)' },
+      { label: '\uD83D\uDCC5 Schedule', cls: 'cs-btn-secondary', onclick: 'submitGHLPublish(true)' }
+    ]);
+  });
+}
+
+function submitGHLPublish(isScheduled) {
+  var checkboxes = document.querySelectorAll('.ghl-acct-cb:checked');
+  if (!checkboxes.length) { showToast('Select at least one account', 'error'); return; }
+
+  var accountIds = [];
+  var platformLabels = [];
+  for (var i = 0; i < checkboxes.length; i++) {
+    accountIds.push(checkboxes[i].getAttribute('data-id'));
+    platformLabels.push(checkboxes[i].getAttribute('data-platform'));
+  }
+
+  var postType = document.getElementById('ghlPostType');
+  var schedInput = document.getElementById('ghlScheduleDate');
+  var scheduleDate = null;
+
+  if (isScheduled) {
+    if (!schedInput || !schedInput.value) { showToast('Select a schedule date/time', 'error'); return; }
+    // Convert local datetime to UTC ISO string
+    var localDate = new Date(schedInput.value);
+    scheduleDate = localDate.toISOString();
+  }
+
+  var content = csContentState.result.content || '';
+  if (csContentState.result.hashtags) content += '\n\n' + csContentState.result.hashtags;
+
+  // Collect media URLs if any
+  var mediaUrls = [];
+  if (csContentState.result.image_url) mediaUrls.push(csContentState.result.image_url);
+  if (csContentState.result.media_url) mediaUrls.push(csContentState.result.media_url);
+
+  csCloseModal();
+  showToast(isScheduled ? 'Scheduling post via GHL...' : 'Publishing via GHL...', 'info');
+
+  csAPI('/api/social-studio/publish', {
+    method: 'POST',
+    body: JSON.stringify({
+      summary: content,
+      accountIds: accountIds,
+      platformLabels: platformLabels,
+      mediaUrls: mediaUrls,
+      type: postType ? postType.value : 'post',
+      scheduleDate: scheduleDate
+    })
+  }).then(function(data) {
+    if (data.error) {
+      showToast('Publish failed: ' + data.error, 'error');
+      return;
+    }
+    showToast(data.message || 'Published via GHL Social Planner!', 'success');
+    // Refresh calendar data if on that tab
+    if (creativeStudioState.tab === 'social-posting') {
+      csCalendarState.loaded = false;
+      loadCalendarData(csCalendarState.month, csCalendarState.year);
+    }
+  }).catch(function(e) {
+    showToast('Publish failed: ' + (e.message || 'Network error'), 'error');
+  });
 }
 
 function renderTemplateGrid() {
@@ -10054,8 +10235,83 @@ function downloadVideoFile(url) {
 }
 
 function csPublishVideo(url) {
-  showToast('Video added to publishing queue', 'success');
-  switchCSTab('social-posting');
+  // Open GHL publish modal with the video as media
+  if (!url) { showToast('No video URL to publish', 'error'); return; }
+
+  csModal('Publish Video', csSpinner('Fetching connected accounts...'), []);
+
+  loadGHLAccounts(function(cache) {
+    if (!cache.accounts.length) {
+      showToast('Connect social accounts at app.saintsallabs.com first', 'error');
+      csCloseModal();
+      return;
+    }
+
+    var accountsHtml = cache.accounts.map(function(acct) {
+      var platform = getAccountPlatform(acct);
+      var name = getAccountName(acct);
+      var id = getAccountId(acct);
+      var color = CS_PLATFORM_COLORS[platform] || '#d4a843';
+      return '<label style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid rgba(255,255,255,0.1);border-radius:6px;cursor:pointer;">' +
+        '<input type="checkbox" class="vid-acct-cb" data-id="' + escHTML(id) + '" data-platform="' + escHTML(platform) + '" ' +
+          'style="width:16px;height:16px;accent-color:' + color + ';cursor:pointer;" checked>' +
+        '<span style="color:#fff;font-size:13px;">' + escHTML(name) + '</span>' +
+        '<span style="color:' + color + ';font-size:11px;text-transform:capitalize;margin-left:auto;">' + escHTML(platform) + '</span>' +
+      '</label>';
+    }).join('');
+
+    var bodyHtml = '<div style="display:flex;flex-direction:column;gap:12px;">' +
+      '<div><label class="cs-label">Video</label>' +
+        '<div style="background:rgba(255,255,255,0.04);padding:10px;border-radius:6px;font-size:12px;color:#ccc;word-break:break-all;">' + escHTML(url) + '</div></div>' +
+      '<div><label class="cs-label">Caption</label>' +
+        '<textarea class="cs-textarea" id="vidCaption" rows="3" placeholder="Write a caption for your video..."></textarea></div>' +
+      '<div><label class="cs-label">Post To</label>' +
+        '<div style="display:flex;flex-direction:column;gap:4px;max-height:150px;overflow-y:auto;">' + accountsHtml + '</div></div>' +
+      '<div><label class="cs-label">Schedule (optional)</label>' +
+        '<input type="datetime-local" class="cs-input" id="vidSchedule" style="color-scheme:dark;"></div>' +
+    '</div>';
+
+    csModal('Publish Video to Social', bodyHtml, [
+      { label: 'Cancel', cls: 'cs-btn-secondary', onclick: 'csCloseModal()' },
+      { label: '\uD83D\uDE80 Publish Video', cls: 'cs-btn-gold', onclick: 'submitVideoPublish(\'' + escHTML(url) + '\')' }
+    ]);
+  });
+}
+
+function submitVideoPublish(videoUrl) {
+  var checkboxes = document.querySelectorAll('.vid-acct-cb:checked');
+  if (!checkboxes.length) { showToast('Select at least one account', 'error'); return; }
+
+  var accountIds = [];
+  var platformLabels = [];
+  for (var i = 0; i < checkboxes.length; i++) {
+    accountIds.push(checkboxes[i].getAttribute('data-id'));
+    platformLabels.push(checkboxes[i].getAttribute('data-platform'));
+  }
+
+  var caption = document.getElementById('vidCaption');
+  var schedInput = document.getElementById('vidSchedule');
+  var scheduleDate = schedInput && schedInput.value ? new Date(schedInput.value).toISOString() : null;
+
+  csCloseModal();
+  showToast('Publishing video via GHL...', 'info');
+
+  csAPI('/api/social-studio/publish', {
+    method: 'POST',
+    body: JSON.stringify({
+      summary: caption ? caption.value : '',
+      accountIds: accountIds,
+      platformLabels: platformLabels,
+      mediaUrls: [videoUrl],
+      type: 'post',
+      scheduleDate: scheduleDate
+    })
+  }).then(function(data) {
+    if (data.error) { showToast('Publish failed: ' + data.error, 'error'); return; }
+    showToast(data.message || 'Video published via GHL!', 'success');
+  }).catch(function(e) {
+    showToast('Publish failed: ' + (e.message || 'Network error'), 'error');
+  });
 }
 
 function generateVideo() {
@@ -10173,9 +10429,12 @@ function renderSocialCalendar(container) {
     '<div style="display:flex;flex-direction:column;gap:16px;">' +
       '<div style="display:flex;justify-content:space-between;align-items:center;">' +
         '<div style="display:flex;gap:6px;">' + viewBtns + '</div>' +
-        '<button class="cs-btn-gold" onclick="showScheduleModal()" style="padding:8px 16px;font-size:13px;">' +
-          '+ New Post' +
-        '</button>' +
+        '<div style="display:flex;gap:8px;align-items:center;">' +
+          '<div id="ghlStatusBadge" style="font-size:11px;padding:4px 10px;border-radius:12px;background:rgba(255,255,255,0.05);color:#999;">Checking GHL...</div>' +
+          '<button class="cs-btn-gold" onclick="showScheduleModal()" style="padding:8px 16px;font-size:13px;">' +
+            '+ New Post' +
+          '</button>' +
+        '</div>' +
       '</div>' +
       '<div id="csCalBody">' + renderCalBody() + '</div>' +
     '</div>';
@@ -10183,6 +10442,25 @@ function renderSocialCalendar(container) {
   if (!csCalendarState.loaded && !csCalendarState.loading) {
     loadCalendarData(csCalendarState.month, csCalendarState.year);
   }
+
+  // Load GHL accounts and update badge
+  loadGHLAccounts(function(cache) {
+    var badge = document.getElementById('ghlStatusBadge');
+    if (!badge) return;
+    if (cache.accounts.length > 0) {
+      badge.style.background = 'rgba(76,175,80,0.15)';
+      badge.style.color = '#4CAF50';
+      badge.innerHTML = '\u2713 GHL: ' + cache.accounts.length + ' account' + (cache.accounts.length > 1 ? 's' : '') + ' connected';
+    } else if (cache.provisioned) {
+      badge.style.background = 'rgba(255,152,0,0.15)';
+      badge.style.color = '#FF9800';
+      badge.innerHTML = '\u26A0 No social accounts connected';
+    } else {
+      badge.style.background = 'rgba(244,67,54,0.15)';
+      badge.style.color = '#F44336';
+      badge.innerHTML = '\u2717 GHL not provisioned';
+    }
+  });
 }
 
 function csCalView(view) {
@@ -10396,79 +10674,128 @@ function renderAnalyticCard(label, value, icon) {
 function deleteScheduledPost(postId) {
   if (!postId) return;
   if (!window.confirm('Delete this scheduled post?')) return;
-  csAPI('/api/social-studio/delete-post', {
-    method: 'POST',
-    body: JSON.stringify({ post_id: postId })
+  // Try GHL delete first (uses ghl_post_id), then Supabase delete
+  csAPI('/api/social-studio/post/' + encodeURIComponent(postId), {
+    method: 'DELETE'
   }).then(function(data) {
-    if (data.error) { showToast(data.error, 'error'); return; }
+    if (data.error) {
+      // Fallback: try the delete-post endpoint for Supabase-only posts
+      return csAPI('/api/social-studio/delete-post/' + encodeURIComponent(postId), { method: 'DELETE' });
+    }
+    return data;
+  }).then(function(data) {
+    if (data && data.error) { showToast(data.error, 'error'); return; }
     csCalendarState.posts = csCalendarState.posts.filter(function(p) { return p.id !== postId; });
     showToast('Post deleted', 'success');
     showCalendarDay(csCalendarState.selectedDay);
+    // Also refresh history if loaded
+    if (csCalendarState.historyLoaded) loadPostHistory();
   }).catch(function(e) {
     showToast('Delete failed: ' + (e.message || 'Network error'), 'error');
   });
 }
 
 function showScheduleModal(day) {
-  var platforms = ['instagram', 'facebook', 'linkedin', 'twitter', 'tiktok', 'google'];
-  var platformOpts = platforms.map(function(p) {
-    return '<option value="' + p + '">' + p.charAt(0).toUpperCase() + p.slice(1) + '</option>';
-  }).join('');
+  // Show loading modal while fetching GHL accounts
+  csModal('Schedule Post', csSpinner('Loading connected accounts...'), []);
 
-  var defaultDate = '';
-  if (day && csCalendarState.month !== null) {
-    var m = csCalendarState.month + 1;
-    defaultDate = csCalendarState.year + '-' + (m < 10 ? '0' : '') + m + '-' + (day < 10 ? '0' : '') + day;
-  }
+  loadGHLAccounts(function(cache) {
+    var defaultDate = '';
+    if (day && csCalendarState.month !== null) {
+      var m = csCalendarState.month + 1;
+      defaultDate = csCalendarState.year + '-' + (m < 10 ? '0' : '') + m + '-' + (day < 10 ? '0' : '') + day + 'T09:00';
+    }
 
-  var bodyHtml = '<div style="display:flex;flex-direction:column;gap:12px;">' +
-    '<div><label class="cs-label">Platform</label>' +
-      '<select class="cs-select" id="schedPlatform">' + platformOpts + '</select></div>' +
-    '<div><label class="cs-label">Content</label>' +
-      '<textarea class="cs-textarea" id="schedContent" rows="4" placeholder="Write your post content..."></textarea></div>' +
-    '<div class="cs-grid-2">' +
-      '<div><label class="cs-label">Date</label>' +
-        '<input type="date" class="cs-input" id="schedDate" value="' + escHTML(defaultDate) + '"></div>' +
-      '<div><label class="cs-label">Time</label>' +
-        '<input type="time" class="cs-input" id="schedTime" value="09:00"></div>' +
-    '</div>' +
-  '</div>';
+    // Build account checkboxes or fallback to platform dropdown
+    var accountSection = '';
+    if (cache.accounts.length > 0) {
+      var accountsHtml = cache.accounts.map(function(acct) {
+        var platform = getAccountPlatform(acct);
+        var name = getAccountName(acct);
+        var id = getAccountId(acct);
+        var color = CS_PLATFORM_COLORS[platform] || '#d4a843';
+        return '<label style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid rgba(255,255,255,0.1);border-radius:6px;cursor:pointer;">' +
+          '<input type="checkbox" class="sched-acct-cb" data-id="' + escHTML(id) + '" data-platform="' + escHTML(platform) + '" ' +
+            'style="width:16px;height:16px;accent-color:' + color + ';cursor:pointer;" checked>' +
+          '<span style="color:#fff;font-size:13px;">' + escHTML(name) + '</span>' +
+          '<span style="color:' + color + ';font-size:11px;text-transform:capitalize;margin-left:auto;">' + escHTML(platform) + '</span>' +
+        '</label>';
+      }).join('');
+      accountSection = '<div><label class="cs-label">Post To (GHL Connected)</label>' +
+        '<div style="display:flex;flex-direction:column;gap:4px;max-height:150px;overflow-y:auto;">' + accountsHtml + '</div></div>';
+    } else {
+      // Fallback: platform dropdown for Supabase-only scheduling
+      var platforms = ['instagram', 'facebook', 'linkedin', 'twitter', 'tiktok', 'google'];
+      var platformOpts = platforms.map(function(p) {
+        return '<option value="' + p + '">' + p.charAt(0).toUpperCase() + p.slice(1) + '</option>';
+      }).join('');
+      accountSection = '<div><label class="cs-label">Platform</label>' +
+        '<select class="cs-select" id="schedPlatform">' + platformOpts + '</select>' +
+        (cache.provisioned ? '<div style="color:#d4a843;font-size:11px;margin-top:6px;">Connect social accounts at app.saintsallabs.com for direct posting</div>' : '') +
+        '</div>';
+    }
 
-  csModal('Schedule Post', bodyHtml, [
-    { label: 'Cancel', cls: 'cs-btn-secondary', onclick: 'csCloseModal()' },
-    { label: '\uD83D\uDE80 Schedule', cls: 'cs-btn-gold', onclick: 'submitSchedulePost()' }
-  ]);
+    var bodyHtml = '<div style="display:flex;flex-direction:column;gap:12px;">' +
+      accountSection +
+      '<div><label class="cs-label">Content</label>' +
+        '<textarea class="cs-textarea" id="schedContent" rows="4" placeholder="Write your post content..."></textarea></div>' +
+      '<div><label class="cs-label">Schedule Date & Time</label>' +
+        '<input type="datetime-local" class="cs-input" id="schedDateTime" value="' + escHTML(defaultDate) + '" style="color-scheme:dark;"></div>' +
+    '</div>';
+
+    csModal('Schedule Post', bodyHtml, [
+      { label: 'Cancel', cls: 'cs-btn-secondary', onclick: 'csCloseModal()' },
+      { label: '\uD83D\uDCC5 Schedule', cls: 'cs-btn-gold', onclick: 'submitSchedulePost()' }
+    ]);
+  });
 }
 
 function submitSchedulePost() {
-  var platform = document.getElementById('schedPlatform');
   var content = document.getElementById('schedContent');
-  var date = document.getElementById('schedDate');
-  var time = document.getElementById('schedTime');
+  var dateInput = document.getElementById('schedDateTime');
 
   if (!content || !content.value.trim()) { showToast('Enter post content', 'error'); return; }
-  if (!date || !date.value) { showToast('Select a date', 'error'); return; }
+  if (!dateInput || !dateInput.value) { showToast('Select a date and time', 'error'); return; }
 
-  var scheduledAt = date.value + 'T' + (time ? time.value : '09:00') + ':00';
+  // Convert local datetime to ISO UTC
+  var localDate = new Date(dateInput.value);
+  var scheduledAt = localDate.toISOString();
+
+  // Collect GHL account IDs if available
+  var accountIds = [];
+  var platformLabels = [];
+  var checkboxes = document.querySelectorAll('.sched-acct-cb:checked');
+  for (var i = 0; i < checkboxes.length; i++) {
+    accountIds.push(checkboxes[i].getAttribute('data-id'));
+    platformLabels.push(checkboxes[i].getAttribute('data-platform'));
+  }
+
+  // Fallback platform from dropdown
+  var platformDd = document.getElementById('schedPlatform');
+  var platformLabel = platformLabels.length > 0 ? platformLabels[0] : (platformDd ? platformDd.value : 'instagram');
+
   csAPI('/api/social-studio/schedule', {
     method: 'POST',
     body: JSON.stringify({
-      platform: platform ? platform.value : 'instagram',
       content: content.value,
+      platform: platformLabel,
       scheduled_at: scheduledAt,
+      accountIds: accountIds,
       brand_id: creativeStudioState.brand ? creativeStudioState.brand.id : null
     })
   }).then(function(data) {
     if (data.error) { showToast(data.error, 'error'); return; }
-    csCalendarState.posts.push(data.post || {
-      id: data.id || Date.now() + '',
-      platform: platform ? platform.value : 'instagram',
+    var newPost = data.post || {
+      id: data.post_id || Date.now() + '',
+      platform: platformLabel,
       content: content.value,
       scheduled_at: scheduledAt,
       status: 'scheduled'
-    });
+    };
+    csCalendarState.posts.push(newPost);
     csCloseModal();
-    showToast('Post scheduled!', 'success');
+    var ghlMsg = data.ghl_posted ? ' (pushed to GHL)' : '';
+    showToast('Post scheduled!' + ghlMsg, 'success');
     var calBody = document.getElementById('csCalBody');
     if (calBody && csCalendarState.view === 'calendar') calBody.innerHTML = renderCalendarView();
   }).catch(function(e) {
