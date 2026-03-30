@@ -14129,7 +14129,7 @@ async def cards_scan(request: Request):
     if "base64," in image_b64:
         image_b64 = image_b64.split("base64,")[1]
     try:
-        vision_key = os.environ.get("GOOGLE_MAPS_API", "")
+        vision_key = os.environ.get("GOOGLE_VISION_API_KEY") or os.environ.get("GOOGLE_MAPS_API", "")
         if not vision_key:
             return JSONResponse({"error": "Google Vision not configured", "matches": []})
         async with httpx.AsyncClient() as hc:
