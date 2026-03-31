@@ -1551,29 +1551,64 @@ async def _builder_save_run(project_id: str | None, user_id: str | None, prompt:
         print(f"[Builder] Failed to log run: {e}")
         return None
 
+def _is_valid_uuid(val: str | None) -> bool:
+    """Check if a string is a valid UUID."""
+    if not val:
+        return False
+    try:
+        uuid.UUID(str(val))
+        return True
+    except (ValueError, AttributeError):
+        return False
+
+
 async def _builder_upsert_project(project_id: str | None, user_id: str | None,
                                    name: str, files: list, framework: str | None,
-                                   prompt: str) -> str | None:
+                                   prompt: str, build_id: str | None = None,
+                                   model_used: str | None = None, tier: str | None = None,
+                                   compute_cost: float | None = None) -> str | None:
     """Create or update a project in builder_projects. Returns project id."""
     if not supabase_admin:
         return project_id
+    # Validate user_id is a valid UUID (column type is uuid)
+    safe_user_id = user_id if _is_valid_uuid(user_id) else None
     try:
         if project_id:
-            resp = supabase_admin.table("builder_projects").update({
+            update_data = {
                 "files": files,
                 "updated_at": "now()",
-            }).eq("id", project_id).execute()
+            }
+            if build_id:
+                update_data["build_id"] = build_id
+            if model_used:
+                update_data["model_used"] = model_used
+            if tier:
+                update_data["tier"] = tier
+            if compute_cost is not None:
+                update_data["compute_cost"] = compute_cost
+            resp = supabase_admin.table("builder_projects").update(
+                update_data
+            ).eq("id", project_id).execute()
             return project_id
         else:
             slug = re.sub(r'[^a-z0-9]+', '-', prompt[:40].lower()).strip('-') or "project"
             row = {
-                "user_id": user_id,
                 "name": slug,
                 "description": prompt[:200],
                 "framework": framework or "html-site",
                 "files": files,
                 "status": "active",
             }
+            if safe_user_id:
+                row["user_id"] = safe_user_id
+            if build_id:
+                row["build_id"] = build_id
+            if model_used:
+                row["model_used"] = model_used
+            if tier:
+                row["tier"] = tier
+            if compute_cost is not None:
+                row["compute_cost"] = compute_cost
             resp = supabase_admin.table("builder_projects").insert(row).execute()
             return resp.data[0].get("id") if resp.data else None
     except Exception as e:
@@ -1652,14 +1687,14 @@ async def builder_v2_generate(request: Request):
         return JSONResponse({"error": "empty_prompt", "message": "Tell me what to build."}, status_code=400)
 
     # ═══ CHECK CREDITS ═══
-    if user_id and supabase_admin:
+    if user_id and supabase_admin and _is_valid_uuid(user_id):
         try:
             credits_res = supabase_admin.table("usage_log") \
-                .select("credits_used") \
+                .select("tokens_used") \
                 .eq("user_id", user_id) \
                 .gte("created_at", datetime.now().replace(day=1).isoformat()) \
                 .execute()
-            monthly_spend = sum(r.get("credits_used", 0) for r in (credits_res.data or []))
+            monthly_spend = sum(r.get("tokens_used", 0) for r in (credits_res.data or []))
 
             # Get user tier limits
             profile = supabase_admin.table("profiles").select("tier, plan_tier").eq("id", user_id).single().execute()
@@ -1725,12 +1760,14 @@ async def builder_v2_generate(request: Request):
     compute_minutes = max(elapsed / 60.0, 0.1)
     compute_cost = round(compute_minutes * cost_per_min, 4)
 
-    if user_id and supabase_admin:
+    if user_id and supabase_admin and _is_valid_uuid(user_id):
         try:
+            cost_cents_val = max(1, int(compute_cost * 100))
             supabase_admin.table("usage_log").insert({
                 "user_id": user_id,
-                "action_type": "builder_generate",
-                "credits_used": max(1, int(compute_cost * 10)),
+                "action": "builder_generate",
+                "tokens_used": max(1, int(compute_cost * 10)),
+                "cost_cents": cost_cents_val,
                 "metadata": json.dumps({
                     "model": model_used, "tier": tier_name,
                     "prompt_len": len(prompt), "response_len": len(response_text),
@@ -1751,6 +1788,10 @@ async def builder_v2_generate(request: Request):
         files=result.get("files", []),
         framework=detected_framework,
         prompt=prompt,
+        build_id=build_id,
+        model_used=model_used,
+        tier=tier_name,
+        compute_cost=compute_cost,
     )
     run_id = await _builder_save_run(
         project_id=new_project_id or project_id,
@@ -1853,12 +1894,14 @@ Return the same JSON format with the COMPLETE updated code (not just the diff).
     # Meter usage
     compute_minutes = max(elapsed / 60.0, 0.1)
     compute_cost = round(compute_minutes * cost_per_min, 4)
-    if user_id and supabase_admin:
+    if user_id and supabase_admin and _is_valid_uuid(user_id):
         try:
+            cost_cents_val = max(1, int(compute_cost * 100))
             supabase_admin.table("usage_log").insert({
                 "user_id": user_id,
-                "action_type": "builder_edit",
-                "credits_used": max(1, int(compute_cost * 10)),
+                "action": "builder_edit",
+                "tokens_used": max(1, int(compute_cost * 10)),
+                "cost_cents": cost_cents_val,
                 "metadata": json.dumps({
                     "model": model_used, "tier": tier_name,
                     "elapsed_seconds": round(elapsed, 2),
@@ -1866,8 +1909,8 @@ Return the same JSON format with the COMPLETE updated code (not just the diff).
                     "compute_cost": compute_cost,
                 })
             }).execute()
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"[Builder Elite] Edit usage logging failed: {e}")
 
     result["model"] = model_used
     result["model_used"] = model_used
@@ -1888,11 +1931,14 @@ async def builder_list_projects(request: Request):
     user_id = request.query_params.get("user_id")
     if not user_id and len(auth) < 100:
         return JSONResponse({"error": "user_id required"}, status_code=400)
+    # Validate user_id is a valid UUID (column is uuid type — invalid strings cause 500)
+    if user_id and not _is_valid_uuid(user_id):
+        return JSONResponse({"error": "user_id must be a valid UUID"}, status_code=400)
     if not supabase_admin:
         return JSONResponse({"projects": [], "source": "db-unavailable"})
     try:
         query = supabase_admin.table("builder_projects").select(
-            "id, name, description, framework, status, created_at, updated_at"
+            "id, name, description, framework, status, build_id, model_used, tier, compute_cost, created_at, updated_at"
         ).order("updated_at", desc=True)
         if user_id:
             query = query.eq("user_id", user_id)
@@ -13582,8 +13628,8 @@ async def dashboard_stats(authorization: Optional[str] = Header(None)):
         
         try:
             # Usage/compute minutes
-            usage = supabase_admin.table("usage_log").select("credits_used").eq("user_id", uid).execute()
-            total_credits = sum(u.get("credits_used", 0) for u in (usage.data or []))
+            usage = supabase_admin.table("usage_log").select("tokens_used").eq("user_id", uid).execute()
+            total_credits = sum(u.get("tokens_used", 0) for u in (usage.data or []))
             stats["compute_minutes"] = round(total_credits * 0.1, 1)  # approx conversion
         except: pass
     
@@ -15894,8 +15940,9 @@ async def creative_image_generate(request: Request):
                 compute_min = 2 if model in ("dalle3", "dall-e-3") else 0.5 if model in ("sdxl", "replicate") else 1
                 supabase_admin.table("usage_log").insert({
                     "user_id": user["id"],
-                    "action_type": "image_gen",
-                    "credits_used": int(compute_min),
+                    "action": "image_gen",
+                    "tokens_used": int(compute_min),
+                    "cost_cents": int(compute_min * 10),
                     "metadata": json.dumps({"model": model, "size": size})
                 }).execute()
             except Exception:
@@ -16766,11 +16813,11 @@ async def creative_usage(request: Request):
             try:
                 now = datetime.now()
                 month_start = f"{now.year}-{now.month:02d}-01T00:00:00"
-                result = supabase_admin.table("usage_log").select("action_type, credits_used").eq("user_id", user["id"]).gte("created_at", month_start).execute()
+                result = supabase_admin.table("usage_log").select("action, tokens_used").eq("user_id", user["id"]).gte("created_at", month_start).execute()
                 if result.data:
                     for entry in result.data:
-                        action = entry.get("action_type", "")
-                        credits = entry.get("credits_used", 0)
+                        action = entry.get("action", "")
+                        credits = entry.get("tokens_used", 0)
                         if "image" in action:
                             usage["images"] += 1
                         elif "video" in action:
