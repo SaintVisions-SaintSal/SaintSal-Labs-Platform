@@ -1377,10 +1377,14 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
           <div style="font-family:var(--bv2-mono);font-size:11px;color:var(--bv2-text-muted);">Your build will preview here</div>
         </div>
 
-        <!-- Loading state -->
+        <!-- Loading state + Trivia -->
         <div id="bv2PreviewLoading" class="bv2-preview__loading" style="display:none;">
-          <div class="bv2-preview__spinner"></div>
-          <div class="bv2-preview__loading-text" id="bv2PreviewLoadingText">Rendering preview...</div>
+          <div style="text-align:center;padding:40px 0;">
+            <div class="bv2-preview__spinner"></div>
+            <div class="bv2-preview__loading-text" id="bv2PreviewLoadingText" style="color:var(--bv2-gold, #F59E0B);font-size:18px;font-weight:700;margin-top:20px;">Building your app...</div>
+            <div style="color:var(--bv2-text-muted, #666);font-size:13px;margin-top:4px;" id="bv2BuildModelLabel">Powered by SaintSal Elite</div>
+          </div>
+          <div id="bv2BuilderTrivia" style="transition:opacity 0.3s ease,transform 0.3s ease;"></div>
         </div>
 
         <!-- Preview iframe -->

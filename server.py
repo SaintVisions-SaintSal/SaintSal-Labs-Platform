@@ -3,6 +3,8 @@
 import json
 import base64
 import uuid
+import time
+import re
 from pathlib import Path
 import os
 # Load .env file if present
@@ -1205,6 +1207,198 @@ async def mcp_gateway(request: Request):
     return JSONResponse({"error":"All providers failed","model":tier},status_code=503)
 
 
+# ════════════════════════════════════════════════════════════════
+# BUILDER v2 ELITE — SYSTEM PROMPT
+# This is the secret weapon. The quality of output depends on this.
+# ════════════════════════════════════════════════════════════════
+
+BUILDER_ELITE_PROMPT = """You are an elite senior full-stack engineer at the level of
+Vercel, Linear, Stripe, and Notion. You write code that ships to production — not
+prototypes, not demos, not tutorials. Your output IS the product.
+
+You are generating inside SaintSal™ Builder, powered by US Patent #10,290,222 (HACP).
+
+## OUTPUT FORMAT — STRICT JSON ONLY
+
+Return ONLY valid JSON. No markdown fences. No explanation outside the JSON.
+
+{
+  "files": [
+    { "path": "index.html", "content": "..." },
+    { "path": "styles.css", "content": "..." },
+    { "path": "app.js", "content": "..." }
+  ],
+  "preview_html": "SINGLE SELF-CONTAINED HTML FILE — all CSS inline, all JS inline, works standalone in an iframe",
+  "summary": "2-sentence description of what was built",
+  "framework": "react|nextjs|html|vue",
+  "features": ["responsive", "dark-mode", "animated"]
+}
+
+## DESIGN STANDARDS — NON-NEGOTIABLE
+
+LAYOUT:
+- CSS Grid and Flexbox only. No floats. No tables for layout.
+- Mobile-first responsive. Breakpoints at 640, 768, 1024, 1280px.
+- 4px spacing system: 4, 8, 12, 16, 24, 32, 48, 64, 96px.
+- Max content width 1280px centered. Full-bleed hero sections.
+
+TYPOGRAPHY:
+- System font stack: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif.
+- Scale: 12/14/16/18/20/24/30/36/48/60/72px.
+- Headings: line-height 1.1, letter-spacing -0.02em, font-weight 700-800.
+- Body: line-height 1.6, font-weight 400. Subtext: color #71717a or #a1a1aa.
+
+COLOR:
+- Generate a COHESIVE palette derived from the app's purpose. Not random.
+- Dark mode default: bg #0a0a0a → #111 → #1a1a1a. Text #fafafa → #a1a1aa.
+- Accent color prominent but not overwhelming. Use for CTAs, links, active states.
+- WCAG AA contrast minimum (4.5:1 for body text, 3:1 for large text).
+
+COMPONENTS:
+- Buttons: rounded-lg (8px), padding 12px 24px, font-weight 600, transition 150ms.
+  Hover: slight brightness shift or shadow. Active: scale(0.98). Disabled: opacity 0.5.
+- Cards: rounded-xl (12px), border 1px solid rgba(255,255,255,0.06), hover shadow-lg transition.
+  Padding 24px. Background one shade lighter than page bg.
+- Inputs: rounded-lg, border, focus:ring-2 with accent color, placeholder color #666.
+  Height 44px minimum for touch targets.
+- Nav: sticky top-0, backdrop-blur-xl, bg rgba(10,10,10,0.8), border-bottom 1px solid rgba(255,255,255,0.06).
+  Mobile: hamburger menu with slide-in overlay.
+- Tables: rounded-lg overflow-hidden, header row bg slightly darker, alternating row colors subtle,
+  sticky header on scroll, proper cell padding 12px 16px.
+- Modals: backdrop blur + dark overlay, centered card, max-width 500px, close X button, focus trap concept.
+
+ANIMATIONS — THE POLISH LAYER:
+- Entrance animations on scroll via IntersectionObserver: fade-up (translateY 20px → 0, opacity 0 → 1).
+  Duration 600ms, easing cubic-bezier(0.16, 1, 0.3, 1). Stagger children by 100ms.
+- Hover transitions on ALL interactive elements: transition-all 150ms ease.
+- Smooth scroll: html { scroll-behavior: smooth }.
+- Button loading state: spinner SVG rotating inside button, text changes to "Loading...".
+- Skeleton loaders: pulsing gray rectangles (animate-pulse) for content areas while loading.
+- Gradient text for hero headlines: background-clip text, -webkit-text-fill-color transparent.
+- Subtle gradient borders on featured cards: linear-gradient border with border-radius.
+
+IMAGES & MEDIA:
+- Placeholders from https://picsum.photos/[width]/[height] or gradient divs as hero backgrounds.
+- aspect-ratio CSS property for consistent image containers. object-fit: cover.
+- loading="lazy" on all below-fold images.
+- Hero: gradient overlay (linear-gradient(to bottom, transparent, rgba(0,0,0,0.8))) for text readability.
+
+ICONS — INLINE SVG (no external deps):
+- Use clean inline SVG icons. Stroke-based, 24x24 viewBox, stroke-width 1.5-2.
+- Common set: arrow-right, check, x-close, menu, search, user, settings, mail, phone,
+  chart-bar, globe, shield, zap, star, heart, download, external-link, chevron-down.
+- Never reference external icon libraries in preview_html. Everything self-contained.
+
+## CODE QUALITY
+
+- Semantic HTML5: <header>, <main>, <section>, <article>, <nav>, <footer>.
+- One <h1> per page, proper heading hierarchy.
+- Alt text on all images. Aria-labels on icon-only buttons.
+- CSS custom properties for theming: --bg, --text, --accent, --border, --radius.
+- JavaScript: const/let (never var), arrow functions, template literals, optional chaining.
+- Event delegation where possible. No inline onclick= attributes.
+- Form validation with visual feedback (red borders, error messages below fields).
+
+## REACT (when framework is react):
+- React 18 via CDN: <script src="https://unpkg.com/react@18/umd/react.production.min.js">
+- ReactDOM: <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js">
+- Babel standalone for JSX: <script src="https://unpkg.com/@babel/standalone/babel.min.js">
+- Tailwind via CDN: <script src="https://cdn.tailwindcss.com"></script>
+- Functional components, hooks (useState, useEffect, useRef, useMemo).
+- Tailwind config inline for custom colors: tailwind.config = { theme: { extend: { ... } } }
+
+## GENERATION RULES
+
+1. preview_html MUST be a SINGLE self-contained HTML file. All CSS, JS, React, Tailwind
+   loaded via CDN within that one file. If it cannot render in an iframe standalone, you FAILED.
+
+2. Generate COMPLETE implementations. No "// TODO" comments. No placeholder functions.
+   Every button does something. Every form validates. Every list has realistic data.
+
+3. Sample data must feel REAL — realistic names, realistic prices ($29.99 not $X),
+   realistic dates, realistic descriptions. Make it look like a shipped product.
+
+4. The output should look like it belongs on Product Hunt or Dribbble. Not a tutorial.
+   Design differentiation matters. Each app should feel intentionally crafted.
+
+5. For edits: change ONLY what the user requested. Preserve everything else EXACTLY.
+   If they say "make the header blue" — ONLY the header color changes. Nothing else.
+"""
+
+
+# ════════════════════════════════════════════════════════════════
+# BUILDER v2 — MODEL ROUTING ENGINE
+# ════════════════════════════════════════════════════════════════
+
+def score_builder_complexity(prompt: str, history: list) -> int:
+    """Score prompt complexity 0-100 for intelligent model routing."""
+    score = 0
+    p = prompt.lower()
+
+    # Length signals complexity
+    if len(prompt) > 500: score += 15
+    elif len(prompt) > 200: score += 10
+    elif len(prompt) > 100: score += 5
+
+    # Full-app signals → needs ARCHITECT tier
+    architect_signals = [
+        'dashboard', 'saas', 'auth', 'login', 'signup', 'billing', 'admin panel',
+        'crud', 'database', 'api routes', 'full-stack', 'multi-page', 'routing',
+        'user management', 'e-commerce', 'checkout', 'payment', 'subscription',
+        'real-time', 'websocket', 'chat app', 'marketplace', 'booking system',
+        'inventory', 'crm', 'analytics', 'reporting', 'notifications'
+    ]
+    score += sum(10 for kw in architect_signals if kw in p)
+
+    # Edit signals → much simpler, route to QUICK tier
+    edit_signals = [
+        'change', 'make the', 'update the', 'fix the', 'modify', 'adjust',
+        'move the', 'resize', 'recolor', 'rename', 'add a button', 'remove the',
+        'swap', 'replace the', 'make it', 'turn the', 'set the'
+    ]
+    if any(kw in p for kw in edit_signals) and len(history) > 0:
+        score = max(score - 40, 5)  # Edits are simple even if keywords overlap
+
+    # Conversation depth adds complexity
+    score += min(len(history) * 3, 20)
+
+    return min(score, 100)
+
+
+def is_creative_prompt(prompt: str) -> bool:
+    """Detect creative/artistic prompts for Grok routing."""
+    creative_signals = [
+        'artistic', 'creative', 'unique design', 'experimental', 'cyberpunk',
+        'retro', 'neon', 'glassmorphism', 'brutalist', 'organic', 'heavily animated',
+        'parallax', '3d effect', 'immersive', 'unconventional', 'futuristic',
+        'vaporwave', 'minimalist art', 'abstract', 'generative', 'morphing',
+        'psychedelic', 'isometric', 'clay', 'neumorphism', 'aurora'
+    ]
+    return any(kw in prompt.lower() for kw in creative_signals)
+
+
+def select_elite_builder_tier(prompt: str, history: list) -> tuple:
+    """Select model tier and return (preferred_model_id, tier_name, cost_per_min).
+    Maps to existing _builder_ai_call preferred_model ids: claude, xai, google, openai, pplx.
+    """
+    complexity = score_builder_complexity(prompt, history)
+
+    if complexity >= 70:
+        # ARCHITECT tier — Claude is best, fallback to xai/google
+        return ("claude", "ARCHITECT", 1.00)
+
+    if is_creative_prompt(prompt):
+        # CREATIVE tier — Grok excels at creative, fallback built into chain
+        return ("xai", "CREATIVE", 0.50)
+
+    if complexity <= 20 and len(history) > 0:
+        # QUICK tier — fast model for edits
+        return ("openai", "QUICK", 0.05)
+
+    # Default: BUILDER tier
+    return ("claude", "BUILDER", 0.25)
+
+
 # ═══════════════════════════════════════════════════════════════════
 # BUILDER V2 — PROMPT-TO-APP CODE GENERATION via MCP cascade
 # iOS app calls this endpoint for the Builder tab
@@ -1386,14 +1580,57 @@ async def _builder_upsert_project(project_id: str | None, user_id: str | None,
         print(f"[Builder] Failed to upsert project: {e}")
         return project_id
 
-# ── LAYER 1+2: GENERATE ENDPOINT ─────────────────────────────────────────────
+# ════════════════════════════════════════════════════════════════
+# BUILDER v2 ELITE — ENDPOINTS
+# Replaces legacy generate with Elite prompt + 4-tier routing + metering
+# ════════════════════════════════════════════════════════════════
+
+def _parse_elite_builder_response(response_text: str) -> dict:
+    """Parse Elite Builder response — extract JSON from potentially messy LLM output."""
+    result = None
+    # Try direct JSON parse
+    try:
+        result = json.loads(response_text)
+    except json.JSONDecodeError:
+        pass
+
+    # Try extracting JSON from markdown fences
+    if not result:
+        json_match = re.search(r'```(?:json)?\s*(\{[\s\S]*?\})\s*```', response_text)
+        if json_match:
+            try:
+                result = json.loads(json_match.group(1))
+            except Exception:
+                pass
+
+    # Try finding any JSON object with preview_html key
+    if not result:
+        json_match = re.search(r'(\{[\s\S]*"preview_html"[\s\S]*\})', response_text)
+        if json_match:
+            try:
+                result = json.loads(json_match.group(1))
+            except Exception:
+                pass
+
+    # Last resort: treat entire response as HTML
+    if not result:
+        result = {
+            "files": [{"path": "index.html", "content": response_text}],
+            "preview_html": response_text,
+            "summary": "Generated application",
+            "framework": "html",
+            "features": []
+        }
+
+    return result
+
 
 @limiter.limit("10/minute")
 @app.post("/api/builder/v2/generate")
 async def builder_v2_generate(request: Request):
-    """Builder V2 — multi-model fallback + agentic review loop + Supabase persistence."""
+    """Elite Builder — prompt to production-grade code with intelligent model routing."""
     try:
-        body = await request.json()
+        data = await request.json()
     except Exception:
         return JSONResponse({"error": "Invalid JSON"}, status_code=400)
 
@@ -1404,114 +1641,242 @@ async def builder_v2_generate(request: Request):
     if sal_key != VALID and auth != VALID and len(auth) < 100:
         return JSONResponse({"error": "Unauthorized"}, status_code=401)
 
-    prompt     = (body.get("prompt") or "").strip()
-    project_id = body.get("project_id")
-    files      = body.get("files", [])
-    conversation = body.get("conversation", [])
-    user_id    = body.get("user_id")
+    prompt     = (data.get("prompt") or "").strip()
+    history    = data.get("history", data.get("conversation", []))
+    framework  = data.get("framework", "auto")
+    project_id = data.get("project_id")
+    files      = data.get("files", [])
+    user_id    = data.get("user_id")
 
     if not prompt:
-        return JSONResponse({"error": "prompt is required"}, status_code=400)
+        return JSONResponse({"error": "empty_prompt", "message": "Tell me what to build."}, status_code=400)
 
-    # ── LAYER 3: Framework detection + template injection ─────────────────────
-    framework    = _detect_framework(prompt)
-    user_content = _build_user_content(prompt, files, framework)
+    # ═══ CHECK CREDITS ═══
+    if user_id and supabase_admin:
+        try:
+            credits_res = supabase_admin.table("usage_log") \
+                .select("credits_used") \
+                .eq("user_id", user_id) \
+                .gte("created_at", datetime.now().replace(day=1).isoformat()) \
+                .execute()
+            monthly_spend = sum(r.get("credits_used", 0) for r in (credits_res.data or []))
 
-    # Build conversation history (last 10 turns)
-    msgs = []
-    for msg in conversation[-10:]:
-        if msg.get("role") in ["user", "assistant"]:
-            msgs.append({"role": msg["role"], "content": msg.get("content", "")})
-    msgs.append({"role": "user", "content": user_content})
+            # Get user tier limits
+            profile = supabase_admin.table("profiles").select("tier, plan_tier").eq("id", user_id).single().execute()
+            tier = (profile.data or {}).get("tier", (profile.data or {}).get("plan_tier", "free"))
+            tier_limits = {"free": 100, "starter": 500, "pro": 5000, "teams": 20000, "enterprise": 999999}
+            limit = tier_limits.get(tier, 100)
 
-    # ── LAYER 1: Multi-model fallback chain (never fail) ─────────────────────
-    # Order: Claude (best) → OpenAI (GPT) → Gemini → Grok
-    # Each model gets 30s before we move to the next
-    model_order = ["claude", "openai", "google", "xai"]
-    result_v1   = None
-    model_used  = "none"
+            if monthly_spend >= limit:
+                return JSONResponse({
+                    "error": "insufficient_credits",
+                    "message": f"Monthly Builder limit reached ({monthly_spend} / {limit} credits). Upgrade for more.",
+                    "upgrade_url": "/pricing"
+                }, status_code=402)
+        except Exception as e:
+            print(f"[Builder Elite] Credit check failed (allowing): {e}")
 
-    for preferred in model_order:
-        ai_resp = await _builder_ai_call(
-            system=BUILDER_V2_SYSTEM,
-            user_msg=user_content,
-            preferred_model=preferred,
-            max_tokens=16384,
-            timeout_seconds=30,
-        )
-        if ai_resp.get("text"):
-            result_v1  = _parse_builder_response(ai_resp["text"])
-            model_used = ai_resp.get("model_used", preferred)
-            print(f"[Builder V2] Generation succeeded via {model_used}")
-            break
+    # ═══ SELECT MODEL TIER ═══
+    preferred_model, tier_name, cost_per_min = select_elite_builder_tier(prompt, history)
 
-    if not result_v1 or not result_v1.get("files"):
-        # Absolute last resort — never return a 503
-        result_v1 = {
-            "ok": True,
-            "thought": "All AI providers were unreachable. Here is a starter template.",
-            "files": [{"path": "index.html", "content": _load_template("html-site") or "<h1>SAL Builder</h1>", "language": "html"}],
-            "preview_entry": "index.html",
-            "next_steps": ["Try again in a moment", "Check your API key configuration"],
-            "review_notes": [],
-        }
-        model_used = "fallback-template"
+    # ═══ BUILD USER CONTENT ═══
+    # Reuse existing framework detection + template injection
+    detected_framework = _detect_framework(prompt)
+    user_content = _build_user_content(prompt, files, detected_framework)
 
-    # ── LAYER 2: Agentic review loop ──────────────────────────────────────────
-    # Second AI pass reviews generated code for bugs, fixes them, delivers reviewed version
-    result_v2 = None
-    try:
-        files_for_review = json.dumps(result_v1.get("files", []), ensure_ascii=False)
-        review_prompt = (
-            f"ORIGINAL USER REQUEST: {prompt}\n\n"
-            f"AI-GENERATED FILES TO REVIEW:\n{files_for_review}\n\n"
-            "Review every file. Fix bugs, missing imports, broken references, security issues, "
-            "and missing edge cases. Return the complete fixed project in the required JSON format."
-        )
-        review_resp = await _builder_ai_call(
-            system=BUILDER_REVIEW_SYSTEM,
-            user_msg=review_prompt,
-            preferred_model="claude",   # Best reviewer
-            max_tokens=16384,
-            timeout_seconds=30,
-        )
-        if review_resp.get("text"):
-            parsed_review = _parse_builder_response(review_resp["text"])
-            if parsed_review.get("files"):
-                result_v2 = parsed_review
-                print(f"[Builder V2] Review pass succeeded — delivering reviewed version")
-    except Exception as e:
-        print(f"[Builder V2] Review pass failed (delivering original): {e}")
+    # ═══ CALL MODEL WITH FALLBACK CHAIN ═══
+    start_time = time.time()
+    response_text = None
+    model_used = None
 
-    # Deliver reviewed version if available, else original — never lose work
-    final_result = result_v2 if (result_v2 and result_v2.get("files")) else result_v1
+    ai_resp = await _builder_ai_call(
+        system=BUILDER_ELITE_PROMPT,
+        user_msg=user_content,
+        preferred_model=preferred_model,
+        max_tokens=16000,
+        timeout_seconds=60,
+    )
+    if ai_resp.get("text"):
+        response_text = ai_resp["text"]
+        model_used = ai_resp.get("model_used", preferred_model)
+        print(f"[Builder Elite] Generation succeeded via {model_used} (tier={tier_name})")
 
-    # ── LAYER 4: Persist to Supabase ─────────────────────────────────────────
+    if not response_text:
+        return JSONResponse({"error": "generation_failed",
+            "message": "All models unavailable. Please try again in a moment."}, status_code=503)
+
+    elapsed = time.time() - start_time
+
+    # ═══ PARSE RESPONSE ═══
+    result = _parse_elite_builder_response(response_text)
+
+    # Ensure backward compat: map elite fields to legacy fields the frontend expects
+    if "thought" not in result:
+        result["thought"] = result.get("summary", "Code generated.")
+    if "preview_entry" not in result:
+        result["preview_entry"] = "index.html"
+    if "next_steps" not in result:
+        result["next_steps"] = ["Edit the design", "Add more features", "Deploy to production"]
+    if "review_notes" not in result:
+        result["review_notes"] = []
+    result["ok"] = True
+
+    # ═══ METER USAGE ═══
+    compute_minutes = max(elapsed / 60.0, 0.1)
+    compute_cost = round(compute_minutes * cost_per_min, 4)
+
+    if user_id and supabase_admin:
+        try:
+            supabase_admin.table("usage_log").insert({
+                "user_id": user_id,
+                "action_type": "builder_generate",
+                "credits_used": max(1, int(compute_cost * 10)),
+                "metadata": json.dumps({
+                    "model": model_used, "tier": tier_name,
+                    "prompt_len": len(prompt), "response_len": len(response_text),
+                    "elapsed_seconds": round(elapsed, 2),
+                    "compute_minutes": round(compute_minutes, 4),
+                    "compute_cost": compute_cost,
+                })
+            }).execute()
+        except Exception as e:
+            print(f"[Builder Elite] Usage logging failed: {e}")
+
+    # ═══ SAVE PROJECT ═══
+    build_id = str(uuid.uuid4())[:8]
     new_project_id = await _builder_upsert_project(
         project_id=project_id,
         user_id=user_id,
         name=prompt[:40],
-        files=final_result.get("files", []),
-        framework=framework,
+        files=result.get("files", []),
+        framework=detected_framework,
         prompt=prompt,
     )
     run_id = await _builder_save_run(
         project_id=new_project_id or project_id,
         user_id=user_id,
         prompt=prompt,
-        result_v1=result_v1,
-        result_v2=result_v2,
+        result_v1=result,
+        result_v2=None,
         model_used=model_used,
     )
 
-    return JSONResponse({
-        **final_result,
-        "model": model_used,
-        "reviewed": result_v2 is not None,
-        "framework_detected": framework,
-        "project_id": new_project_id or project_id,
-        "run_id": run_id,
-    })
+    # ═══ RETURN ═══
+    result["build_id"] = build_id
+    result["model"] = model_used
+    result["model_used"] = model_used
+    result["tier"] = tier_name
+    result["compute_cost"] = compute_cost
+    result["elapsed_seconds"] = round(elapsed, 2)
+    result["reviewed"] = False
+    result["framework_detected"] = detected_framework
+    result["project_id"] = new_project_id or project_id
+    result["run_id"] = run_id
+
+    return JSONResponse(result)
+
+
+@limiter.limit("10/minute")
+@app.post("/api/builder/v2/edit")
+async def builder_v2_edit(request: Request):
+    """Elite Builder — iterative edit on existing code."""
+    try:
+        data = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Invalid JSON"}, status_code=400)
+
+    # Auth
+    sal_key = request.headers.get("x-sal-key", "")
+    VALID   = os.environ.get("SAL_GATEWAY_SECRET", "")
+    auth    = request.headers.get("authorization", "").replace("Bearer ", "")
+    if sal_key != VALID and auth != VALID and len(auth) < 100:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+
+    prompt       = (data.get("prompt") or "").strip()
+    current_code = data.get("current_code", "")
+    history      = data.get("history", [])
+    user_id      = data.get("user_id")
+
+    if not prompt:
+        return JSONResponse({"error": "empty_prompt"}, status_code=400)
+
+    # Edits always route via tier engine (typically QUICK or BUILDER)
+    preferred_model, tier_name, cost_per_min = select_elite_builder_tier(prompt, history)
+
+    edit_system = BUILDER_ELITE_PROMPT + """
+
+EDIT MODE — You are modifying an existing application.
+The user's current code is provided below. Apply ONLY the requested changes.
+Keep EVERYTHING else exactly the same — same layout, same colors, same content,
+same functionality. Only change what the user explicitly asked for.
+
+Return the same JSON format with the COMPLETE updated code (not just the diff).
+"""
+
+    edit_user_msg = f"CURRENT CODE:\n```html\n{current_code[:30000]}\n```\n\nEDIT REQUEST: {prompt}"
+
+    start_time = time.time()
+    response_text = None
+    model_used = None
+
+    ai_resp = await _builder_ai_call(
+        system=edit_system,
+        user_msg=edit_user_msg,
+        preferred_model=preferred_model,
+        max_tokens=16000,
+        timeout_seconds=60,
+    )
+    if ai_resp.get("text"):
+        response_text = ai_resp["text"]
+        model_used = ai_resp.get("model_used", preferred_model)
+
+    if not response_text:
+        return JSONResponse({"error": "edit_failed",
+            "message": "All models unavailable. Please try again."}, status_code=503)
+
+    elapsed = time.time() - start_time
+
+    # Parse response
+    result = _parse_elite_builder_response(response_text)
+
+    # Backward compat
+    if "thought" not in result:
+        result["thought"] = result.get("summary", "Edit applied.")
+    if "preview_entry" not in result:
+        result["preview_entry"] = "index.html"
+    if "next_steps" not in result:
+        result["next_steps"] = ["Continue editing", "Try a new feature"]
+    if "review_notes" not in result:
+        result["review_notes"] = []
+    result["ok"] = True
+
+    # Meter usage
+    compute_minutes = max(elapsed / 60.0, 0.1)
+    compute_cost = round(compute_minutes * cost_per_min, 4)
+    if user_id and supabase_admin:
+        try:
+            supabase_admin.table("usage_log").insert({
+                "user_id": user_id,
+                "action_type": "builder_edit",
+                "credits_used": max(1, int(compute_cost * 10)),
+                "metadata": json.dumps({
+                    "model": model_used, "tier": tier_name,
+                    "elapsed_seconds": round(elapsed, 2),
+                    "compute_minutes": round(compute_minutes, 4),
+                    "compute_cost": compute_cost,
+                })
+            }).execute()
+        except Exception:
+            pass
+
+    result["model"] = model_used
+    result["model_used"] = model_used
+    result["tier"] = tier_name
+    result["compute_cost"] = compute_cost
+    result["elapsed_seconds"] = round(elapsed, 2)
+    result["reviewed"] = False
+
+    return JSONResponse(result)
 
 
 # ── LAYER 4: Project CRUD endpoints ──────────────────────────────────────────

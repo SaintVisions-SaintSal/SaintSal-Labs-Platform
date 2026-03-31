@@ -16,6 +16,139 @@ var isStreaming = false;
 var isAnnual = false;
 var sidebarOpen = false;
 
+// ════════════════════════════════════════════════════════════════
+// SAINTVISION TRIVIA ENGINE — Vanilla JS
+// Every loading state becomes a branding opportunity.
+// ════════════════════════════════════════════════════════════════
+
+var SAINTVISION_TRIVIA = [
+  // PATENT & HACP
+  { icon: '\uD83D\uDD2C', headline: 'Patented Intelligence',
+    fact: 'SaintSal is powered by US Patent #10,290,222 \u2014 the Human-AI Connection Protocol. Filed before GPT-1 existed.' },
+  { icon: '\uD83D\uDCDC', headline: 'First of Its Kind',
+    fact: 'HACP was recognized by Apple and Google as \"The First Human-AI Connection Protocol.\" It predates ChatGPT by 6 years.' },
+  { icon: '\u2696\uFE0F', headline: 'IP Protected',
+    fact: 'Continuation patent #19/296,986 extends HACP to cover modern AI assistants, agents, and multi-modal interaction.' },
+  { icon: '\uD83C\uDFDB\uFE0F', headline: 'Patent Precedent',
+    fact: 'In 2024, a jury awarded $242 million for a single AI voice assistant patent. HACP covers the entire interaction layer.' },
+
+  // GLOBAL
+  { icon: '\uD83C\uDF0D', headline: '175+ Countries',
+    fact: 'SaintSal.ai is live on the App Store in over 175 countries \u2014 from Tokyo to Toronto, London to Lagos.' },
+  { icon: '\uD83D\uDDE3\uFE0F', headline: '17 Languages',
+    fact: 'Our AI speaks 17 languages natively through ElevenLabs voice technology \u2014 breaking barriers, building bridges.' },
+  { icon: '\uD83D\uDCF1', headline: 'Every Device',
+    fact: 'SaintSal runs on iPhone, iPad, Mac, Apple Vision Pro, and the web. One platform, everywhere.' },
+
+  // FOUNDER
+  { icon: '\uD83D\uDC54', headline: 'Wall Street Roots',
+    fact: 'CEO Ryan \"Cap\" Capatosto spent 22+ years in financial services at JP Morgan and Oppenheimer before building SaintSal.' },
+  { icon: '\uD83D\uDCA1', headline: 'Inventor & CEO',
+    fact: 'Cap invested $2.1M over 12+ years to bring HACP to life. Not venture-backed hype \u2014 pure conviction.' },
+  { icon: '\u271D\uFE0F', headline: 'Responsible Intelligence',
+    fact: 'Built on the principle that technology should serve people, not replace them. Faith-forward. Values-driven.' },
+
+  // ECOSYSTEM
+  { icon: '\uD83C\uDFD7\uFE0F', headline: 'Elite Model Arsenal',
+    fact: 'The Builder uses Claude Opus 4.6, GPT-5, Grok 3, and Haiku 4.5 \u2014 intelligently routed by complexity.' },
+  { icon: '\uD83D\uDCB0', headline: 'CookinCapital',
+    fact: '$5,000 to $100,000,000 in commercial funding through 57 verified lending partners.' },
+  { icon: '\uD83C\uDFE5', headline: 'SaintAthena',
+    fact: 'HIPAA-compliant medical AI with BAA. Healthcare deserves responsible intelligence too.' },
+
+  // TECH
+  { icon: '\uD83E\uDD16', headline: 'Zero Downtime',
+    fact: 'Every AI request cascades: Claude \u2192 GPT \u2192 Gemini \u2192 Grok. If one model is down, the next picks up instantly.' },
+  { icon: '\u26A1', headline: 'Smart Routing',
+    fact: 'Complex apps \u2192 Opus 4.6. Quick edits \u2192 Haiku in 1-2 seconds. The right brain for the right job.' },
+  { icon: '\uD83D\uDD12', headline: 'Enterprise Security',
+    fact: 'Row-Level Security on every table. API keys never touch the client. Your data stays yours.' },
+
+  // MARKET
+  { icon: '\uD83C\uDFAF', headline: 'The 33%',
+    fact: 'SaintSal targets the 33% of AI that OpenAI and Anthropic cannot serve \u2014 faith-forward, patent-protected, vertical.' },
+  { icon: '\uD83D\uDCC8', headline: '$827B by 2030',
+    fact: 'The global AI market is projected at $827 billion by 2030. SaintSal sits at the intersection of every growth vertical.' },
+  { icon: '\uD83C\uDFC6', headline: 'AI Employee',
+    fact: 'Not a chatbot \u2014 a full AI Employee. Content, CRM, formations, social media, app building. All in one platform.' },
+  { icon: '\uD83C\uDF99\uFE0F', headline: 'Voice-First',
+    fact: 'Talk to SaintSal in 17 languages. Real-time transcription, natural synthesis. The future of human-AI interaction.' },
+  { icon: '\uD83C\uDF10', headline: 'Responsible Intelligence\u2122',
+    fact: 'The 33% of the market that values ethics, faith, and human dignity in technology. That is our market. That is our mission.' },
+];
+
+function TriviaEngine(containerId) {
+  this.container = document.getElementById(containerId);
+  this.facts = SAINTVISION_TRIVIA.slice().sort(function() { return Math.random() - 0.5; });
+  this.index = 0;
+  this.interval = null;
+}
+
+TriviaEngine.prototype.start = function(intervalMs) {
+  if (!this.container) return;
+  var self = this;
+  intervalMs = intervalMs || 4000;
+  this.render();
+  this.interval = setInterval(function() {
+    self.container.style.opacity = '0';
+    self.container.style.transform = 'translateY(8px)';
+    setTimeout(function() {
+      self.index = (self.index + 1) % self.facts.length;
+      self.render();
+      self.container.style.opacity = '1';
+      self.container.style.transform = 'translateY(0)';
+    }, 300);
+  }, intervalMs);
+};
+
+TriviaEngine.prototype.stop = function() {
+  if (this.interval) { clearInterval(this.interval); this.interval = null; }
+};
+
+TriviaEngine.prototype.render = function() {
+  var fact = this.facts[this.index];
+  var dots = '';
+  for (var i = 0; i < 5; i++) {
+    var isActive = (i === this.index % 5);
+    dots += '<div style="width:' + (isActive ? '18px' : '6px') + ';height:6px;' +
+      'border-radius:3px;background:' + (isActive ? 'var(--accent-gold, #F59E0B)' : 'var(--bg3, #333)') + ';' +
+      'transition:all 0.3s;"></div>';
+  }
+  this.container.innerHTML =
+    '<div style="text-align:center;padding:20px 32px;transition:all 0.3s ease;">' +
+      '<div style="font-size:32px;margin-bottom:12px;">' + fact.icon + '</div>' +
+      '<div style="font-size:15px;font-weight:700;color:var(--accent-gold, #F59E0B);margin-bottom:6px;">' +
+        fact.headline +
+      '</div>' +
+      '<div style="font-size:13px;color:var(--t2, #9CA3AF);line-height:1.6;max-width:360px;margin:0 auto;">' +
+        fact.fact +
+      '</div>' +
+      '<div style="display:flex;justify-content:center;gap:5px;margin-top:16px;">' +
+        dots +
+      '</div>' +
+    '</div>';
+};
+
+// Generic helper: show a loading spinner with trivia in any container
+function showLoadingWithTrivia(containerId) {
+  var container = document.getElementById(containerId);
+  if (!container) return null;
+  container.innerHTML =
+    '<div style="padding:40px 0;text-align:center;">' +
+      '<div style="width:32px;height:32px;border:3px solid var(--bg3, #333);' +
+        'border-top:3px solid var(--accent-gold, #F59E0B);border-radius:50%;' +
+        'animation:spin 0.8s linear infinite;margin:0 auto;"></div>' +
+    '</div>' +
+    '<div id="' + containerId + '-trivia"></div>';
+  container.style.display = 'block';
+  var t = new TriviaEngine(containerId + '-trivia');
+  t.start();
+  return t; // Caller calls t.stop() when done
+}
+
+// Active trivia instance (for builder flow)
+var _activeTriviaEngine = null;
+
 // ─── Conversation Persistence State ───────────────────────────────────────────
 var currentConvId = null;        // Active conversation ID (null = new unsaved)
 var convAutoSaveTimer = null;    // Debounce timer for auto-save
@@ -5517,27 +5650,9 @@ window.addEventListener('beforeunload', function(e) {
    ═══════════════════════════════════════════════════════════════════ */
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// SaintVision™ Trivia System — rotating facts while Builder works
+// SaintVision™ Legacy Trivia System — now uses SAINTVISION_TRIVIA from top of file
 // ═══════════════════════════════════════════════════════════════════════════════
-var SAINTVISION_TRIVIA = [
-  { icon: '™', fact: 'Did you know? SaintSal™ is a registered trademark of Saint Vision Technologies LLC, protecting the brand across all AI products and services.' },
-  { icon: '🏛️', fact: 'Saint Vision Technologies LLC holds US Patent #10,290,222 — covering escalation and de-escalation in any virtual environment via a single prompt or avatar.' },
-  { icon: '🏦', fact: 'Saint Vision, Inc. owns CookinCapital, Inc. — an AI-powered commercial real estate and lending brokerage handling deals from $5K to $100M with 57 funding partners.' },
-  { icon: '🌍', fact: 'SaintSal.ai is live in 175+ countries — making it one of the most globally accessible AI assistants built by an independent company.' },
-  { icon: '🤝', fact: 'CookinPartners.com lets anyone sign up with a W-9 to sell SaintSal™ and earn 15% commission on every referral.' },
-  { icon: '📱', fact: 'Both SaintSal.ai and SaintSalLabs.com are coming to the iOS App Store and Google Play Store — native mobile experiences powered by the same backend.' },
-  { icon: '🧠', fact: 'HACP (Human-AI Connection Protocol) is a patented framework by Saint Vision Technologies — a pending second patent (#19/296,986) expands on the original.' },
-  { icon: '💼', fact: 'Cap (Ryan Capatosto) brings 22+ years of financial services experience from JP Morgan and Oppenheimer to the AI industry.' },
-  { icon: '⚡', fact: 'SaintSal™ Labs Builder is a unified AI workspace — images, video, audio, full-stack code, social content, and deployment all from one chat.' },
-  { icon: '🏗️', fact: 'SaintSalLabs.com is built on a modern stack: React frontend, Python/FastAPI backend, Supabase for auth and data, Stripe for billing, and multi-model AI (Claude, Grok, Gemini, GPT).' },
-  { icon: '🎯', fact: 'Saint Vision\'s mission is "Responsible Intelligence" — serving faith-forward, values-driven organizations that make up the 33% of the market big tech overlooks.' },
-  { icon: '📄', fact: 'Patent #10,290,222 was a breakthrough — it enables any AI system to dynamically escalate or de-escalate conversation intensity through a single prompt command.' },
-  { icon: '🏢', fact: 'Saint Vision Technologies is headquartered at 221 Main Street, Suite J, Huntington Beach, CA — right in the heart of SoCal innovation.' },
-  { icon: '🔐', fact: 'SaintSalLabs uses Supabase as the single source of truth for authentication and billing across ALL Saint Vision platforms — one login, everywhere.' },
-  { icon: '🚀', fact: 'CookinCapital.com (cookin.io) is an AI-first brokerage — using artificial intelligence to match borrowers with the best lending partners in real-time.' },
-  { icon: '💡', fact: 'SaintBiz.io is the B2B SaaS arm of Saint Vision — bringing enterprise AI tools to small and mid-size businesses.' },
-  { icon: '🏥', fact: 'SaintAthena is Saint Vision\'s upcoming HIPAA-compliant medical AI platform — bringing Responsible Intelligence to healthcare.' },
-];
+// SAINTVISION_TRIVIA is now defined at the top of app.js with the Elite dataset (21 facts)
 var _triviaTimer = null;
 var _triviaIndex = 0;
 
@@ -7307,9 +7422,16 @@ function bv2SetBuildingUI(isBuilding) {
     // After first build, change label to ITERATE
     if (labelEl) labelEl.textContent = bv2State.files.length > 0 ? 'ITERATE' : 'BUILD';
     if (stopChip) stopChip.style.display = 'none';
+    // Stop trivia
+    if (_activeTriviaEngine) { _activeTriviaEngine.stop(); _activeTriviaEngine = null; }
   } else {
     if (labelEl) labelEl.textContent = 'BUILDING...';
     if (stopChip) stopChip.style.display = 'inline-flex';
+    // Start trivia in the builder preview loading area
+    if (document.getElementById('bv2BuilderTrivia')) {
+      _activeTriviaEngine = new TriviaEngine('bv2BuilderTrivia');
+      _activeTriviaEngine.start();
+    }
   }
 }
 
