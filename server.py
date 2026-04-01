@@ -1404,27 +1404,56 @@ def select_elite_builder_tier(prompt: str, history: list) -> tuple:
 # iOS app calls this endpoint for the Builder tab
 # ═══════════════════════════════════════════════════════════════════
 
-BUILDER_V2_SYSTEM = """You are SAL™ Builder V2 — the AI-powered full-stack web builder inside the SaintSal™ Labs platform.
-US Patent #10,290,222 — HACP Protocol — Saint Vision Technologies LLC.
+BUILDER_V2_SYSTEM = """You are an elite senior full-stack engineer working at the intersection of design and engineering. You write code that ships to production at companies like Vercel, Linear, Stripe, and Notion. Your output is not a prototype — it IS the product.
 
-You generate complete, production-ready web applications. You MUST respond with ONLY valid JSON — no markdown fences, no backticks wrapping the JSON, no explanation outside the JSON.
+You are building inside SaintSal™ Builder, powered by US Patent #10,290,222 — HACP Protocol — Saint Vision Technologies LLC.
 
-You MUST respond with EXACTLY this JSON structure:
-{"thought":"Brief explanation of your approach and what you built","files":[{"path":"index.html","content":"complete file content here","language":"html"}],"preview_entry":"index.html","next_steps":["suggestion 1","suggestion 2","suggestion 3"]}
+## OUTPUT FORMAT (STRICT)
 
-RULES:
-- Every file must be COMPLETE and production-ready — no TODOs, no placeholders, no truncation
-- Include ALL necessary files (HTML, CSS, JS, config files)
-- The preview_entry must be an HTML file that can be opened directly in a browser
-- For simple apps: use vanilla HTML + CSS + JS (all inlined or linked with relative paths)
-- For complex apps: still use a single index.html entry with inline styles and scripts for mobile WebView compatibility
-- Apply SaintSal design system: #0C0C0F background, #F59E0B amber/gold accent, #E8E6E1 text, #161616 card bg, Inter font family
-- Make every UI polished, animated, and premium — not basic bootstrap
-- Include smooth CSS transitions, hover effects, and micro-interactions
-- All layouts must be responsive and mobile-friendly
-- Generate at least 3 useful next_steps suggestions for iterating on the project
-- When editing existing files, ONLY modify what the user asked for — preserve everything else
-- For React apps, embed everything in a single HTML file using Babel standalone + React CDN for WebView compatibility"""
+Return ONLY valid JSON. No markdown fences. No explanation outside the JSON.
+
+{"files":[{"path":"index.html","content":"..."},{"path":"styles.css","content":"..."},{"path":"app.js","content":"..."}],"preview_html":"SINGLE SELF-CONTAINED HTML FILE — all CSS inline, all JS inline, works standalone in a browser without any dependencies","summary":"2-sentence description of what was built and key features","framework":"react|nextjs|html|vue","features":["responsive","dark-mode","animated"],"next_steps":["suggestion 1","suggestion 2","suggestion 3"]}
+
+## DESIGN STANDARDS (NON-NEGOTIABLE)
+
+LAYOUT: CSS Grid and Flexbox only. Mobile-first. Breakpoints: 640px, 768px, 1024px, 1280px. Spacing: 4px base unit (4,8,12,16,24,32,48,64,96). Max content width: 1280px centered.
+
+TYPOGRAPHY: System font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif. Type scale: 12/14/16/18/20/24/30/36/48/60/72px. Line heights: 1.1 headings, 1.5 body. Weights: 400/500/600/700/800. Letter spacing: -0.02em for large headings.
+
+COLOR: Dark mode default. Backgrounds: #0a0a0a → #111 → #1a1a1a. Text: #fafafa → #a1a1aa. Accent: derive from app purpose. WCAG AA contrast (4.5:1 minimum).
+
+COMPONENTS: Buttons: rounded-lg (8px), hover/active states, transition-all 150ms. Cards: 1px border #1e1e1e, rounded-xl (12px), hover:shadow-lg. Inputs: rounded-lg, border, focus ring. Navigation: sticky, backdrop-blur, border-bottom. Modals: backdrop-blur overlay.
+
+ANIMATIONS: Entrance animations (fade-up, fade-in) via IntersectionObserver. Hover transitions 150ms ease. Smooth scroll. Loading states. Skeleton loaders. Focus-visible outlines.
+
+IMAGES: Use https://picsum.photos or https://placehold.co. Proper aspect ratios with object-fit: cover. loading="lazy". Hero: gradient overlay for text readability.
+
+ICONS: Inline SVG only (no external deps). Sizes: 16px/20px/24px. Stroke-width: 1.5-2px.
+
+## GENERATION RULES
+
+1. preview_html MUST be a SINGLE self-contained HTML file that works when opened directly. All CSS, JS, React, Tailwind via CDN. No external file references. If it doesn't render standalone, you failed.
+
+2. Generate COMPLETE implementations. No "// TODO". Every button does something. Every form validates. Every list has realistic sample data.
+
+3. Sample data must feel REAL. Not "Lorem ipsum" or "Item 1". Real names, prices ($29.99 format), descriptions, dates. Make it feel shipped.
+
+4. The app should look like it belongs on Product Hunt. Intentional design. Design differentiation matters.
+
+5. For edits: change ONLY what was asked. Preserve everything else exactly.
+
+## FRAMEWORK SELECTION
+
+- Landing pages, marketing → HTML + Tailwind CDN + Alpine.js
+- Interactive apps, dashboards → React 18 CDN + Tailwind CDN
+- Quick components, widgets → React CDN minimal
+Default to React + Tailwind CDN unless prompt says otherwise.
+
+## REACT IN preview_html
+Use React 18 via CDN (unpkg.com/react@18, unpkg.com/react-dom@18).
+Use Babel standalone for JSX: unpkg.com/babel-standalone@7.
+Use Tailwind CSS CDN: cdn.tailwindcss.com for styling.
+All in ONE self-contained HTML file."""
 
 BUILDER_REVIEW_SYSTEM = """You are a senior code reviewer for SAL™ Builder. You will receive AI-generated code and must review and fix it.
 
@@ -1444,6 +1473,89 @@ RULES:
 - If a file has no bugs, include it unchanged
 - If nothing needs fixing, still return the full JSON with review_notes: ["No issues found — code is production-ready"]
 - NEVER truncate file content — every file must be complete"""
+
+# ── BUILDER v2 ELITE: COMPLEXITY SCORING + MODEL ROUTING ─────────────────────
+
+# Tier costs per compute-minute
+BUILDER_TIER_COSTS = {
+    "ARCHITECT": 1.00,   # Opus 4.6 — complex full apps
+    "BUILDER":   0.25,   # Sonnet 4.6 — standard apps
+    "CREATIVE":  0.50,   # Grok / Sonnet — artistic/experimental
+    "QUICK":     0.05,   # Haiku 4.5 — edits/tweaks
+}
+
+def score_complexity(prompt: str, history: list) -> int:
+    """Score prompt complexity 0-100 for 4-tier model routing."""
+    score = 0
+    p = prompt.lower()
+    # Length signals
+    if len(prompt) > 500: score += 15
+    elif len(prompt) > 200: score += 10
+    elif len(prompt) > 100: score += 5
+    # Full-app / multi-page signals
+    full_app_kw = [
+        "dashboard", "saas", "auth", "login", "signup", "billing", "admin panel",
+        "crud", "database", "api", "full-stack", "multi-page", "routing", "navigation",
+        "user management", "e-commerce", "checkout", "payment", "subscription",
+        "real-time", "websocket", "chat app",
+    ]
+    score += sum(10 for kw in full_app_kw if kw in p)
+    # Edit / quick-change signals (reduce score)
+    edit_kw = ["change", "make the", "update the", "fix the", "modify", "adjust", "move", "resize", "recolor", "rename"]
+    if any(kw in p for kw in edit_kw) and history:
+        score = max(score - 30, 0)
+    # History depth adds complexity
+    score += min(len(history) * 2, 20)
+    return min(score, 100)
+
+def is_creative(prompt: str) -> bool:
+    """Detect creative/artistic prompts for Grok routing."""
+    creative_kw = [
+        "artistic", "creative", "unique", "experimental", "cyberpunk", "retro", "neon",
+        "glassmorphism", "brutalist", "organic", "parallax", "3d", "immersive",
+        "unconventional", "wild", "crazy", "futuristic", "vaporwave", "synthwave",
+    ]
+    return any(kw in prompt.lower() for kw in creative_kw)
+
+async def get_remaining_credits(user_id: str) -> float:
+    """Return remaining compute minutes for a user. Returns large value if DB unavailable."""
+    if not supabase_admin or not user_id:
+        return 9999.0
+    try:
+        resp = supabase_admin.table("profiles").select("tier, compute_minutes, compute_minutes_used").eq("id", user_id).single().execute()
+        if not resp.data:
+            return 9999.0
+        allocated = float(resp.data.get("compute_minutes") or 999)
+        used = float(resp.data.get("compute_minutes_used") or 0)
+        return max(0.0, allocated - used)
+    except Exception:
+        return 9999.0
+
+async def log_builder_usage(user_id: str | None, data: dict) -> None:
+    """Log builder usage to usage_log table and deduct compute minutes from profile."""
+    if not supabase_admin or not user_id:
+        return
+    try:
+        supabase_admin.table("usage_log").insert({
+            "user_id": user_id,
+            "type": data.get("type", "builder_generate"),
+            "model": data.get("model", ""),
+            "tier": data.get("tier", ""),
+            "prompt_length": data.get("prompt_length", 0),
+            "response_length": data.get("response_length", 0),
+            "elapsed_seconds": data.get("elapsed_seconds", 0),
+            "compute_minutes": data.get("compute_minutes", 0),
+            "credits_used": data.get("cost", 0),
+        }).execute()
+        # Deduct compute minutes from profile
+        minutes = data.get("compute_minutes", 0)
+        if minutes > 0:
+            supabase_admin.rpc("increment_compute_minutes_used", {
+                "uid": user_id, "minutes": round(minutes, 4)
+            }).execute()
+    except Exception as e:
+        print(f"[Builder] Usage log failed (non-fatal): {e}")
+
 
 # ── FRAMEWORK DETECTION + TEMPLATE INJECTION ─────────────────────────────────
 
@@ -1499,7 +1611,7 @@ def _build_user_content(prompt: str, files: list, framework: str | None) -> str:
 # ── RESPONSE PARSING ──────────────────────────────────────────────────────────
 
 def _parse_builder_response(raw_text: str) -> dict:
-    """Parse LLM response — extract JSON from potentially messy output."""
+    """Parse LLM response — extract JSON from potentially messy output. Handles both legacy and Elite format."""
     import re
     cleaned = raw_text.strip()
     cleaned = re.sub(r'^```(?:json)?\s*', '', cleaned, flags=re.MULTILINE)
@@ -1511,11 +1623,23 @@ def _parse_builder_response(raw_text: str) -> dict:
     cleaned = cleaned.strip()
     try:
         result = json.loads(cleaned)
+        # Support both Elite format (summary/preview_html/features) and legacy format (thought/preview_entry)
+        summary = result.get("summary") or result.get("thought", "Code generated.")
+        preview_entry = result.get("preview_entry", "index.html")
+        # If preview_html provided, inject it as a synthetic file for legacy consumers
+        extra_files = []
+        preview_html = result.get("preview_html", "")
+        if preview_html and not any(f.get("path","") == "__preview__.html" for f in result.get("files", [])):
+            extra_files = [{"path": "__preview__.html", "content": preview_html, "language": "html"}]
         return {
             "ok": True,
-            "thought": result.get("thought", "Code generated."),
-            "files": result.get("files", []),
-            "preview_entry": result.get("preview_entry", "index.html"),
+            "thought": summary,
+            "summary": summary,
+            "files": result.get("files", []) + extra_files,
+            "preview_html": preview_html,
+            "preview_entry": preview_entry,
+            "framework": result.get("framework", "html"),
+            "features": result.get("features", []),
             "next_steps": result.get("next_steps", []),
             "review_notes": result.get("review_notes", []),
         }
@@ -1523,8 +1647,12 @@ def _parse_builder_response(raw_text: str) -> dict:
         return {
             "ok": True,
             "thought": "Generated output (raw format).",
-            "files": [{"path": "output.html", "content": raw_text, "language": "html"}],
-            "preview_entry": "output.html",
+            "summary": "Generated application.",
+            "files": [{"path": "index.html", "content": raw_text, "language": "html"}],
+            "preview_html": raw_text,
+            "preview_entry": "index.html",
+            "framework": "html",
+            "features": [],
             "next_steps": ["Try a more specific prompt"],
             "review_notes": [],
         }
@@ -1990,6 +2118,203 @@ async def builder_get_runs(project_id: str):
         return JSONResponse({"runs": resp.data or []})
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
+
+
+# ── BUILDER ELITE: /api/builder/generate + /api/builder/edit ─────────────────
+
+@limiter.limit("10/minute")
+@app.post("/api/builder/generate")
+async def builder_generate_elite(request: Request):
+    """Builder Elite — clean REST endpoint with 4-tier routing, compute metering, preview_html."""
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Invalid JSON"}, status_code=400)
+
+    sal_key = request.headers.get("x-sal-key", "")
+    VALID   = os.environ.get("SAL_GATEWAY_SECRET", "")
+    auth    = request.headers.get("authorization", "").replace("Bearer ", "")
+    if sal_key != VALID and auth != VALID and len(auth) < 100:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+
+    prompt  = (body.get("prompt") or "").strip()
+    history = body.get("history", [])
+    user_id = body.get("user_id")
+
+    if not prompt:
+        return JSONResponse({"error": "prompt is required"}, status_code=400)
+
+    # Credit check
+    if user_id:
+        remaining = await get_remaining_credits(user_id)
+        if remaining <= 0:
+            return JSONResponse({
+                "error": "insufficient_credits",
+                "message": "Upgrade your plan for more Builder credits.",
+                "upgrade_url": "https://saintsallabs.com/pricing",
+            }, status_code=402)
+
+    # 4-tier routing
+    history_list = [m for m in history[-10:] if m.get("role") in ["user", "assistant"]]
+    complexity   = score_complexity(prompt, history_list)
+    creative     = is_creative(prompt)
+
+    if complexity >= 80:
+        tier = "ARCHITECT"; model_order = ["claude", "openai", "google"]
+    elif complexity >= 50:
+        tier = "BUILDER";   model_order = ["claude", "openai", "xai"]
+    elif creative:
+        tier = "CREATIVE";  model_order = ["xai", "claude", "openai"]
+    else:
+        tier = "QUICK";     model_order = ["claude", "openai", "google"]
+
+    cost_per_min = BUILDER_TIER_COSTS.get(tier, 0.25)
+    framework    = _detect_framework(prompt)
+    user_content = _build_user_content(prompt, [], framework)
+    start_time   = time.time()
+
+    result = None
+    model_used = "none"
+    for preferred in model_order:
+        ai_resp = await _builder_ai_call(
+            system=BUILDER_V2_SYSTEM,
+            user_msg=user_content,
+            preferred_model=preferred,
+            max_tokens=16384,
+            timeout_seconds=45,
+        )
+        if ai_resp.get("text"):
+            result     = _parse_builder_response(ai_resp["text"])
+            model_used = ai_resp.get("model_used", preferred)
+            break
+
+    if not result or not result.get("files"):
+        result = {
+            "ok": True, "summary": "Starter template — all providers unavailable.",
+            "files": [{"path": "index.html", "content": "<h1>SAL Builder</h1>", "language": "html"}],
+            "preview_html": "<h1>SAL Builder — please try again.</h1>",
+            "framework": "html", "features": [], "next_steps": [],
+        }
+        model_used = "fallback-template"
+
+    elapsed      = time.time() - start_time
+    compute_mins = max(elapsed / 60, 0.1)
+    cost         = round(compute_mins * cost_per_min, 4)
+    build_id     = str(uuid.uuid4())[:8]
+
+    if user_id:
+        await log_builder_usage(user_id, {
+            "type": "builder_generate",
+            "model": model_used, "tier": tier,
+            "prompt_length": len(prompt),
+            "response_length": len(json.dumps(result)),
+            "elapsed_seconds": round(elapsed, 2),
+            "compute_minutes": round(compute_mins, 4),
+            "cost": cost,
+        })
+        await _builder_upsert_project(
+            project_id=None, user_id=user_id,
+            name=prompt[:40], files=result.get("files", []),
+            framework=framework or result.get("framework", "html"), prompt=prompt,
+        )
+
+    return JSONResponse({
+        **result,
+        "build_id": build_id,
+        "model_used": model_used,
+        "tier": tier,
+        "compute_cost": cost,
+        "elapsed_seconds": round(elapsed, 2),
+    })
+
+
+@limiter.limit("15/minute")
+@app.post("/api/builder/edit")
+async def builder_edit_elite(request: Request):
+    """Builder Elite Edit — QUICK/BUILDER tier, edits existing code with minimal token usage."""
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Invalid JSON"}, status_code=400)
+
+    sal_key = request.headers.get("x-sal-key", "")
+    VALID   = os.environ.get("SAL_GATEWAY_SECRET", "")
+    auth    = request.headers.get("authorization", "").replace("Bearer ", "")
+    if sal_key != VALID and auth != VALID and len(auth) < 100:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+
+    prompt       = (body.get("prompt") or "").strip()
+    current_code = (body.get("current_code") or "").strip()
+    history      = body.get("history", [])
+    user_id      = body.get("user_id")
+
+    if not prompt:
+        return JSONResponse({"error": "prompt is required"}, status_code=400)
+
+    if user_id:
+        remaining = await get_remaining_credits(user_id)
+        if remaining <= 0:
+            return JSONResponse({
+                "error": "insufficient_credits",
+                "message": "Upgrade your plan for more Builder credits.",
+                "upgrade_url": "https://saintsallabs.com/pricing",
+            }, status_code=402)
+
+    # Edits are QUICK tier by default, BUILDER if complex
+    history_list = [m for m in history[-10:] if m.get("role") in ["user", "assistant"]]
+    complexity   = score_complexity(prompt, history_list)
+    tier         = "BUILDER" if complexity >= 50 else "QUICK"
+    cost_per_min = BUILDER_TIER_COSTS.get(tier, 0.05)
+    model_order  = ["claude", "openai"] if tier == "BUILDER" else ["claude", "openai", "google"]
+
+    edit_content = (
+        f"EDIT REQUEST: {prompt}\n\n"
+        f"CURRENT CODE TO EDIT:\n{current_code[:12000]}\n\n"
+        "Apply ONLY the requested changes. Return the complete modified file(s) in the required JSON format."
+    )
+    start_time = time.time()
+    result = None
+    model_used = "none"
+    for preferred in model_order:
+        ai_resp = await _builder_ai_call(
+            system=BUILDER_V2_SYSTEM,
+            user_msg=edit_content,
+            preferred_model=preferred,
+            max_tokens=12000,
+            timeout_seconds=30,
+        )
+        if ai_resp.get("text"):
+            result     = _parse_builder_response(ai_resp["text"])
+            model_used = ai_resp.get("model_used", preferred)
+            break
+
+    if not result or not result.get("files"):
+        return JSONResponse({"error": "Edit failed — all models unavailable"}, status_code=503)
+
+    elapsed      = time.time() - start_time
+    compute_mins = max(elapsed / 60, 0.05)
+    cost         = round(compute_mins * cost_per_min, 4)
+    build_id     = str(uuid.uuid4())[:8]
+
+    if user_id:
+        await log_builder_usage(user_id, {
+            "type": "builder_edit",
+            "model": model_used, "tier": tier,
+            "prompt_length": len(prompt),
+            "response_length": len(json.dumps(result)),
+            "elapsed_seconds": round(elapsed, 2),
+            "compute_minutes": round(compute_mins, 4),
+            "cost": cost,
+        })
+
+    return JSONResponse({
+        **result,
+        "build_id": build_id,
+        "model_used": model_used,
+        "tier": tier,
+        "compute_cost": cost,
+        "elapsed_seconds": round(elapsed, 2),
+    })
 
 
 @app.post("/api/mcp/search")
@@ -8610,66 +8935,53 @@ BUILDER_CHAT_SYSTEM = """You are SAL™, the AI Builder Engine for SaintSal™ L
 5. Keep responses concise but complete.
 """
 
-# v7.36.0 — Full-stack multi-page builder system prompt
-BUILDER_CODE_SYSTEM = """You are SAL™ Builder — the AI-powered full-stack web builder behind SaintSal™ Labs.
-You are an expert web developer and designer. You BUILD things. You do NOT plan or discuss — you BUILD.
+# v2 Elite — Full-stack multi-page builder system prompt (SSE chat endpoint)
+BUILDER_CODE_SYSTEM = """You are SAL™ Builder — an elite senior full-stack engineer building production code inside SaintSal™ Labs (US Patent #10,290,222). You BUILD. You never plan, explain, or ask questions — you execute immediately.
 
-## CRITICAL RULE: ALWAYS OUTPUT CODE
-Your response MUST contain a JSON code block with files. NEVER respond with just text, questions, or descriptions.
-Even if the request is vague like "build me a website", make smart assumptions and BUILD IT.
-
-## OUTPUT FORMAT (MANDATORY):
-Your ENTIRE response must be a valid JSON block:
+## OUTPUT FORMAT (MANDATORY)
+Your ENTIRE response must be a valid JSON code block:
 
 ```json
-{"files": [{"name": "index.html", "content": "<!DOCTYPE html>...FULL HTML..."}, {"name": "styles.css", "content": "...FULL CSS..."}, {"name": "script.js", "content": "...FULL JS..."}]}
+{"files": [{"name": "index.html", "content": "<!DOCTYPE html>...COMPLETE HTML..."}, {"name": "styles.css", "content": "...COMPLETE CSS..."}, {"name": "script.js", "content": "...COMPLETE JS..."}]}
 ```
 
-Do NOT include any text before or after the JSON block. Just the JSON.
+Nothing before or after the JSON. Just the code block.
 
-## WHEN ITERATING (follow-up messages):
-When the user says "add", "change", "update", "fix", etc.:
-- Output ONLY the files that changed with their COMPLETE updated content
-- Do NOT regenerate unchanged files
-- Same JSON format
+## WHEN ITERATING
+Change ONLY what was asked. Return complete updated file content. Same JSON format.
 
-## MULTI-PAGE RULES (CRITICAL):
-- Every HTML page MUST include a consistent <nav> header linking to ALL other pages
-- Navigation links use relative paths: href="index.html", href="about.html", href="contact.html"
-- ALL pages share one styles.css via <link rel="stylesheet" href="styles.css">
-- ALL pages share one script.js via <script src="script.js"></script>
-- Each page is a COMPLETE standalone HTML document with <!DOCTYPE html>, <head>, <body>
-- Navigation highlights the current active page
-- Include a responsive mobile hamburger menu in the shared JS
-- Minimum pages for any website: Home (index.html), About, Contact
-- For businesses: add Services/Menu/Products page
-- For apps: add Dashboard, Settings pages
+## DESIGN STANDARDS (NON-NEGOTIABLE)
 
-## DESIGN STANDARDS:
-- Modern, polished, PREMIUM design — NOT generic Bootstrap
-- Clean aesthetic with gradients, glassmorphism, smooth animations
-- Fully responsive: mobile-first, works at 375px, 768px, 1440px
-- Professional typography via Google Fonts CDN (Inter, Poppins, or Playfair Display)
-- Micro-interactions: hover effects, focus rings, smooth transitions
-- Accessibility: semantic HTML, ARIA labels, keyboard nav
-- Use CSS custom properties for theming (--primary, --secondary, --accent)
-- Hero sections with compelling CTAs
-- Proper spacing, visual hierarchy, contrast ratios
+LAYOUT: CSS Grid + Flexbox. Mobile-first. Breakpoints: 640/768/1024/1280px. 4px base unit spacing. Max content 1280px centered.
 
-## STITCH INTEGRATION:
-If the user mentions "design", "stitch", or "UI design", you can suggest using Google Stitch for interactive prototyping before building.
+TYPOGRAPHY: System font stack (-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto). Scale: 12/14/16/18/20/24/30/36/48px. Line heights: 1.1 headings, 1.5 body. Weights: 400/500/600/700/800.
 
-## CODE RULES (NON-NEGOTIABLE):
-1. ALWAYS output a JSON code block with files. NEVER output plain text.
-2. NEVER use placeholder comments like "// TODO" or "Lorem ipsum" for main content.
-3. Every file MUST have FULL working content — no truncation.
-4. Code MUST work when rendered in a browser iframe immediately.
-5. Always include meta viewport, charset, title tags.
-6. Minimum 4 files for any website build.
-7. Forms must have validation and visual feedback.
-8. All interactive elements need hover/focus/active states.
-9. Images use placeholder services (unsplash source URLs or gradient backgrounds).
-10. Include smooth scroll behavior and page transition effects.
+COLOR: Dark mode default. #0a0a0a → #111 → #1a1a1a backgrounds. #fafafa → #a1a1aa text. Accent from brand purpose. WCAG AA contrast (4.5:1).
+
+COMPONENTS: Buttons: rounded-lg 8px, hover/active states, transition 150ms. Cards: 1px border #1e1e1e, rounded-xl 12px, hover shadow. Inputs: focus ring with accent color. Nav: sticky, backdrop-blur.
+
+ANIMATIONS: IntersectionObserver fade-up/fade-in on scroll. Hover transitions 150ms ease. Smooth scroll. Loading states on buttons.
+
+IMAGES: picsum.photos or placehold.co. object-fit:cover. loading="lazy". Hero: gradient overlay for text.
+
+ICONS: Inline SVG only — no external icon libraries. Stroke-width 1.5-2px.
+
+## MULTI-PAGE RULES
+- Consistent <nav> on every page linking all pages
+- Shared styles.css + script.js via relative paths
+- Each page: complete HTML document with DOCTYPE, head, body
+- Nav highlights current active page with mobile hamburger menu
+- Min pages: Home, About, Contact. Apps: Dashboard, Settings
+
+## CODE RULES (NON-NEGOTIABLE)
+1. ALWAYS output JSON code block. NEVER plain text.
+2. ZERO TODOs, placeholders, "Lorem ipsum", or truncation.
+3. Sample data MUST feel real — real names, $29.99 prices, real dates.
+4. Every button does something. Every form validates.
+5. viewport meta, charset, title on every HTML page.
+6. Min 4 files for any website build.
+7. Code works immediately when rendered in a browser iframe.
+8. The app should look like it belongs on Product Hunt.
 """
 
 # v7.36.0 — Retry prompt when AI returns a plan instead of code
@@ -9291,7 +9603,7 @@ async def builder_unified_chat(request: Request):
 
             async def _run_code_gen():
                 try:
-                    _code_result_holder["result"] = await _builder_ai_call(BUILDER_CODE_SYSTEM, user_msg, code_preferred, 64000, timeout_seconds=90)
+                    _code_result_holder["result"] = await _builder_ai_call(BUILDER_CODE_SYSTEM, user_msg, code_preferred, 16000, timeout_seconds=45)
                 except Exception as _e:
                     print(f"[Builder Code] Background task error: {_e}")
                 finally:
@@ -9328,7 +9640,7 @@ async def builder_unified_chat(request: Request):
                     try:
                         # Try Claude first for retry — best at structured JSON output
                         retry_model = "claude" if "claude" in available_model_ids else code_preferred
-                        _retry_holder["result"] = await _builder_ai_call(BUILDER_CODE_SYSTEM, retry_msg, retry_model, 64000, timeout_seconds=90)
+                        _retry_holder["result"] = await _builder_ai_call(BUILDER_CODE_SYSTEM, retry_msg, retry_model, 16000, timeout_seconds=45)
                     except Exception as _re:
                         print(f"[Builder Code] Retry error: {_re}")
                     finally:
@@ -9507,16 +9819,16 @@ async def builder_unified_chat(request: Request):
 # v7.36.0 — Default model chain (SAL Pro tier). Overridden per compute_tier via TIER_MODEL_ROUTING.
 # Build model chain dynamically based on available API keys
 _BUILDER_CHAIN_CANDIDATES = [
-    {"id": "claude", "name": "Claude Sonnet 4.6", "provider": "anthropic", "model": "claude-sonnet-4-20250514", "max_tokens": 64000,
+    {"id": "claude", "name": "Claude Sonnet 4.6", "provider": "anthropic", "model": "claude-sonnet-4-6", "max_tokens": 16000,
      "available": bool(os.environ.get("ANTHROPIC_API_KEY", ""))},
-    {"id": "grok", "name": "Grok-4", "provider": "xai", "model": "grok-4", "max_tokens": 32000,
+    {"id": "grok", "name": "Grok-3", "provider": "xai", "model": "grok-3", "max_tokens": 16000,
      "available": bool(os.environ.get("XAI_API_KEY", ""))},
-    {"id": "gemini", "name": "Gemini 2.5 Pro", "provider": "google", "model": "gemini-2.5-pro", "max_tokens": 65536,
+    {"id": "gemini", "name": "Gemini 2.0 Flash", "provider": "google", "model": "gemini-2.0-flash", "max_tokens": 16000,
      "available": bool(os.environ.get("GEMINI_API_KEY", ""))},
-    {"id": "gpt", "name": "GPT-5.4-mini", "provider": "openai", "model": "gpt-5.4-mini", "max_tokens": 32768,
+    {"id": "gpt", "name": "GPT-4o", "provider": "openai", "model": "gpt-4o", "max_tokens": 16000,
      "available": bool(os.environ.get("OPENAI_API_KEY", ""))},
     # Perplexity — always available via PPLX_API_KEY
-    {"id": "pplx", "name": "Perplexity Sonar Pro", "provider": "perplexity", "model": "sonar-pro", "max_tokens": 16000,
+    {"id": "pplx", "name": "Perplexity Sonar Pro", "provider": "perplexity", "model": "sonar-pro", "max_tokens": 8000,
      "available": True},
 ]
 # Only include models with available API keys — no wasted timeout on dead providers
