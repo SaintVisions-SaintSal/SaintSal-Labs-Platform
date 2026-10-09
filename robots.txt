@@ -1,0 +1,9 @@
+# Public marketing pages and assets are crawlable.
+# Crawler rules are not access controls; private data still requires authorization.
+User-agent: *
+Disallow: /api/
+Disallow: /media_uploads/
+Disallow: /scripts/
+Disallow: /templates/
+
+Sitemap: https://www.saintsallabs.com/sitemap.xml
